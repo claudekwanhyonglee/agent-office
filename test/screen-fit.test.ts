@@ -92,12 +92,10 @@ describe('#37 AC2 nothing is painted outside the card', () => {
     const model = boardModel(new Map(records.map((r, i) => [i, r])));
     const { g, drawn } = recorder();
     paintBoard(g, model);
-    const rects = tileRects(model.tiles.length);
-    const tiles = 'tiles' in rects ? rects.tiles : rects;
+    const tiles = tileRects(model.tiles.length);
     const background = drawn.shift()!; // the board's own backdrop
     expect(background).toMatchObject({ x0: 0, y0: 0, x1: BOARD_CANVAS.width, y1: BOARD_CANVAS.height });
-    const areas = 'summary' in rects ? [...tiles, rects.summary] : tiles;
-    for (const d of drawn) expect(areas.some((t) => inside(d, t)), d.text ?? 'rect').toBe(true);
+    for (const d of drawn) expect(tiles.some((t) => inside(d, t)), d.text ?? 'rect').toBe(true);
     // Every long working line on the board was cut.
     for (const text of drawn.map((d) => d.text).filter((t) => t?.startsWith('Bash npm run'))) expect(text!.endsWith('…')).toBe(true);
   });
