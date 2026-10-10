@@ -90,6 +90,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 .tooltip {
   position: absolute; pointer-events: none; padding: 6px 10px; border-radius: 10px;
   background: var(--panel); border: 1px solid var(--line); font-size: 13px; white-space: nowrap;
+  max-width: calc(100% - 16px); box-sizing: border-box; overflow: hidden; text-overflow: ellipsis;
   transform: translate(-50%, calc(-100% - 12px));
 }
 .tooltip span { color: var(--muted); }

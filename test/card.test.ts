@@ -82,6 +82,23 @@ describe('#6 AC2 hover label', () => {
   });
 });
 
+describe('#21 AC4 tooltip near the screen edge', () => {
+  it('#21 AC4 the hover tooltip is moved inside the screen with an 8px margin', () => {
+    const { hover } = start([rec(1, 'working')]);
+    const tooltip = document.getElementById('tooltip')!;
+    const stage = tooltip.parentElement!;
+    for (const [el, w, h] of [[stage, 390, 844], [tooltip, 200, 30]] as const) {
+      Object.defineProperty(el, el === stage ? 'clientWidth' : 'offsetWidth', { value: w, configurable: true });
+      Object.defineProperty(el, el === stage ? 'clientHeight' : 'offsetHeight', { value: h, configurable: true });
+    }
+    hover('session-1', 5, 4);
+    expect(tooltip.style.left).toBe(`${8 + 100}px`);
+    expect(tooltip.style.top).toBe(`${8 + 30 + 12}px`);
+    hover('session-1', 200, 400);
+    expect([tooltip.style.left, tooltip.style.top]).toEqual(['200px', '400px']);
+  });
+});
+
 describe('#6 AC3 Got it button', () => {
   it('#6 AC3 finished and stale agents have Got it; it posts the session id', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));

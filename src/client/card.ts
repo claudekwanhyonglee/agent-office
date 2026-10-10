@@ -1,5 +1,6 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
 import { escapeHtml, renderMarkdown } from './markdown.ts';
+import { clampTooltip } from './camera.ts';
 
 export const STATE_LABEL: Record<OfficeState, string> = {
   working: 'Working',
@@ -77,6 +78,8 @@ export function showTooltip(el: HTMLElement, record: AgentRecord | undefined, x:
   el.hidden = !record;
   if (!record) return;
   el.innerHTML = `${escapeHtml(record.name)} <span>· ${escapeHtml(record.project)}</span>`;
-  el.style.left = `${x}px`;
-  el.style.top = `${y}px`;
+  const stage = el.parentElement!;
+  const at = clampTooltip(x, y, { width: el.offsetWidth, height: el.offsetHeight }, { width: stage.clientWidth, height: stage.clientHeight });
+  el.style.left = `${at.x}px`;
+  el.style.top = `${at.y}px`;
 }
