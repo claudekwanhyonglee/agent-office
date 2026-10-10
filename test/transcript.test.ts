@@ -80,13 +80,13 @@ describe('#4 AC3 branch', () => {
 
 describe('#4 AC4 bad transcripts', () => {
   it('#4 AC4 missing file', () => {
-    expect(readDetails(join(tmpdir(), 'no-such-dir', 'missing.jsonl'))).toEqual({ lastMessage: null, branch: null });
+    expect(readDetails(join(tmpdir(), 'no-such-dir', 'missing.jsonl'))).toEqual({ lastMessage: null, branch: null, activity: [] });
   });
 
   it('#4 AC4 empty file', () => {
     const dir = mkdtempSync(join(tmpdir(), 'office-t-'));
     writeFileSync(join(dir, 'empty.jsonl'), '');
-    expect(readDetails(join(dir, 'empty.jsonl'))).toEqual({ lastMessage: null, branch: null });
+    expect(readDetails(join(dir, 'empty.jsonl'))).toEqual({ lastMessage: null, branch: null, activity: [] });
   });
 
   it('#4 AC4 partly invalid lines keep values from the valid ones', () => {
@@ -98,7 +98,7 @@ describe('#4 AC4 bad transcripts', () => {
       line({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'AskUserQuestion', input: {} }] } }),
       '',
     ].join('\n'));
-    expect(details).toEqual({ lastMessage: 'valid text', branch: 'dev' });
+    expect(details).toEqual({ lastMessage: 'valid text', branch: 'dev', activity: ['AskUserQuestion'] });
   });
 });
 

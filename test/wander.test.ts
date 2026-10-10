@@ -12,7 +12,7 @@ import { obstaclesIn, routeCollisions } from './geometry.ts';
 
 const rec = (n: number, state: OfficeState = 'working'): AgentRecord => ({
   id: `a${n}`, sessionId: `session-${n}`, name: `agent ${n}`, project: 'demo-app',
-  cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null,
+  cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null, activity: [],
 });
 const key = (n: number) => `session-${n}`;
 // #25 moved the plan into officeLayout(rows); these tests run in the starting office.

@@ -21,5 +21,5 @@ export async function loadAgents({ list, paths = {}, now, acknowledged }: LoadOp
   const find = transcriptFinder(paths);
   const transcriptOf = new Map(entries.map((e) => [e.sessionId, find(e.cwd, e.sessionId)]));
   const records = buildAgentList(entries, { now, transcriptModified: (e) => modifiedTime(transcriptOf.get(e.sessionId) ?? null) });
-  return records.map((record) => ({ ...record, ...readDetails(transcriptOf.get(record.sessionId) ?? null) }));
+  return records.map((record) => ({ ...record, ...readDetails(transcriptOf.get(record.sessionId) ?? null, record.cwd) }));
 }

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { recentActivity, type ToolCall } from './activity.ts';
 
 type PathApi = Pick<typeof path, 'join'>;
 
@@ -60,13 +61,14 @@ export function modifiedTime(file: string | null): number | null {
 export interface TranscriptDetails {
   lastMessage: string | null;
   branch: string | null;
+  activity: string[];
 }
 
 /** Safety cap only: the card collapses long messages itself. */
 const MAX_MESSAGE = 20_000;
-const NONE: TranscriptDetails = { lastMessage: null, branch: null };
+const NONE: TranscriptDetails = { lastMessage: null, branch: null, activity: [] };
 
-interface Block { type?: string; text?: string; name?: string; input?: { questions?: { question?: unknown }[] } }
+interface Block { type?: string; text?: string; name?: string; input?: { questions?: { question?: unknown }[] } & Record<string, unknown> }
 
 function parseLine(raw: string): Record<string, any> | null {
   try {
@@ -90,7 +92,14 @@ function questionOf(blocks: Block[]) {
   return typeof question === 'string' ? question : null;
 }
 
-export function parseDetails(transcript: string): TranscriptDetails {
+/** Tool calls in the order they were made; `cwd` is the session's, unless the entry says where it was. */
+function toolCalls(entries: Record<string, any>[], cwd: string | undefined): ToolCall[] {
+  return entries.flatMap((entry) => visibleBlocks(entry)
+    .filter((b) => b.type === 'tool_use' && typeof b.name === 'string')
+    .map((b) => ({ name: b.name!, input: b.input ?? {}, cwd: typeof entry.cwd === 'string' ? entry.cwd : cwd })));
+}
+
+export function parseDetails(transcript: string, cwd?: string): TranscriptDetails {
   const entries = transcript.split('\n').map(parseLine).filter((e) => e !== null).reverse();
 
   const branch = entries.find((e) => typeof e.gitBranch === 'string' && e.gitBranch)?.gitBranch ?? null;
@@ -103,13 +112,14 @@ export function parseDetails(transcript: string): TranscriptDetails {
       if (textBlock) { message = textBlock.text!; break; }
     }
   }
-  return { lastMessage: message == null ? null : message.slice(0, MAX_MESSAGE), branch };
+  const activity = recentActivity(toolCalls([...entries].reverse(), cwd));
+  return { lastMessage: message == null ? null : message.slice(0, MAX_MESSAGE), branch, activity };
 }
 
 const cache = new Map<string, { stamp: string; details: TranscriptDetails }>();
 
 /** Details from a transcript file; re-reads only when the file changed. Never throws. */
-export function readDetails(file: string | null): TranscriptDetails {
+export function readDetails(file: string | null, cwd?: string): TranscriptDetails {
   if (!file) return NONE;
   try {
     const { mtimeMs, size } = statSync(file);
@@ -117,7 +127,7 @@ export function readDetails(file: string | null): TranscriptDetails {
     const hit = cache.get(file);
     if (hit?.stamp === stamp) return hit.details;
     // ponytail: reads the whole file on change; read only the tail if huge transcripts get slow.
-    const details = parseDetails(readFileSync(file, 'utf8'));
+    const details = parseDetails(readFileSync(file, 'utf8'), cwd);
     cache.set(file, { stamp, details });
     return details;
   } catch {

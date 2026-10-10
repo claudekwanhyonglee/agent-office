@@ -11,7 +11,7 @@ import { listClaudeAgents } from '../src/server/claude.ts';
 import type { AgentRecord } from '../src/shared/agent.ts';
 
 const agent = (id: string, state: AgentRecord['state'] = 'working'): AgentRecord => ({
-  id, sessionId: `${id}-session`, name: `agent ${id}`, project: 'demo-app', cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null,
+  id, sessionId: `${id}-session`, name: `agent ${id}`, project: 'demo-app', cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null, activity: [],
 });
 
 let server: Server | undefined;

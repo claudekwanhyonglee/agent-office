@@ -13,7 +13,7 @@ import { inside, obstaclesIn, routeCollisions } from './geometry.ts';
 
 const rec = (n: number, state: OfficeState = 'working'): AgentRecord => ({
   id: `a${n}`, sessionId: `session-${n}`, name: `agent ${n}`, project: 'demo-app',
-  cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null,
+  cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null, activity: [],
 });
 const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => rec(from + i));
 const ofType = <T extends OfficeEvent['type']>(events: OfficeEvent[], type: T) =>

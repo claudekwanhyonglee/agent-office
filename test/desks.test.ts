@@ -9,7 +9,7 @@ import { buildOffice, SCREEN_OFF, updateScreens } from '../src/client/office.ts'
 
 const rec = (n: number, state: OfficeState = 'working'): AgentRecord => ({
   id: `a${n}`, sessionId: `session-${n}`, name: `agent ${n}`, project: 'demo-app',
-  cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null,
+  cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null, activity: [],
 });
 const START = officeLayout(INITIAL_ROWS);
 const DOOR = START.door;
