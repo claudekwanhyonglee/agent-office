@@ -455,26 +455,23 @@ function dogSpots(hallZ: number): DogSpot[] {
   ];
 }
 
-/** Gap between the spots where onlookers stand behind a chair. */
-const ONLOOKER_GAP = 0.45;
+/** How far to the side of a chair's centre line an onlooker stands (#67). */
+const ONLOOKER_SIDE = 0.5;
 
 /**
- * Three spots behind `seat`'s chair, on the lane behind its row (#33 over the shoulder): straight
- * behind, and either side along the lane. They're on a walkway, so each is its own link.
+ * Where an onlooker stands behind `seat`'s chair (#33 over the shoulder): on the lane behind its
+ * row, off to one side of the chair's centre line so it's clear of the sitter (#67). At the end of
+ * a row, where the lane meets the aisle within a step, it's the inner side. It's on a walkway, so
+ * it's its own link.
  */
 export function behindChair(layout: OfficeLayout, seat: SeatSpot): Point[] {
   const lanePoints = layout.lanes[seat.row];
   const behind = seat.link.at(-1)!;
   const i = lanePoints.findIndex((p) => same(p, behind));
-  const toward = (q: Point, gaps: number) => {
-    const k = (ONLOOKER_GAP * gaps) / distance(behind, q);
-    return { x: behind.x + (q.x - behind.x) * k, z: behind.z + (q.z - behind.z) * k };
-  };
   const [prev, next] = [lanePoints[i - 1], lanePoints[i + 1]];
-  // At the end of a row the lane meets the aisle within a step: both side spots go on the inner side.
-  if (distance(behind, prev) < ONLOOKER_GAP) return [{ ...behind }, toward(next, 1), toward(next, 2)];
-  if (distance(behind, next) < ONLOOKER_GAP) return [{ ...behind }, toward(prev, 1), toward(prev, 2)];
-  return [{ ...behind }, toward(prev, 1), toward(next, 1)];
+  const side = distance(behind, next) < ONLOOKER_SIDE + 0.1 ? prev : next;
+  const k = ONLOOKER_SIDE / distance(behind, side);
+  return [{ x: behind.x + (side.x - behind.x) * k, z: behind.z + (side.z - behind.z) * k }];
 }
 
 /** Door → hall → aisle → lane behind the row → into the chair. */

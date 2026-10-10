@@ -139,8 +139,8 @@ export class OfficeController {
   private lastSetOff = -Infinity;
   /** When a chat or game was last started: one per moment, so a game's end doesn't set off a crowd (#59). */
   private togetherAt = -Infinity;
-  /** When a helper was last sent on an errand: one per moment, so a batch of state changes doesn't send a crowd (#59). */
-  private errandAt = -Infinity;
+  /** A helper was sent on an errand in this update or tick: one at a time, so a batch of state changes doesn't send a crowd (#59). */
+  private errandSent = false;
   private clock: Clock;
   /** Desks with a delivered mug, by the key of the agent working there. */
   private mugs = new Map<string, number>();
@@ -163,6 +163,7 @@ export class OfficeController {
     const events: OfficeEvent[] = [];
     const listed = new Map(records.map((r) => [r.sessionId, r]));
     this.lastSetOff = -Infinity;
+    this.errandSent = false;
 
     for (const [key, agent] of this.agents) {
       if (listed.has(key)) continue;
@@ -187,6 +188,7 @@ export class OfficeController {
   tick(): OfficeEvent[] {
     const now = this.clock.now();
     const events: OfficeEvent[] = [];
+    this.errandSent = false;
     for (const [key, agent] of this.agents) {
       if (agent.nextAt != null && agent.nextAt <= now) this.wander(key, agent, now, events);
       else this.act(key, agent, now, events);
@@ -303,8 +305,12 @@ export class OfficeController {
     events.push({ type: 'state', key, state: record.state });
     if (!isIdle(record.state)) {
       agent.nextAt = null;
+      const watched = agent.reaction?.kind === 'watch' ? agent.reaction.target : null;
       const away = agent.place || (agent.walk && now < agent.arrivesAt);
       if (away) this.send(key, agent, null, now, events);
+      // An onlooker called back to work: another idle agent may take its place (#67).
+      const target = watched ? this.agents.get(watched) : undefined;
+      if (target?.record.state === 'needs') this.gatherOnlookers(watched!, target, now, events);
     } else if (!isIdle(was)) {
       agent.nextAt = this.setOffTime(now, SET_OFF, agent);
     }
@@ -368,14 +374,16 @@ export class OfficeController {
 
   /** Up to three idle agents come and look over the shoulder of an agent that needs you; they stay until it doesn't. */
   private gatherOnlookers(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
-    const spots = behindChair(this.layout, agent.seat);
-    const onlookers = this.shuffled(this.helpers(key)).slice(0, spots.length);
-    onlookers.forEach(([k, a], i) => {
-      const place = errandPlace('over-the-shoulder', 'watching', spots[i], [spots[i]], yawTowards(spots[i], agent.seat.desk));
-      this.send(k, a, place, now, events);
-      a.nextAt = null;
-      a.reaction = { kind: 'watch', target: key, done: true };
-    });
+    const watched = [...this.agents.values()].some((a) => a.reaction?.kind === 'watch' && a.reaction.target === key);
+    const onlooker = this.pick(this.helpers(key));
+    if (watched || !onlooker || this.errandSent) return;
+    // One onlooker per desk, off to one side (#67).
+    const [spot] = behindChair(this.layout, agent.seat);
+    const [k, a] = onlooker;
+    this.errandSent = true;
+    this.send(k, a, errandPlace('over-the-shoulder', 'watching', spot, [spot], yawTowards(spot, agent.seat.desk)), now, events);
+    a.nextAt = null;
+    a.reaction = { kind: 'watch', target: key, done: true };
   }
 
   private releaseOnlookers(key: string, now: number, events: OfficeEvent[]) {
@@ -388,7 +396,7 @@ export class OfficeController {
 
   /** The nearest idle agent (by route length) walks over to high-five an agent that just finished; it waits for them. */
   private highFive(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
-    if (this.errandAt === now) return;
+    if (this.errandSent) return;
     const place = this.deskSide('high-five', 'high-five', agent.seat);
     const lengths = this.helpers(key).map(([k, a]) => ({ k, a, length: pathLength(route(this.layout, this.whereNow(a, now), place.link)) }));
     if (!lengths.length) return;
@@ -402,7 +410,7 @@ export class OfficeController {
   private bringCoffee(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
     const onItsWay = [...this.agents.values()].some((a) => a.reaction?.kind === 'coffee' && a.reaction.target === key);
     const courier = this.pick(this.helpers(key));
-    if (this.mugs.has(key) || onItsWay || !courier || this.errandAt === now) return;
+    if (this.mugs.has(key) || onItsWay || !courier || this.errandSent) return;
     const kitchen = this.layout.hangouts.find((s) => s.name === 'kitchen')!.places[0];
     const place = this.deskSide('coffee-delivery', 'delivering', agent.seat);
     this.errand(courier[0], courier[1], place, { kind: 'coffee', target: key, done: false }, now, events, kitchen);
@@ -417,7 +425,7 @@ export class OfficeController {
 
   /** Sends an agent on an errand for another: it does its part on arrival (see `act`), then moves on. */
   private errand(key: string, agent: Occupant, place: HangoutPlace, reaction: Reaction, now: number, events: OfficeEvent[], via?: HangoutPlace) {
-    this.errandAt = now;
+    this.errandSent = true;
     this.send(key, agent, place, now, events, via);
     agent.nextAt = this.stagger(agent.arrivesAt, ERRAND_STAY, [agent]);
     agent.actAt = agent.arrivesAt;

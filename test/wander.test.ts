@@ -7,6 +7,7 @@ import { buildOffice } from '../src/client/office.ts';
 import { Character } from '../src/client/character.ts';
 import { lookFor } from '../src/client/look.ts';
 import { POSES } from '../src/client/poses.ts';
+import { RETURN_SECONDS } from '../src/client/float.ts';
 import { agentKeyOf } from '../src/client/office-scene.ts';
 import { obstaclesIn, routeCollisions } from './geometry.ts';
 
@@ -186,7 +187,9 @@ describe('#14 AC3 staying and moving on', () => {
       for (let i = 0; i + 1 < walks.length; i++) {
         // #33: an errand (a high five) is short, and may cut a stay short.
         if (![walks[i], walks[i + 1]].every((w) => capacity.has(w.place!.spot))) continue;
-        const arrived = walks[i].t + pathLength(walks[i].path) / WALK_SPEED;
+        // #57: leaving a pool-dip ring, the agent first paddles home.
+        const paddle = walks[i - 1]?.place?.pose === 'floating' ? RETURN_SECONDS : 0;
+        const arrived = walks[i].t + paddle + pathLength(walks[i].path) / WALK_SPEED;
         const stay = walks[i + 1].t - arrived;
         expect(stay, `agent ${n} stay ${i}`).toBeGreaterThanOrEqual(10 - 0.3);
         expect(stay, `agent ${n} stay ${i}`).toBeLessThanOrEqual(30 + 0.3);

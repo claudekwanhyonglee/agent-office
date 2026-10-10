@@ -111,7 +111,7 @@ describe('#61 AC4 every so often everyone on the sofa cheers together', () => {
 
   it('#61 AC4 cheers are at least 20 s apart, and at most 60 s while the sofa stays occupied', () => {
     let gaps = 0;
-    for (const seed of [3, 4, 5, 6]) {
+    for (const seed of [3, 4, 5, 6, 7, 8]) {
       const ticks = sofaHour(seed);
       let last: number | null = null, occupied = true;
       for (const k of ticks) {
