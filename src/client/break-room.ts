@@ -4,6 +4,7 @@ import { at, ball, box, cyl, mesh, tag } from './toon.ts';
 import { BREAK_ROOM, type HangoutPlace, type SeatSpot } from './layout.ts';
 import { dartModel } from './character.ts';
 import { THROWS, dartFlight, dartsAt } from './darts.ts';
+import type { Afloat } from './float.ts';
 import { BALL_R, POCKETS, POCKET_R, SHOT_SECONDS, ballsAt } from './pool.ts';
 import { BALL_R as PONG_BALL_R, NET_TOP, pongBallAt, type Rally } from './pong.ts';
 
@@ -32,6 +33,7 @@ const INK = '#3A3150';
 const WOOD = '#C98A55';
 const WATER = '#8FD3F2';
 const FELT_TOP = 0.835;
+const RING_Y = 0.1;
 
 /** Marks a piece of a prop (not furniture of its own, so not tagged). */
 const part = <T extends THREE.Object3D>(obj: T, name: string) => {
@@ -234,6 +236,17 @@ export class BoardDarts {
   }
 }
 
+/** Moves each pool ring with its rider's drift (#57), in pool-dip place order; an empty ring rests at home. */
+export function floatRings(group: THREE.Object3D, afloat: (Afloat | null)[]) {
+  const { pool } = BREAK_ROOM;
+  group.traverse((o) => {
+    if (o.userData.kind !== 'pool-ring') return;
+    const i = o.userData.ring as number, home = pool.rings[i], a = afloat[i];
+    o.position.set(home.x - pool.x + (a?.x ?? 0), RING_Y + (a?.bob ?? 0), home.z - pool.z + (a?.z ?? 0));
+    o.rotation.z = a?.spin ?? 0;
+  });
+}
+
 /** The dog's bed and bowl (#34). */
 export function addPetCorner(group: THREE.Group) {
   const { petBed, bowl } = BREAK_ROOM;
@@ -264,7 +277,8 @@ export function addPool(group: THREE.Group) {
   pool.rings.forEach((r, i) => {
     const ring = tag(mesh(new THREE.TorusGeometry(0.4, 0.08, 10, 24), colors[i], { outline: 0.05 }), 'pool-ring');
     ring.rotation.x = Math.PI / 2;
-    basin.add(at(ring, r.x - pool.x, 0.1, r.z - pool.z));
+    ring.userData.ring = i;
+    basin.add(at(ring, r.x - pool.x, RING_Y, r.z - pool.z));
   });
   group.add(at(basin, pool.x, 0, pool.z));
 }

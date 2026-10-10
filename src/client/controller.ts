@@ -5,6 +5,7 @@ import {
 } from './layout.ts';
 import { SHOT_COUNT, SHOT_SECONDS } from './pool.ts';
 import { hitter, rallySeconds, type Rally, type Side } from './pong.ts';
+import { RETURN_SECONDS, driftParams, type Drift } from './float.ts';
 
 /** Seconds an idle agent waits at its desk before wandering off (AC: within 3 s). */
 const SET_OFF = { min: 1, max: 2.5 };
@@ -85,7 +86,9 @@ export type OfficeEvent =
   /** Turn `shot` of the pool rack starts (#53); null: play stopped, the balls go back in the rack. */
   | { type: 'pool'; shot: number | null }
   /** A table-tennis rally starts (#70) between `players` (at the -x end, then the +x end); null: play stopped. */
-  | { type: 'pong'; rally: Rally | null; players: [string, string] };
+  | { type: 'pong'; rally: Rally | null; players: [string, string] }
+  /** How agent `key`'s ring will drift once it's afloat in the pool dip it's walking to (#57). */
+  | { type: 'drift'; key: string; drift: Drift };
 
 export interface DogState {
   spot: DogSpot;
@@ -469,12 +472,15 @@ export class OfficeController {
     const path = via ? [...route(this.layout, origin, via.link), ...route(this.layout, via.link, to).slice(1)] : route(this.layout, origin, to);
     agent.reaction = null;
     const left = agent.place;
+    // Afloat in a pool dip, the agent paddles back to the ring's home spot before setting off (#57).
+    const setsOff = left?.pose === 'floating' && agent.arrivesAt <= now ? now + RETURN_SECONDS : now;
     agent.place = place;
-    agent.walk = { path, origin, startedAt: now };
-    agent.arrivesAt = now + pathLength(path) / WALK_SPEED;
+    agent.walk = { path, origin, startedAt: setsOff };
+    agent.arrivesAt = setsOff + pathLength(path) / WALK_SPEED;
     agent.nextAt = place ? agent.arrivesAt + this.between(STAY) : null;
     agent.actAt = agent.arrivesAt + PLANE_FIRST;
     events.push({ type: 'walk', key, path, place });
+    if (place?.pose === 'floating') events.push({ type: 'drift', key, drift: driftParams(this.clock.random) });
     if (left !== place) this.endIfShortHanded(left, now, events);
   }
 

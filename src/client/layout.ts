@@ -168,7 +168,8 @@ export const BREAK_ROOM = {
   pingPong: { x: 6.3, z: 8.7, w: 2.2, d: 1.2 },
   pool: {
     x: 0, z: 10.4, w: 5.6, d: 2.8,
-    rings: [{ x: -1.4, z: 9.98 }, { x: -0.28, z: 10.82 }, { x: 1.12, z: 10.12 }, { x: -1.25, z: 11.2 }] as Point[],
+    /** In a row across the pool, with room to drift along it without touching (#57). */
+    rings: [-1.95, -0.65, 0.65, 1.95].map((x) => ({ x, z: 10.4 })) as Point[],
   },
 };
 
@@ -231,9 +232,8 @@ export function officeLayout(rows: number) {
       name: 'pool-dip',
       chat: false,
       game: { min: 3 },
-      // The back ring is reached from the pool's left side, clear of the ring in front of it.
-      places: BREAK_ROOM.pool.rings.map((r, i) => {
-        const edge = i === 3 ? { x: -3.0, z: r.z } : { x: r.x, z: 8.8 };
+      places: BREAK_ROOM.pool.rings.map((r) => {
+        const edge = { x: r.x, z: 8.8 };
         return { ...r, spot: 'pool-dip', yaw: 0, pose: 'floating' as const, sits: true, link: [{ ...r }, edge, { x: edge.x, z: DECK_Z }] };
       }),
     },

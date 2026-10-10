@@ -5,7 +5,7 @@ import { OfficeController, type OfficeEvent } from './controller.ts';
 import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { PaperPlanes } from './paper-planes.ts';
-import { BoardDarts, DeskMugs, PongBallMesh, PoolBalls } from './break-room.ts';
+import { BoardDarts, DeskMugs, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
 import { Dog } from './dog.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
@@ -76,6 +76,8 @@ export function createOfficeScene(host: HTMLElement) {
       } else if (event.type === 'dog') {
         if (event.path.length === 1) dog.placeAt(event.path[0], event.lie);
         else dog.go(event.path, event.lie);
+      } else if (event.type === 'drift') {
+        characters.get(event.key)?.float(event.drift);
       } else if (event.type === 'pong') {
         pongBall.play(event.rally);
         event.players.forEach((key, i) => characters.get(key)?.playRally(event.rally, i ? 1 : -1));
@@ -123,6 +125,9 @@ export function createOfficeScene(host: HTMLElement) {
     planes.update(dt);
     poolBalls.update(dt);
     pongBall.update(dt);
+    const dip = office.layout.hangouts.find((s) => s.name === 'pool-dip')!.places;
+    const riders = [...characters.values(), ...leaving];
+    floatRings(office.group, dip.map((p) => riders.find((c) => c.place?.x === p.x && c.place.z === p.z)?.floatOffset() ?? null));
     boardDarts.update([...characters.values()].map((c) => c.dartsThrower()).find((d) => d) ?? null);
     dog.update(t, dt);
     for (const c of leaving) {

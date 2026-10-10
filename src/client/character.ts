@@ -6,6 +6,7 @@ import { WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatS
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
 import { HIT, hitTimes, type Rally, type Side } from './pong.ts';
+import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
 import { BOARD, COLLECT_FROM, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, dartsAt } from './darts.ts';
 
 const SEAT_Y = 0.38;
@@ -66,6 +67,9 @@ export class Character {
   private highFiving = 0;
   /** The table-tennis rally this agent is playing (#70): which end it's at, and seconds into the rally. */
   private rally: { rally: Rally; side: Side; t: number } | null = null;
+  /** How this agent's ring drifts in a pool dip (#57), and the paddle home before climbing out. */
+  private drift: Drift | null = null;
+  private returning: { from: Afloat; k: number; then: () => void } | null = null;
   /** Seconds since the agent got to its hangout place. */
   private placeTime = 0;
   /** Seconds since the agent started leaving; its bubble pops, then stays gone (#49). */
@@ -181,6 +185,22 @@ export class Character {
     this.rally = rally && { rally, side, t: 0 };
   }
 
+  /** How its ring will drift once this agent is afloat in a pool dip (#57). */
+  float(drift: Drift) {
+    this.drift = drift;
+  }
+
+  /** Afloat in a pool dip: how far the ring is from home, turned and bobbing (#57); null otherwise. */
+  floatOffset(): Afloat | null {
+    if (this.mode !== 'hanging' || this.place?.pose !== 'floating') return null;
+    const still = { x: 0, z: 0, spin: 0, bob: 0 };
+    if (this.returning) {
+      const { from, k } = this.returning, left = 1 - k * k * (3 - 2 * k);
+      return { x: from.x * left, z: from.z * left, spin: from.spin, bob: from.bob * left };
+    }
+    return this.drift ? driftAt(this.drift, this.placeTime) : still;
+  }
+
   /** At the darts line (#54): where, and seconds since arriving there (the board's darts follow it). */
   dartsThrower() {
     return this.mode === 'hanging' && this.place?.pose === 'throwing-darts' ? { place: this.place, t: this.placeTime } : null;
@@ -202,6 +222,12 @@ export class Character {
    * it's walking) and walk up to point `end`: hop off a chair or sofa first, or turn round mid-walk.
    */
   private setOff(path: Point[], end: number, then: () => void) {
+    const afloat = this.floatOffset();
+    if (afloat && (afloat.x || afloat.z) && !this.returning) {
+      // Paddle back to the ring's home spot first (#57).
+      this.returning = { from: afloat, k: 0, then: () => { this.returning = null; this.drift = null; this.setOff(path, end, then); } };
+      return;
+    }
     const walkFrom = (from: number) => this.walk(path.slice(from, end), then);
     const offFurniture = this.mode === 'seated' || this.mode === 'standing' || (this.mode === 'hanging' && this.place!.sits);
     if (offFurniture) this.hop(vec(path[1] ?? path[0]), this.root.rotation.y, () => walkFrom(2));
@@ -345,6 +371,7 @@ export class Character {
     this.placeTime += dt;
     this.root.rotation.y = lerpAngle(this.root.rotation.y, place.yaw, Math.min(1, dt * 8));
     if (place.pose === 'throwing-darts') this.collectDarts(place);
+    if (place.pose === 'floating') this.drifting(place, dt);
     if (place.pose === 'lounging') {
       fl.position.set(-0.16, -0.24, 0.34);
       fr.position.set(0.16, -0.24, 0.34);
@@ -381,6 +408,17 @@ export class Character {
       (eating ? this.snack : this.mug).visible = true;
     }
     return 2.2 + Math.sin(tt * 1.6) * 0.04 * motion;
+  }
+
+  /** Pool dip (#57): the ring carries the rider about, turning and bobbing; or paddles it home before climbing out. */
+  private drifting(place: HangoutPlace, dt: number) {
+    if (this.returning) {
+      this.returning.k = Math.min(1, this.returning.k + dt / RETURN_SECONDS);
+      if (this.returning.k >= 1) return this.returning.then();
+    }
+    const afloat = this.floatOffset()!;
+    this.root.position.set(place.x + afloat.x, SEAT_Y + afloat.bob * motion, place.z + afloat.z);
+    this.root.rotation.y = place.yaw + afloat.spin;
   }
 
   /** Darts (#54): after a round, walk up to the board to pull the darts out, then back to the line. */
@@ -655,17 +693,16 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     fr.position.set(0.22, 0.06, 0.04);
     return 2.2;
   },
-  floating: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
-    // Sitting low in a rubber ring, arms over its sides; the water hides the legs.
-    const bob = Math.sin(tt * 1.5) * 0.03 * motion;
-    pivot.position.y = -0.72 + bob;
+  floating: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }) => {
+    // Sitting low in a rubber ring, arms over its sides; the water hides the legs. The ring bobs them both (#57).
+    pivot.position.y = -0.72;
     pivot.rotation.x = -0.15;
     head.rotation.x = -0.2;
-    hl.position.set(-0.36, -0.22 + bob, 0.1);
-    hr.position.set(0.36, -0.22 + bob, 0.1);
+    hl.position.set(-0.36, -0.22, 0.1);
+    hr.position.set(0.36, -0.22, 0.1);
     fl.position.set(-0.15, -0.6, 0.2);
     fr.position.set(0.15, -0.6, 0.2);
-    return 1.5 + bob;
+    return 1.5;
   },
   watching: ({ pivot, head, hands: [hl, hr] }, tt) => {
     // Leaning in over someone's shoulder, hands on hips.
