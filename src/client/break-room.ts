@@ -66,15 +66,7 @@ const turned = <T extends THREE.Object3D>(obj: T, yaw: number) => {
 export function addSoloProps(group: THREE.Group) {
   const { loungers, lounger, pond, jetty, hammock, yogaMat, trampoline, dartboard, bin, paperStack } = BREAK_ROOM;
 
-  for (const { x, z } of loungers) {
-    const chair = tag(new THREE.Group(), 'sun-lounger');
-    chair.add(at(box(lounger.w, 0.08, lounger.d * 0.7, '#FFF8EC'), 0, 0.3, lounger.d * 0.15));
-    const back = at(box(lounger.w, 0.08, lounger.d * 0.32, '#FFF8EC'), 0, 0.45, -lounger.d * 0.33);
-    back.rotation.x = -0.6;
-    chair.add(back);
-    for (const dz of [-0.75, 0.8]) chair.add(at(box(lounger.w, 0.26, 0.05, WOOD, { outline: 0.02 }), 0, 0.13, dz));
-    group.add(at(chair, x, 0, z));
-  }
+  for (const { x, z } of loungers) group.add(at(sunLounger(), x, 0, z));
 
   group.add(at(buildPond(pond.rx, pond.rz), pond.x, 0, pond.z));
   for (const [dx, dz] of [[-0.8, -0.3], [0.4, 0.45]]) {
@@ -305,6 +297,25 @@ export class FishingGear {
     const p = this.line.geometry.getAttribute('position');
     return [0, 1].map((i) => new THREE.Vector3().fromBufferAttribute(p, i));
   }
+}
+
+/** A sun lounger, head end at -z: a seat, and a backrest rising from it to the head end, propped up there (#64). */
+function sunLounger() {
+  const { w, d, seatTop, back } = BREAK_ROOM.lounger;
+  const thick = 0.08, { angle, length } = back;
+  const hingeZ = -d / 2 + length * Math.cos(angle);
+  const chair = tag(new THREE.Group(), 'sun-lounger');
+  chair.add(part(at(box(w, thick, d / 2 - hingeZ, '#FFF8EC'), 0, seatTop - thick / 2, (hingeZ + d / 2) / 2), 'seat'));
+  // Its top face starts at the seat's top edge and runs up the slope; the box's centre is half a length up, half a thickness under.
+  const up = new THREE.Vector3(0, Math.sin(angle), -Math.cos(angle)), out = new THREE.Vector3(0, Math.cos(angle), Math.sin(angle));
+  const centre = new THREE.Vector3(0, seatTop, hingeZ).addScaledVector(up, length / 2).addScaledVector(out, -thick / 2);
+  const rest = part(at(box(w, thick, length, '#FFF8EC'), centre.x, centre.y, centre.z), 'backrest');
+  rest.rotation.x = angle;
+  chair.add(rest);
+  for (const dz of [hingeZ + 0.05, d / 2 - 0.15]) chair.add(at(box(w, seatTop - thick, 0.05, WOOD, { outline: 0.02 }), 0, (seatTop - thick) / 2, dz));
+  const propZ = -d / 2 + 0.15, under = seatTop - thick / Math.cos(angle) + (hingeZ - propZ) * Math.tan(angle);
+  chair.add(at(box(w, under, 0.05, WOOD, { outline: 0.02 }), 0, under / 2, propZ));
+  return chair;
 }
 
 /** The pool's coping, around the hole in the deck (#63). */

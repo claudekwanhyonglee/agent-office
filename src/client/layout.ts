@@ -150,7 +150,8 @@ export const RESERVED: Area[] = [
  */
 export const BREAK_ROOM = {
   loungers: [{ x: 3.5, z: 10.45 }, { x: 4.3, z: 10.45 }] as Point[],
-  lounger: { w: 0.6, d: 1.9 },
+  /** The backrest rises from the seat towards the head end (-z), long enough to lean back on, head and all (#64). */
+  lounger: { w: 0.6, d: 1.9, seatTop: 0.34, back: { angle: 0.55, length: 1.3 } },
   pond: { x: -6.6, z: 11.0, rx: 2.0, rz: 1.3 },
   jetty: { x: -4.2, z: 11.0, w: 1.6, d: 0.8 },
   hammock: { x: 6.9, z: 12.6, trees: [5.4, 8.4] },

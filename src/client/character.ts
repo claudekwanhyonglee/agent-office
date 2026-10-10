@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { OfficeState } from '../shared/agent.ts';
 import { at, ball, cyl, mesh, tag } from './toon.ts';
 import type { Look, HatKind } from './look.ts';
-import { WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
+import { BREAK_ROOM, WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
 import { HIT, hitTimes, type Rally, type Side } from './pong.ts';
@@ -627,14 +627,18 @@ export function bounceAt(t: number) {
 /** Break-room poses (#30); each sets the body and returns the bubble height. */
 const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => number>> = {
   'lounging-sun': ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
-    pivot.rotation.x = -1.15;
-    pivot.position.set(0, 0.05, 0.35);
-    head.rotation.x = 0.5 + Math.sin(tt * 0.5) * 0.04 * motion;
-    hl.position.set(-0.32, 0.45, -0.75);
-    hr.position.set(0.32, 0.45, -0.75);
+    // Lying back along the backrest (#64): hips where it meets the seat, back and head on its slope, legs along the seat.
+    const { d, seatTop, back } = BREAK_ROOM.lounger;
+    const hingeZ = -d / 2 + back.length * Math.cos(back.angle);
+    const rest = 0.38; // from the backrest's surface to the body's axis: its back, plus a little cushion
+    pivot.rotation.x = -(Math.PI / 2 - back.angle);
+    pivot.position.set(0, seatTop + rest * Math.cos(back.angle) - SEAT_Y, hingeZ + rest * Math.sin(back.angle));
+    head.rotation.x = 0.35 + Math.sin(tt * 0.5) * 0.04 * motion;
+    hl.position.set(-0.45, 0.62, 0.3);
+    hr.position.set(0.45, 0.62, 0.3);
     fl.position.set(-0.15, 0.02, 0.8);
     fr.position.set(0.15, 0.02, 0.8);
-    return 1.4;
+    return 1.9;
   },
   swinging: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
     const sway = Math.sin(tt * 1.3) * 0.15 * motion;
