@@ -21,7 +21,12 @@ export interface SeatSpot {
   link: Point[];
 }
 
-export type HangoutPose = 'eating' | 'drinking' | 'lounging' | 'chatting';
+export type HangoutPose =
+  | 'eating' | 'drinking' | 'lounging' | 'chatting'
+  | 'lounging-sun' | 'fishing' | 'swinging' | 'yoga' | 'bouncing' | 'throwing-darts' | 'shooting-hoops' | 'throwing-plane'
+  | 'cue-shot' | 'cue-wait' | 'paddle' | 'floating' | 'gaming'
+  | 'watching' | 'high-five' | 'delivering'
+  | 'petting' | 'feeding' | 'throwing-ball';
 
 export interface HangoutPlace extends Point {
   spot: string;
@@ -34,7 +39,25 @@ export interface HangoutPlace extends Point {
   link: Point[];
 }
 
-export interface HangoutSpot { name: string; chat: boolean; places: HangoutPlace[] }
+export interface HangoutSpot {
+  name: string;
+  chat: boolean;
+  places: HangoutPlace[];
+  /** A game or group activity: it starts with at least `min` idle agents and takes one per place. */
+  game?: { min: number };
+}
+
+/** Where the office dog stops (#34), how it gets there, and where agents stand to play with it. */
+export interface DogSpot {
+  name: string;
+  dog: Point;
+  /** From the dog's spot out to a walkway. */
+  link: Point[];
+  /** Where a thrown ball lands: the dog runs there and back. */
+  fetch: Point;
+  /** Where agents stand with the dog, and what they can do there. */
+  visitors: { at: Point; link: Point[]; poses: HangoutPose[] }[];
+}
 
 export interface Area { name: string; x0: number; x1: number; z0: number; z1: number }
 
@@ -43,6 +66,7 @@ export const INITIAL_ROWS = 2;
 
 /** Metres per second; the controller uses it to know when a walk ends. */
 export const WALK_SPEED = 1.7;
+export const DOG_SPEED = 2.4;
 
 /** The rows curve around this point; every desk faces it. */
 const ARC_CENTER: Point = { x: 0, z: 11.5 };
@@ -115,7 +139,35 @@ export const RESERVED: Area[] = [
   { name: 'yoga mat', x0: -8.5, x1: -6.7, z0: 8.2, z1: 8.8 },
 ];
 
-export const MEETING_ROOM = { x0: -8.7, x1: -6.05, z0: -0.8, z1: 2.2 };
+/**
+ * Break-room props from plan C (artifact x − 9, y − 5). They sit at the sides and on the deck, so
+ * they stay put when rows are added.
+ */
+export const BREAK_ROOM = {
+  loungers: [{ x: 3.5, z: 10.45 }, { x: 4.3, z: 10.45 }] as Point[],
+  lounger: { w: 0.6, d: 1.9 },
+  pond: { x: -6.6, z: 11.0, rx: 2.0, rz: 1.3 },
+  jetty: { x: -4.2, z: 11.0, w: 1.6, d: 0.8 },
+  hammock: { x: 6.9, z: 12.6, trees: [5.4, 8.4] },
+  yogaMat: { x: -7.6, z: 8.5, w: 1.8, d: 0.6 },
+  trampoline: { x: 7.6, z: 10.6, r: 0.85 },
+  dartboard: { x: -8.85, z: 4.4 },
+  bin: { x: -8.5, z: 6.3 },
+  /** Pin 12 marks the throwing spot on the right aisle; the paper stack sits beside it. */
+  paperStack: { x: 6.6, z: 4.0 },
+  petBed: { x: 7.4, z: 5.4, rx: 0.45, rz: 0.32 },
+  bowl: { x: 8.05, z: 5.55, r: 0.13 },
+  /** Long side along z. */
+  poolTable: { x: 7.4, z: 1.6, w: 1.2, d: 2.2 },
+  /** Long side along x. */
+  pingPong: { x: 6.3, z: 8.7, w: 2.2, d: 1.2 },
+  pool: {
+    x: 0, z: 10.4, w: 5.6, d: 2.8,
+    rings: [{ x: -1.4, z: 9.98 }, { x: -0.28, z: 10.82 }, { x: 1.12, z: 10.12 }, { x: -1.25, z: 11.2 }] as Point[],
+  },
+};
+
+export const MEETING_ROOM ={ x0: -8.7, x1: -6.05, z0: -0.8, z1: 2.2 };
 export const MEETING_TABLE = { x: -7.35, z: 0.7, w: 1.8, d: 1.0 };
 
 /** Everything for an office with `rows` rows of desks. Pieces along the back wall move back with each extra row. */
@@ -135,8 +187,8 @@ export function officeLayout(rows: number) {
   const toHall = (p: Point): Point[] => [p, { x: p.x, z: hallZ }];
   const toDeck = (p: Point): Point[] => [p, { x: p.x, z: DECK_Z }];
   const sofaFront = lounge.sofa.z - 0.95;
-  const sofaSeat = (x: number): HangoutPlace => ({
-    x, z: lounge.sofa.z, spot: 'lounge', yaw: Math.PI, pose: 'lounging', sits: true,
+  const sofaSeat = (x: number, spot = 'lounge', pose: HangoutPose = 'lounging'): HangoutPlace => ({
+    x, z: lounge.sofa.z, spot, yaw: Math.PI, pose, sits: true,
     link: [{ x, z: lounge.sofa.z }, { x, z: sofaFront }, { x: 4.75, z: sofaFront }, { x: 4.75, z: hallZ }],
   });
   const standing = (spot: string, p: Point, pose: HangoutPose, yaw = Math.PI): HangoutPlace =>
@@ -166,14 +218,28 @@ export function officeLayout(rows: number) {
     chatSpot('chat-hall', { x: -1.4, z: -2.6 + b }, { x: -0.6, z: -2.6 + b }, toHall),
     chatSpot('chat-deck', { x: -1.6, z: 8.3 }, { x: -0.8, z: 8.3 }, toDeck),
     chatSpot('chat-deck-right', { x: 2.0, z: 8.3 }, { x: 2.8, z: 8.3 }, toDeck),
+    ...soloSpots(),
+    ...pairGames(),
+    {
+      name: 'pool-dip',
+      chat: false,
+      game: { min: 3 },
+      // The back ring is reached from the pool's left side, clear of the ring in front of it.
+      places: BREAK_ROOM.pool.rings.map((r, i) => {
+        const edge = i === 3 ? { x: -3.0, z: r.z } : { x: r.x, z: 8.8 };
+        return { ...r, spot: 'pool-dip', yaw: 0, pose: 'floating' as const, sits: true, link: [{ ...r }, edge, { x: edge.x, z: DECK_Z }] };
+      }),
+    },
+    { name: 'couch-co-op', chat: false, game: { min: 2 }, places: [-0.87, -0.29, 0.29, 0.87].map((dx) => sofaSeat(lounge.sofa.x + dx, 'couch-co-op', 'gaming')) },
   ];
 
+  const lanes = Array.from({ length: rows }, (_, row) => lane(row));
   const walkways: Point[][] = [
     [{ x: door.x, z: hallZ }, { x: -8.2, z: hallZ }],
     [{ x: -AISLE_X, z: hallZ }, { x: -AISLE_X, z: DECK_Z }],
     [{ x: AISLE_X, z: hallZ }, { x: AISLE_X, z: DECK_Z }],
     [{ x: -AISLE_X, z: DECK_Z }, { x: AISLE_X, z: DECK_Z }],
-    ...Array.from({ length: rows }, (_, row) => lane(row)),
+    ...lanes,
   ];
 
   return {
@@ -186,6 +252,9 @@ export function officeLayout(rows: number) {
     seats: seatsFor(rows),
     hangouts,
     walkways,
+    dogSpots: dogSpots(hallZ),
+    /** The walkway behind each row of chairs. */
+    lanes,
     kitchen,
     cooler,
     bookshelf: { x: -8.78, z: -2.8 + b, length: 1.6 },
@@ -201,6 +270,60 @@ export function officeLayout(rows: number) {
 }
 
 export type OfficeLayout = ReturnType<typeof officeLayout>;
+
+/** Between the loungers and the ping-pong table: the way from the deck walkway to the right of the deck. */
+const RIGHT_DECK_X = 4.95;
+
+/** One-agent activities (#30). Each link steps off the prop and out to the deck walkway or a side aisle. */
+function soloSpots(): HangoutSpot[] {
+  const { loungers, hammock, yogaMat, trampoline } = BREAK_ROOM;
+  const place = (spot: string, pose: HangoutPose, p: Point, yaw: number, link: Point[], sits?: boolean): HangoutPlace =>
+    ({ x: p.x, z: p.z, spot, yaw, pose, link: [{ x: p.x, z: p.z }, ...link], ...(sits && { sits }) });
+  const solo = (spot: string, pose: HangoutPose, p: Point, yaw: number, link: Point[], sits?: boolean): HangoutSpot =>
+    ({ name: spot, chat: false, places: [place(spot, pose, p, yaw, link, sits)] });
+  const left = -Math.PI / 2, right = Math.PI / 2;
+  return [
+    {
+      name: 'loungers',
+      chat: false,
+      places: loungers.map(({ x, z }) => place('loungers', 'lounging-sun', { x, z }, 0, [{ x, z: 9.3 }, { x, z: DECK_Z }], true)),
+    },
+    solo('fishing', 'fishing', { x: -4.4, z: 11.0 }, left, [{ x: -3.2, z: 11.0 }, { x: -3.2, z: DECK_Z }]),
+    solo('hammock', 'swinging', hammock, right, [{ x: hammock.x, z: 11.7 }, { x: RIGHT_DECK_X, z: 11.7 }, { x: RIGHT_DECK_X, z: DECK_Z }], true),
+    solo('yoga', 'yoga', yogaMat, 0, [{ x: -6.4, z: yogaMat.z }, { x: -AISLE_X, z: DECK_Z }]),
+    solo('trampoline', 'bouncing', trampoline, 0, [{ x: 6.5, z: trampoline.z }, { x: RIGHT_DECK_X, z: trampoline.z }, { x: RIGHT_DECK_X, z: DECK_Z }], true),
+    solo('darts', 'throwing-darts', { x: -6.6, z: BREAK_ROOM.dartboard.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.dartboard.z }]),
+    solo('hoops', 'shooting-hoops', { x: -6.8, z: BREAK_ROOM.bin.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.bin.z }]),
+    solo('planes', 'throwing-plane', { x: 6.25, z: 4.4 }, left, [{ x: AISLE_X, z: 4.4 }]),
+  ];
+}
+
+/** Two-player games at either end of a table (#31). */
+function pairGames(): HangoutSpot[] {
+  const { poolTable: pool, pingPong: pong } = BREAK_ROOM;
+  const end = (spot: string, pose: HangoutPose, p: Point, toward: Point, link: Point[]): HangoutPlace =>
+    ({ ...p, spot, pose, yaw: yawTowards(p, toward), link: [p, ...link] });
+  const poolEnds = [pool.z - pool.d / 2 - 0.45, pool.z + pool.d / 2 + 0.45];
+  const pongEnds = [pong.x - pong.w / 2 - 0.5, pong.x + pong.w / 2 + 0.5];
+  return [
+    {
+      name: 'pool-table',
+      chat: false,
+      game: { min: 2 },
+      places: poolEnds.map((z, i) => end('pool-table', i ? 'cue-wait' : 'cue-shot', { x: pool.x, z }, pool,
+        [{ x: 6.4, z }, { x: AISLE_X, z }])),
+    },
+    {
+      name: 'ping-pong',
+      chat: false,
+      game: { min: 2 },
+      places: [
+        end('ping-pong', 'paddle', { x: pongEnds[0], z: pong.z }, pong, [{ x: pongEnds[0], z: DECK_Z }]),
+        end('ping-pong', 'paddle', { x: pongEnds[1], z: pong.z }, pong, [{ x: pongEnds[1], z: DECK_Z }, { x: AISLE_X, z: DECK_Z }]),
+      ],
+    },
+  ];
+}
 
 // Routes: every place links out to a walkway; a route walks out along one link, takes the
 // shortest way along the walkways, and walks in along the other link.
@@ -274,6 +397,60 @@ export function along(path: Point[], d: number): { leg: number; done: boolean } 
 }
 
 export const pathLength = (path: Point[]) => path.slice(1).reduce((sum, p, i) => sum + distance(path[i], p), 0);
+
+/** The dog's bed (first: it starts there), a spot on the deck, one in the hall and one in the left aisle. */
+function dogSpots(hallZ: number): DogSpot[] {
+  const play: HangoutPose[] = ['petting', 'throwing-ball'];
+  const onWalkway = (p: Point) => ({ at: p, link: [p], poses: play });
+  const { petBed: bed } = BREAK_ROOM;
+  const onDeck = (x: number) => ({ at: { x, z: 8.25 }, link: [{ x, z: 8.25 }, { x, z: DECK_Z }], poses: play });
+  return [
+    {
+      name: 'bed',
+      dog: { x: bed.x, z: bed.z },
+      link: [{ x: bed.x, z: bed.z }, { x: 6.6, z: bed.z }, { x: AISLE_X, z: bed.z }],
+      fetch: { x: AISLE_X, z: 3.0 },
+      visitors: [
+        { at: { x: 6.45, z: bed.z }, link: [{ x: 6.45, z: bed.z }, { x: AISLE_X, z: bed.z }], poses: play },
+        { at: { x: 7.6, z: 6.15 }, link: [{ x: 7.6, z: 6.15 }, { x: AISLE_X, z: 6.15 }], poses: ['feeding'] },
+      ],
+    },
+    {
+      name: 'deck', dog: { x: 0.6, z: 8.25 }, link: [{ x: 0.6, z: 8.25 }, { x: 0.6, z: DECK_Z }], fetch: { x: -2.5, z: DECK_Z },
+      visitors: [onDeck(0), onDeck(1.2)],
+    },
+    {
+      name: 'hall', dog: { x: 1.5, z: hallZ }, link: [{ x: 1.5, z: hallZ }], fetch: { x: -1.5, z: hallZ },
+      visitors: [onWalkway({ x: 0.9, z: hallZ }), onWalkway({ x: 2.1, z: hallZ })],
+    },
+    {
+      name: 'left aisle', dog: { x: -AISLE_X, z: 3.0 }, link: [{ x: -AISLE_X, z: 3.0 }], fetch: { x: -AISLE_X, z: 0 },
+      visitors: [onWalkway({ x: -AISLE_X, z: 2.4 }), onWalkway({ x: -AISLE_X, z: 3.6 })],
+    },
+  ];
+}
+
+/** Gap between the spots where onlookers stand behind a chair. */
+const ONLOOKER_GAP = 0.45;
+
+/**
+ * Three spots behind `seat`'s chair, on the lane behind its row (#33 over the shoulder): straight
+ * behind, and either side along the lane. They're on a walkway, so each is its own link.
+ */
+export function behindChair(layout: OfficeLayout, seat: SeatSpot): Point[] {
+  const lanePoints = layout.lanes[seat.row];
+  const behind = seat.link.at(-1)!;
+  const i = lanePoints.findIndex((p) => same(p, behind));
+  const toward = (q: Point, gaps: number) => {
+    const k = (ONLOOKER_GAP * gaps) / distance(behind, q);
+    return { x: behind.x + (q.x - behind.x) * k, z: behind.z + (q.z - behind.z) * k };
+  };
+  const [prev, next] = [lanePoints[i - 1], lanePoints[i + 1]];
+  // At the end of a row the lane meets the aisle within a step: both side spots go on the inner side.
+  if (distance(behind, prev) < ONLOOKER_GAP) return [{ ...behind }, toward(next, 1), toward(next, 2)];
+  if (distance(behind, next) < ONLOOKER_GAP) return [{ ...behind }, toward(prev, 1), toward(prev, 2)];
+  return [{ ...behind }, toward(prev, 1), toward(next, 1)];
+}
 
 /** Door → hall → aisle → lane behind the row → into the chair. */
 export const arrivalPath = (layout: OfficeLayout, seat: SeatSpot) => route(layout, layout.doorLink, seat.link);

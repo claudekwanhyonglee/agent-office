@@ -1,0 +1,115 @@
+import { describe, expect, it } from 'vitest';
+import { INITIAL_ROWS, officeLayout } from '../src/client/layout.ts';
+import { buildOffice } from '../src/client/office.ts';
+import { centre, distance, find, ofType, office, plan, rec, seeded } from './office-sim.ts';
+
+const START = officeLayout(INITIAL_ROWS);
+const spot = (name: string) => START.hangouts.find((s) => s.name === name)!;
+
+const GAMES = [
+  { spot: 'pool-table', prop: 'pool-table', at: plan(16.4, 6.6), poses: ['cue-shot', 'cue-wait'] },
+  { spot: 'ping-pong', prop: 'ping-pong-table', at: plan(15.3, 13.7), poses: ['paddle', 'paddle'] },
+] as const;
+const isGame = (name: string | undefined) => GAMES.some((g) => g.spot === name);
+
+/** `count` idle agents wandering for `minutes`; returns each update's events. */
+function busyBreakRoom(count: number, seed: number, minutes = 60) {
+  const o = office(count, seed);
+  for (let n = 1; n <= count; n++) o.set(n, n % 2 ? 'done' : 'finished');
+  o.run(minutes * 60);
+  const updates = new Map<number, ReturnType<typeof o.c.update>>();
+  for (const { t, event } of o.log) updates.set(t, [...(updates.get(t) ?? []), event]);
+  return { o, updates: [...updates.values()] };
+}
+
+/** Runs until both players of a game at `spotName` have arrived; returns their keys. */
+function untilGame(o: ReturnType<typeof office>, spotName: string) {
+  for (let i = 0; i < 4 * 60 * 60 * 4; i++) {
+    o.run(0.25);
+    const at = [...o.c.agents].filter(([, a]) => a.place?.spot === spotName && a.arrivesAt <= o.clock.t);
+    if (at.length === 2) return at.map(([k]) => k);
+  }
+  return [];
+}
+
+describe('#31 AC1 pair games start with two free idle agents', () => {
+  it('#31 AC1 both players are sent to the two ends of the table in the same update, and both games get played', () => {
+    const { updates } = busyBreakRoom(6, 8);
+    const started = new Set<string>();
+    for (const events of updates) {
+      const toGames = ofType(events, 'walk').filter((w) => isGame(w.place?.spot));
+      for (const g of GAMES) {
+        const walks = toGames.filter((w) => w.place!.spot === g.spot);
+        if (!walks.length) continue;
+        expect(walks, g.spot).toHaveLength(2);
+        expect(new Set(walks.map((w) => w.key)).size).toBe(2);
+        expect(new Set(walks.map((w) => w.place))).toEqual(new Set(spot(g.spot).places));
+        started.add(g.spot);
+      }
+    }
+    expect([...started].sort()).toEqual(GAMES.map((g) => g.spot).sort());
+  });
+});
+
+describe('#31 AC2 no game with one agent', () => {
+  it('#31 AC2 a lone idle agent never goes to a game table', () => {
+    const { o } = busyBreakRoom(1, 3, 120);
+    const walks = ofType(o.log.map((l) => l.event), 'walk');
+    expect(walks.length).toBeGreaterThan(100);
+    expect(walks.filter((w) => isGame(w.place?.spot))).toEqual([]);
+  });
+
+  it('#31 AC2 agents already idle when the page opens are never placed at a table', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const o = office(0, seed);
+      const events = o.c.update([1, 2, 3, 4, 5].map((n) => rec(n, 'done')));
+      expect(ofType(events, 'arrive').filter((a) => isGame(a.place?.spot)), `seed ${seed}`).toEqual([]);
+    }
+  });
+
+  it('#31 AC2 at every moment, each table has 0 or 2 players', () => {
+    const o = office(5, 12);
+    for (let n = 1; n <= 5; n++) o.set(n, 'done');
+    const random = seeded(5);
+    let played = 0;
+    o.run(60 * 60, 0.25, () => {
+      if (random() < 0.01) o.set(1 + Math.floor(random() * 5), random() < 0.5 ? 'working' : 'done');
+      for (const g of GAMES) {
+        const n = [...o.c.agents.values()].filter((a) => a.place?.spot === g.spot).length;
+        expect([0, 2], g.spot).toContain(n);
+        if (n) played++;
+      }
+    });
+    expect(played).toBeGreaterThan(0);
+  });
+});
+
+describe('#31 AC3 when one player goes back to work, the game ends', () => {
+  for (const g of GAMES) {
+    it(`#31 AC3 ${g.spot}: the other player leaves in the same update and goes on wandering`, () => {
+      const o = office(6, 8);
+      for (let n = 1; n <= 6; n++) o.set(n, 'done');
+      const [first, second] = untilGame(o, g.spot);
+      expect(second, 'a game was played').toBeDefined();
+      const events = o.set(Number(first.replace('session-', '')), 'working');
+      const walks = ofType(events, 'walk');
+      expect(walks.find((w) => w.key === first)!.place).toBeNull();
+      const other = walks.find((w) => w.key === second)!;
+      expect(other.place).not.toBeNull();
+      expect(other.place!.spot).not.toBe(g.spot);
+      expect(o.c.agents.get(second)!.nextAt).not.toBeNull();
+    });
+  }
+});
+
+describe('#31 AC4 tables and poses', () => {
+  const { group } = buildOffice(INITIAL_ROWS);
+  for (const g of GAMES) {
+    it(`#31 AC4 ${g.spot}: a tagged ${g.prop} at its plan C position, and a pose per player`, () => {
+      const [table, ...more] = find(group, g.prop);
+      expect(more).toEqual([]);
+      expect(distance(centre(table), g.at)).toBeLessThan(0.35);
+      expect(spot(g.spot).places.map((p) => p.pose)).toEqual(g.poses);
+    });
+  }
+});

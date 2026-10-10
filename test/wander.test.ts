@@ -82,7 +82,8 @@ describe('#14 AC1 idle agents leave their desk', () => {
       expect(walk.path[0]).toEqual(seat.sit);
       expect(walk.place).not.toBeNull();
       expect(walk.path.at(-1)).toEqual({ x: walk.place!.x, z: walk.place!.z });
-      expect(['kitchen', 'water-cooler', 'lounge']).toContain(walk.place!.spot);
+      // #30 added solo activities alongside the kitchen, cooler and lounge.
+      expect(HANGOUTS.filter((s) => !s.chat && !s.game).map((s) => s.name)).toContain(walk.place!.spot);
     });
   }
 
@@ -171,7 +172,8 @@ describe('#14 AC3 staying and moving on', () => {
         byPlace.add(a.place);
         bySpot.set(a.place.spot, (bySpot.get(a.place.spot) ?? 0) + 1);
       }
-      for (const [spot, n] of bySpot) expect(n).toBeLessThanOrEqual(capacity.get(spot)!);
+      // #33: errands for other agents (high fives) aren't hangout spots.
+      for (const [spot, n] of bySpot) if (capacity.has(spot)) expect(n).toBeLessThanOrEqual(capacity.get(spot)!);
     });
 
     let stays = 0;
@@ -179,6 +181,8 @@ describe('#14 AC3 staying and moving on', () => {
       const walks = o.log.filter((l) => l.event.type === 'walk' && l.event.key === key(n))
         .map((l) => ({ t: l.t, ...(l.event as Extract<OfficeEvent, { type: 'walk' }>) }));
       for (let i = 0; i + 1 < walks.length; i++) {
+        // #33: an errand (a high five) is short, and may cut a stay short.
+        if (![walks[i], walks[i + 1]].every((w) => capacity.has(w.place!.spot))) continue;
         const arrived = walks[i].t + pathLength(walks[i].path) / WALK_SPEED;
         const stay = walks[i + 1].t - arrived;
         expect(stay, `agent ${n} stay ${i}`).toBeGreaterThanOrEqual(10 - 0.3);
