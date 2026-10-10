@@ -32,7 +32,8 @@ const DOG_PAUSE = { min: 5, max: 15 };
 const DOG_REST = { min: 20, max: 45 };
 const DOG_BED_CHANCE = 0.3;
 const DOG_CHANCE = 0.2;
-const DOG_VISITORS = 2;
+/** One agent with the dog at a time, so visitors don't clip into each other (#65). */
+const DOG_VISITORS = 1;
 const FETCH_EVERY = { min: 5, max: 8 };
 /** How many shots of a table-tennis rally reach the other bat before one is missed (#70). */
 const RALLY_HITS = { min: 1, max: 9 };

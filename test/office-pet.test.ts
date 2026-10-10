@@ -93,14 +93,34 @@ describe('#34 AC3 idle agents play with the dog', () => {
   });
 });
 
-describe('#34 AC4 at most 2 agents with the dog', () => {
-  it('#34 AC4 never more than 2 agents are with (or on their way to) the dog', () => {
-    let most = 0;
-    withDog(8, 4, 120, (o) => {
-      const n = [...o.c.agents.values()].filter((a) => a.place?.spot === 'dog').length;
-      most = Math.max(most, n);
-      expect(n).toBeLessThanOrEqual(2);
+describe('#34 AC4 / #65 one agent with the dog at a time', () => {
+  it('#65 AC1 while an agent is with (or on its way to) the dog, no other agent is sent to it', () => {
+    let visits = 0;
+    for (const seed of [4, 5]) {
+      withDog(8, seed, 120, (o) => {
+        const n = [...o.c.agents.values()].filter((a) => a.place?.spot === 'dog').length;
+        expect(n, `seed ${seed} at ${o.clock.t}`).toBeLessThanOrEqual(1);
+        visits += n;
+      });
+    }
+    expect(visits).toBeGreaterThan(0);
+  });
+
+  it('#65 AC2 an agent that would visit the dog while it\'s taken does something else instead', () => {
+    // While the dog is taken, agents moving on still go somewhere: another activity.
+    let sentElsewhere = 0;
+    const { events } = withDog(6, 2, 30, (o) => {
+      const busy = [...o.c.agents.values()].some((a) => a.place?.spot === 'dog');
+      const walks = ofType(o.log.filter((l) => l.t === o.clock.t).map((l) => l.event), 'walk');
+      if (busy) sentElsewhere += walks.filter((w) => w.place && w.place.spot !== 'dog').length;
     });
-    expect(most).toBe(2);
+    expect(ofType(events, 'walk').filter((w) => w.place?.spot === 'dog').length).toBeGreaterThan(0);
+    expect(sentElsewhere).toBeGreaterThan(0);
+  });
+
+  it('#65 AC3 once the visitor leaves, another agent can visit', () => {
+    const { events } = withDog(8, 4, 120);
+    const visitors = ofType(events, 'walk').filter((w) => w.place?.spot === 'dog').map((w) => w.key);
+    expect(new Set(visitors).size).toBeGreaterThan(1);
   });
 });
