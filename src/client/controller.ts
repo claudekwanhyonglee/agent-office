@@ -4,6 +4,7 @@ import {
   type DogSpot, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
 } from './layout.ts';
 import { SHOT_COUNT, SHOT_SECONDS } from './pool.ts';
+import { hitter, rallySeconds, type Rally, type Side } from './pong.ts';
 
 /** Seconds an idle agent waits at its desk before wandering off (AC: within 3 s). */
 const SET_OFF = { min: 1, max: 2.5 };
@@ -26,6 +27,8 @@ const DOG_BED_CHANCE = 0.3;
 const DOG_CHANCE = 0.2;
 const DOG_VISITORS = 2;
 const FETCH_EVERY = { min: 5, max: 8 };
+/** How many shots of a table-tennis rally reach the other bat before one is missed (#70). */
+const RALLY_HITS = { min: 1, max: 9 };
 
 const isIdle = (state: OfficeState) => state === 'done' || state === 'finished';
 
@@ -80,7 +83,9 @@ export type OfficeEvent =
   /** Agent `key` throws a ball for the dog (the dog's run follows). */
   | { type: 'fetch'; key: string }
   /** Turn `shot` of the pool rack starts (#53); null: play stopped, the balls go back in the rack. */
-  | { type: 'pool'; shot: number | null };
+  | { type: 'pool'; shot: number | null }
+  /** A table-tennis rally starts (#70) between `players` (at the -x end, then the +x end); null: play stopped. */
+  | { type: 'pong'; rally: Rally | null; players: [string, string] };
 
 export interface DogState {
   spot: DogSpot;
@@ -115,6 +120,8 @@ export class OfficeController {
   readonly dog: DogState;
   /** The pool game in play (#53): its two players (the first breaks), the turn it's on and when the next starts. */
   private pool: { players: [string, string]; turn: number; nextAt: number } | null = null;
+  /** The table-tennis game in play (#70): its players (-x end first), the rally and when it ends. */
+  private pong: { players: [string, string]; rally: Rally; nextAt: number } | null = null;
 
   constructor(clock: Partial<Clock> = {}) {
     this.clock = { ...systemClock, ...clock };
@@ -156,7 +163,34 @@ export class OfficeController {
     }
     this.moveDog(now, events);
     this.playPool(now, events);
+    this.playPong(now, events);
     return events;
+  }
+
+  /** The two players at a game's spot once both have arrived, if they have. */
+  private arrivedPlayers(spot: string, now: number) {
+    const players = [...this.agents].filter(([, a]) => a.place?.spot === spot);
+    return players.length === 2 && players.every(([, a]) => a.arrivesAt <= now) ? players : null;
+  }
+
+  /** Table tennis (#70): rallies of a random length, each ending in a miss; whoever missed serves the next. */
+  private playPong(now: number, events: OfficeEvent[]) {
+    let server: Side;
+    if (!this.pong) {
+      const players = this.arrivedPlayers('ping-pong', now);
+      if (!players) return;
+      const [left, right] = players.sort(([, a], [, b]) => a.place!.x - b.place!.x).map(([k]) => k);
+      server = this.clock.random() < 0.5 ? -1 : 1;
+      this.pong = { players: [left, right], rally: { server, hits: 0 }, nextAt: now };
+    } else {
+      if (now < this.pong.nextAt) return;
+      const last = this.pong.rally;
+      server = -hitter(last, last.hits) as Side;
+    }
+    const rally = { server, hits: Math.floor(this.between(RALLY_HITS)) };
+    this.pong.rally = rally;
+    this.pong.nextAt += rallySeconds(rally);
+    events.push({ type: 'pong', rally, players: this.pong.players });
   }
 
   /**
@@ -165,8 +199,8 @@ export class OfficeController {
    */
   private playPool(now: number, events: OfficeEvent[]) {
     if (!this.pool) {
-      const players = [...this.agents].filter(([, a]) => a.place?.spot === 'pool-table');
-      if (players.length < 2 || players.some(([, a]) => a.arrivesAt > now)) return;
+      const players = this.arrivedPlayers('pool-table', now);
+      if (!players) return;
       const breaker = players.find(([, a]) => a.place!.pose === 'cue-shot') ?? players[0];
       const other = players.find((p) => p !== breaker)!;
       this.pool = { players: [breaker[0], other[0]], turn: 0, nextAt: now + SHOT_SECONDS };
@@ -409,6 +443,10 @@ export class OfficeController {
     if (left.spot === 'pool-table' && this.pool) {
       this.pool = null;
       events.push({ type: 'pool', shot: null });
+    }
+    if (left.spot === 'ping-pong' && this.pong) {
+      events.push({ type: 'pong', rally: null, players: this.pong.players });
+      this.pong = null;
     }
     for (const [key, agent] of players) this.wander(key, agent, now, events);
   }

@@ -5,7 +5,7 @@ import { OfficeController, type OfficeEvent } from './controller.ts';
 import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { PaperPlanes } from './paper-planes.ts';
-import { DeskMugs, PoolBalls } from './break-room.ts';
+import { DeskMugs, PongBallMesh, PoolBalls } from './break-room.ts';
 import { Dog } from './dog.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
@@ -29,6 +29,7 @@ export function createOfficeScene(host: HTMLElement) {
   const planes = new PaperPlanes(view.scene);
   const mugs = new DeskMugs(view.scene);
   const poolBalls = new PoolBalls(view.scene);
+  const pongBall = new PongBallMesh(view.scene);
   const dog = new Dog();
   dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
   view.scene.add(dog.root);
@@ -74,6 +75,9 @@ export function createOfficeScene(host: HTMLElement) {
       } else if (event.type === 'dog') {
         if (event.path.length === 1) dog.placeAt(event.path[0], event.lie);
         else dog.go(event.path, event.lie);
+      } else if (event.type === 'pong') {
+        pongBall.play(event.rally);
+        event.players.forEach((key, i) => characters.get(key)?.playRally(event.rally, i ? 1 : -1));
       } else if (event.type === 'pool') {
         poolBalls.play(event.shot);
       } else if (event.type === 'mug') {
@@ -117,6 +121,7 @@ export function createOfficeScene(host: HTMLElement) {
     characters.forEach((c) => c.update(t, dt));
     planes.update(dt);
     poolBalls.update(dt);
+    pongBall.update(dt);
     dog.update(t, dt);
     for (const c of leaving) {
       c.update(t, dt);

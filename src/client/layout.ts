@@ -1,5 +1,6 @@
 // Office floor plan in plain numbers (no three.js), so seating and routes are testable.
 import { SHOT_COUNT, shotSetup } from './pool.ts';
+import { PLAYER_X } from './pong.ts';
 
 // Plan C, "Mission Control Bay": curved rows of desks face the camera (+z) around a point on the
 // front deck. Kitchen, big board, TV and the door line the back wall (-z); a glass wall with two
@@ -328,7 +329,7 @@ function pairGames(): HangoutSpot[] {
   const { pingPong: pong } = BREAK_ROOM;
   const end = (spot: string, pose: HangoutPose, p: Point, toward: Point, link: Point[]): HangoutPlace =>
     ({ ...p, spot, pose, yaw: yawTowards(p, toward), link: [p, ...link] });
-  const pongEnds = [pong.x - pong.w / 2 - 0.5, pong.x + pong.w / 2 + 0.5];
+  const pongEnds = [pong.x - PLAYER_X, pong.x + PLAYER_X];
   return [
     // The first shooter breaks; the other waits at the far end, where they'll shoot next.
     { name: 'pool-table', chat: false, game: { min: 2 }, places: [POOL_TURNS[0].shoot, POOL_TURNS[1].wait] },

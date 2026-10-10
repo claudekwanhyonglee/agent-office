@@ -5,6 +5,7 @@ import type { Look, HatKind } from './look.ts';
 import { WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
+import { HIT, hitTimes, type Rally, type Side } from './pong.ts';
 
 const SEAT_Y = 0.38;
 const WOOD_DARK = '#8C6A4A';
@@ -62,6 +63,8 @@ export class Character {
   private growing = false;
   /** Seconds left of a raised-hand high five (#33). */
   private highFiving = 0;
+  /** The table-tennis rally this agent is playing (#70): which end it's at, and seconds into the rally. */
+  private rally: { rally: Rally; side: Side; t: number } | null = null;
   /** Seconds since the agent started leaving; its bubble pops, then stays gone (#49). */
   private leftFor: number | null = null;
 
@@ -170,6 +173,11 @@ export class Character {
     else if (this.mode === 'standing' && state !== 'finished') this.hopToPlace();
   }
 
+  /** A table-tennis rally starts now, with this agent at end `side` (#70); null: play stopped. */
+  playRally(rally: Rally | null, side: Side) {
+    this.rally = rally && { rally, side, t: 0 };
+  }
+
   /** Raise a hand for a high five (#33), whatever the agent is doing. */
   highFive() {
     this.highFiving = HIGH_FIVE_SECONDS;
@@ -193,6 +201,7 @@ export class Character {
     else if (this.mode === 'hopping') this.hopTween!.then = () => walkFrom(0);
     else walkFrom(0);
     this.place = null;
+    this.rally = null;
   }
 
   private hangAt(place: HangoutPlace) {
@@ -341,7 +350,8 @@ export class Character {
     if (activity) {
       const held = this.held[place.pose];
       if (held) held.visible = true;
-      return activity({ pivot: p, head, hands: this.hands, feet: this.feet, held }, tt);
+      if (this.rally) this.rally.t += dt;
+      return activity({ pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally }, tt);
     }
     if (place.pose === 'chatting') {
       const talk = Math.sin(tt * 6);
@@ -458,7 +468,29 @@ function hat(kind: HatKind, color: string) {
   return g;
 }
 
-interface Body { pivot: THREE.Group; head: THREE.Group; hands: THREE.Mesh[]; feet: THREE.Mesh[]; held?: THREE.Object3D }
+interface Body {
+  pivot: THREE.Group; head: THREE.Group; hands: THREE.Mesh[]; feet: THREE.Mesh[]; held?: THREE.Object3D;
+  rally?: { rally: Rally; side: Side; t: number } | null;
+}
+
+/** Table tennis (#70): the bat's blade sits this far from the hand; a swing takes SWING seconds, centred on the hit. */
+const BLADE = new THREE.Vector3(0, 0.2, 0.05);
+const SWING = 0.3;
+const WIND = 0.25;
+/** The hand when the blade is where the ball is hit, and when waiting between hits. */
+const CONTACT = new THREE.Vector3(HIT.side, HIT.y, HIT.reach).sub(BLADE);
+const READY = new THREE.Vector3(0.35, 0.8, 0.05);
+
+/** The bat hand during a rally: ready, then back, forward through the ball at each hit, and back to ready. */
+function batHand({ rally, side, t }: { rally: Rally; side: Side; t: number }) {
+  const back = CONTACT.clone().setZ(CONTACT.z - WIND), through = CONTACT.clone().setZ(CONTACT.z + WIND);
+  const d = hitTimes(rally, side).map((h) => t - h).reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a), Infinity);
+  const smooth = (k: number) => k * k * (3 - 2 * k);
+  if (Math.abs(d) <= SWING / 2) return back.lerp(through, d / SWING + 0.5);
+  if (d < 0 && d > -SWING / 2 - 0.25) return READY.clone().lerp(back, smooth((d + SWING / 2 + 0.25) / 0.25));
+  if (d > 0 && d < SWING / 2 + 0.25) return through.lerp(READY, smooth((d - SWING / 2) / 0.25));
+  return READY.clone();
+}
 
 /** A throw every `period` seconds: 0 → 1 while winding up and letting go, then 0 while waiting. */
 const throwPhase = (tt: number, period: number) => Math.min(1, ((tt % period) / period) * 3);
@@ -568,15 +600,15 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     if (held) held.rotation.set(-0.1, 0, 0);
     return 2.2;
   },
-  paddle: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
-    const swing = Math.sin(tt * 4.5);
-    pivot.position.x = swing * 0.12 * motion;
+  paddle: ({ pivot, head, hands: [hl, hr], feet: [fl, fr], rally }, tt) => {
+    // Ready stance, knees bent; the bat swings through the ball at each of this player's hits.
+    pivot.position.y = -0.04 + Math.sin(tt * 3) * 0.015 * motion;
     pivot.rotation.x = 0.15;
     head.rotation.x = -0.1;
     hl.position.set(-0.4, 0.7, 0.2);
-    hr.position.set(0.35 + swing * 0.15 * motion, 0.85, 0.45);
-    fl.position.set(-0.22 + swing * 0.1 * motion, 0.06, 0.04);
-    fr.position.set(0.22 + swing * 0.1 * motion, 0.06, 0.04);
+    hr.position.copy(rally ? batHand(rally) : READY);
+    fl.position.set(-0.22, 0.06, 0.04);
+    fr.position.set(0.22, 0.06, 0.04);
     return 2.2;
   },
   floating: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
@@ -669,7 +701,7 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   // Gripped near the butt: the tip is 1.025 m along from the hand.
   const cue = () => tag(at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.3, 0), 'cue');
   const bat = new THREE.Group();
-  bat.add(at(cyl(0.14, 0.14, 0.03, '#C25B7A', { outline: 0.05 }), 0, 0.2, 0.05));
+  bat.add(Object.assign(at(cyl(0.14, 0.14, 0.03, '#C25B7A', { outline: 0.05 }), BLADE.x, BLADE.y, BLADE.z), { userData: { part: 'bat-blade' } }));
   bat.add(at(cyl(0.025, 0.025, 0.12, WOOD_DARK, { outline: 0 }), 0, 0.05, 0.02));
   bat.children[0].rotation.x = Math.PI / 2;
   const holding = (o: THREE.Object3D) => new THREE.Group().add(o);

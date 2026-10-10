@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { at, ball, box, cyl, mesh, tag } from './toon.ts';
 import { BREAK_ROOM, type SeatSpot } from './layout.ts';
 import { BALL_R, POCKETS, POCKET_R, SHOT_SECONDS, ballsAt } from './pool.ts';
+import { BALL_R as PONG_BALL_R, NET_TOP, pongBallAt, type Rally } from './pong.ts';
 
 /** Coffee mugs left on desks by a coffee delivery (#33), one per desk at most. */
 export class DeskMugs {
@@ -133,7 +134,8 @@ export function addGameTables(group: THREE.Group) {
   const pingPong = tag(new THREE.Group(), 'ping-pong-table');
   pingPong.add(at(box(pong.w, 0.06, pong.d, '#3E6FD0'), 0, 0.74, 0));
   pingPong.add(at(box(0.02, 0.005, pong.d, '#FFFFFF', { outline: 0, shadow: false }), 0, 0.775, 0));
-  pingPong.add(at(box(0.03, 0.15, pong.d + 0.1, '#F4EEE2', { outline: 0.02 }), 0, 0.85, 0)); // net
+  const net = at(box(0.03, NET_TOP - 0.775, pong.d + 0.1, '#F4EEE2', { outline: 0.02 }), 0, (NET_TOP + 0.775) / 2, 0);
+  pingPong.add(Object.assign(net, { userData: { part: 'net' } }));
   for (const dx of [-0.9, 0.9]) for (const dz of [-0.45, 0.45]) pingPong.add(at(box(0.06, 0.72, 0.06, INK, { outline: 0 }), dx, 0.36, dz));
   group.add(at(pingPong, pong.x, 0, pong.z));
 }
@@ -167,6 +169,31 @@ export class PoolBalls {
       this.meshes[i].position.set(table.x + b.x, FELT_TOP + BALL_R, table.z + b.z);
       this.meshes[i].visible = !b.potted;
     });
+  }
+}
+
+/** The table-tennis ball (#70): it follows the rally the controller says, and is gone when nobody plays. */
+export class PongBallMesh {
+  readonly mesh = ball(PONG_BALL_R, '#FFFFFF', { outline: 0.1, shadow: false });
+  private rally: Rally | null = null;
+  private t = 0;
+
+  constructor(parent: THREE.Object3D) {
+    parent.add(this.mesh);
+    this.mesh.visible = false;
+  }
+
+  play(rally: Rally | null) {
+    this.rally = rally;
+    this.t = 0;
+    this.update(0);
+  }
+
+  update(dt: number) {
+    this.t += dt;
+    const at = this.rally && pongBallAt(this.rally, this.t);
+    this.mesh.visible = !!at?.visible;
+    if (at) this.mesh.position.set(BREAK_ROOM.pingPong.x + at.x, at.y, BREAK_ROOM.pingPong.z + at.z);
   }
 }
 
