@@ -21,6 +21,8 @@ export interface SeatSpot {
 export const DESKS_PER_POD = 5;
 export const POD_DEPTH = 4.8;
 export const DOOR: Point = { x: 4.6, z: -3.45 };
+const HALL_Z = -2.3; // walkway along the back wall
+const AISLE_X = 1.4; // walkway beside the desk pods
 
 const POD_SEATS = [
   { x: -3.4, deskZ: 0.0, chairZ: -0.85, facing: 1 },
@@ -54,4 +56,21 @@ export function seatLayout(podCount: number): SeatSpot[] {
 
 export function floorDepth(podCount: number) {
   return 7.8 + (podCount - 1) * POD_DEPTH;
+}
+
+/** Door → back hall → aisle → in front of the desk → into the chair. */
+export function arrivalPath(seat: SeatSpot): Point[] {
+  return [
+    { ...DOOR },
+    { x: DOOR.x, z: HALL_Z },
+    { x: AISLE_X, z: HALL_Z },
+    { x: AISLE_X, z: seat.approach.z },
+    { ...seat.approach },
+    { ...seat.sit },
+  ];
+}
+
+/** Chair → door: the arrival route walked backwards. */
+export function departurePath(seat: SeatSpot): Point[] {
+  return arrivalPath(seat).reverse();
 }

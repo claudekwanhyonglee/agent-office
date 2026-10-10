@@ -1,12 +1,22 @@
 import * as THREE from 'three';
 import { at, ball, box, cyl, tag, toonRamp } from './toon.ts';
 import { DESKS_PER_POD, DOOR, POD_DEPTH, floorDepth, seatLayout, type SeatSpot } from './layout.ts';
+import { SCREEN_OFF, screenColor } from './poses.ts';
+import type { OfficeState } from '../shared/agent.ts';
+
+export { SCREEN_OFF };
 
 export interface Seat extends SeatSpot {
   screen: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
 }
 
-export const SCREEN_OFF = '#2C3350';
+/** Monitors glow for their desk's occupant; empty desks stay dark. */
+export function updateScreens(seats: Seat[], occupants: Map<number, OfficeState>) {
+  for (const seat of seats) {
+    const state = occupants.get(seat.index);
+    seat.screen.material.color.set(state ? screenColor(state) : SCREEN_OFF);
+  }
+}
 
 /** The prototype's office, with `podCount` desk pods. Builds without a DOM or WebGL. */
 export function buildOffice(podCount: number) {

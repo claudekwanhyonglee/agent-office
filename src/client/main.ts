@@ -1,8 +1,6 @@
 import './style.css';
-import { createView } from './view.ts';
-import type { FeedPayload } from '../shared/agent.ts';
-
-const INITIAL_PODS = 2;
+import { createOfficeScene } from './office-scene.ts';
+import type { AgentRecord, FeedPayload } from '../shared/agent.ts';
 
 export function hasWebGL() {
   const probe = document.createElement('canvas');
@@ -20,21 +18,23 @@ function showStatus(text: string | null, problem = false) {
   status.textContent = text;
 }
 
+interface Office { show(records: AgentRecord[]): void }
+
 interface BootOptions {
-  createView?: (host: HTMLElement) => Pick<ReturnType<typeof createView>, 'setPodCount'>;
+  createOffice?: (host: HTMLElement) => Office;
 }
 
-export function boot({ createView: makeView }: BootOptions = {}) {
-  if (!makeView && !hasWebGL()) {
+export function boot({ createOffice }: BootOptions = {}) {
+  if (!createOffice && !hasWebGL()) {
     showStatus("3D isn't available in this browser, so the office can't be shown. Try a browser with WebGL turned on.", true);
     return;
   }
-  const view = (makeView ?? createView)(document.getElementById('scene')!);
-  view.setPodCount(INITIAL_PODS);
+  const office = (createOffice ?? createOfficeScene)(document.getElementById('scene')!);
   showStatus('No Claude Code sessions running');
 
   function applyFeed(payload: FeedPayload) {
     if (!Array.isArray(payload)) return showStatus(payload.error, true);
+    office.show(payload);
     showStatus(payload.length ? null : 'No Claude Code sessions running');
   }
 
