@@ -77,7 +77,7 @@ export function renderCounts(el: HTMLElement, records: AgentRecord[]) {
 export function showTooltip(el: HTMLElement, record: AgentRecord | undefined, x: number, y: number) {
   el.hidden = !record;
   if (!record) return;
-  el.innerHTML = `${escapeHtml(record.name)} <span>· ${escapeHtml(record.project)}</span>`;
+  el.innerHTML = `<span class="bright">${escapeHtml(record.project)}</span> <span class="dim">· ${escapeHtml(record.name)}</span>`;
   const stage = el.parentElement!;
   const at = clampTooltip(x, y, { width: el.offsetWidth, height: el.offsetHeight }, { width: stage.clientWidth, height: stage.clientHeight });
   el.style.left = `${at.x}px`;

@@ -122,7 +122,8 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
   max-width: calc(100% - 16px); box-sizing: border-box; overflow: hidden; text-overflow: ellipsis;
   transform: translate(-50%, calc(-100% - 12px));
 }
-.tooltip span { color: var(--muted); }
+.tooltip .bright { color: var(--ink); }
+.tooltip .dim { color: var(--muted); }
 
 .hint {
   position: absolute; left: 50%; transform: translateX(-50%);

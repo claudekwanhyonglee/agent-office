@@ -82,6 +82,30 @@ describe('#6 AC2 hover label', () => {
   });
 });
 
+describe('#51 project first in the hover tooltip', () => {
+  const css = readFileSync('src/client/style.css', 'utf8');
+  const hovered = () => {
+    const { hover } = start([{ ...rec(1, 'working'), project: 'agent-office', name: 'Fix the bubbles' }]);
+    hover('session-1', 100, 50);
+    return document.getElementById('tooltip')!;
+  };
+
+  it('#51 AC1 the tooltip reads "<project> · <session name>"', () => {
+    expect(hovered().textContent!.replace(/\s+/g, ' ').trim()).toBe('agent-office · Fix the bubbles');
+  });
+
+  it('#51 AC2 the project has the bright style and the session name the dim one', () => {
+    const tooltip = hovered();
+    const [project, name] = [...tooltip.children] as HTMLElement[];
+    expect(project.className).toBe('bright');
+    expect(project.textContent).toBe('agent-office');
+    expect(name.className).toBe('dim');
+    expect(name.textContent).toContain('Fix the bubbles');
+    expect(css).toMatch(/\.tooltip \.bright \{[^}]*color:\s*var\(--ink\)/);
+    expect(css).toMatch(/\.tooltip \.dim \{[^}]*color:\s*var\(--muted\)/);
+  });
+});
+
 describe('#21 AC4 tooltip near the screen edge', () => {
   it('#21 AC4 the hover tooltip is moved inside the screen with an 8px margin', () => {
     const { hover } = start([rec(1, 'working')]);
