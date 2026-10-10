@@ -169,8 +169,8 @@ const DISPLAY = { width: 0.72, height: 0.72 / (SCREEN_SIZE.width / SCREEN_SIZE.h
 const MONITOR_AHEAD = 0.22, MONITOR_Y = 1.22;
 
 /**
- * A solid monitor on a desk (dark body on a stand) whose screen faces the front of the room, the
- * same way as the desk. Builds without a DOM; draws the content when it has one.
+ * A solid monitor at the front of a desk (dark body on a stand) whose screen faces the agent's
+ * chair. Builds without a DOM; draws the content when it has one.
  */
 export class DeskScreen {
   readonly root = tag(new THREE.Group(), 'monitor');
@@ -192,8 +192,9 @@ export class DeskScreen {
       this.texture.anisotropy = 4;
     }
     const body = at(box(DISPLAY.width + 0.1, DISPLAY.height + 0.1, 0.06, '#3A3150'), 0, MONITOR_Y, MONITOR_AHEAD);
-    const stand = at(box(0.1, 0.25, 0.08, '#4A4068'), 0, 0.92, MONITOR_AHEAD - 0.02);
-    this.display = at(new THREE.Mesh(new THREE.PlaneGeometry(DISPLAY.width, DISPLAY.height), new THREE.MeshBasicMaterial()), 0, MONITOR_Y, MONITOR_AHEAD + 0.035);
+    const stand = at(box(0.1, 0.25, 0.08, '#4A4068'), 0, 0.92, MONITOR_AHEAD + 0.02);
+    this.display = at(new THREE.Mesh(new THREE.PlaneGeometry(DISPLAY.width, DISPLAY.height), new THREE.MeshBasicMaterial()), 0, MONITOR_Y, MONITOR_AHEAD - 0.035);
+    this.display.rotation.y = Math.PI; // turned (not mirrored) to face the chair
     this.root.add(body, stand, this.display);
     this.root.position.set(desk.x, 0, desk.z);
     this.root.rotation.y = yaw;

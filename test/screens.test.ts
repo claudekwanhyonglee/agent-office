@@ -37,7 +37,7 @@ const kindsUnder = (root: THREE.Object3D, kind: string) => {
 };
 
 // #38 replaced #27's see-through panes (turned to face the camera) with fixed, solid monitors.
-describe('#38 AC1 a solid monitor on every desk, facing the front', () => {
+describe('#38 AC1 a solid monitor on every desk, facing its chair', () => {
   it('#38 AC1 every desk has one dark monitor with a stand, on the camera side of the desk', () => {
     const { group, seats } = buildOffice(INITIAL_ROWS);
     group.updateMatrixWorld(true);
@@ -55,12 +55,16 @@ describe('#38 AC1 a solid monitor on every desk, facing the front', () => {
     }
   });
 
-  it('#38 AC1 the screen faces the front of the room, the same way as the desk', () => {
+  it('#38 AC1 the screen faces the agent\'s chair, towards the back of the room', () => {
     const { group, seats } = buildOffice(INITIAL_ROWS);
     group.updateMatrixWorld(true);
     for (const seat of seats) {
-      const normal = new THREE.Vector3(0, 0, 1).transformDirection(seat.screen.display.matrixWorld);
-      expect(normal.dot(forwardOf(seat)), `seat ${seat.index}`).toBeGreaterThan(0.99);
+      const display = seat.screen.display;
+      const normal = new THREE.Vector3(0, 0, 1).transformDirection(display.matrixWorld);
+      expect(normal.dot(forwardOf(seat)), `seat ${seat.index} faces back`).toBeLessThan(-0.99);
+      const centre = display.getWorldPosition(new THREE.Vector3());
+      const toChair = new THREE.Vector3(seat.chair.x - centre.x, 0, seat.chair.z - centre.z);
+      expect(normal.dot(toChair), `seat ${seat.index} faces its chair`).toBeGreaterThan(0);
     }
   });
 
@@ -96,22 +100,24 @@ describe('#38 AC1 a solid monitor on every desk, facing the front', () => {
   });
 });
 
-describe('#38 AC2 occupied monitors show the agent, readable from the front', () => {
+describe('#38 AC2 occupied monitors show the agent, readable from the chair', () => {
   for (const [w, h] of [[1440, 900], [390, 844]]) {
-    it(`#38 AC2 the drawn text runs left to right from the front on a ${w}×${h} screen`, () => {
+    it(`#38 AC2 the drawn text runs left to right from the chair side on a ${w}×${h} screen`, () => {
       const { group, seats } = buildOffice(INITIAL_ROWS);
       const camera = new THREE.PerspectiveCamera(34, w / h, 0.1, 150);
-      const orbit = initialOrbit();
-      frameFloor(camera, orbit, INITIAL_ROWS);
-      placeCamera(camera, orbit);
-      camera.updateProjectionMatrix();
       updateScreens(seats, new Map(seats.map((s) => [s.index, rec(s.index, 'working', { activity: ACTIVITY })])), 0);
       group.updateMatrixWorld(true);
       for (const seat of seats) {
         const display = seat.screen.display;
         const centre = display.localToWorld(new THREE.Vector3(0, 0, 0));
+        // Looking over the agent's shoulder, from behind the chair.
+        const behind = new THREE.Vector3(seat.chair.x, 1.6, seat.chair.z).sub(forwardOf(seat).multiplyScalar(0.8));
+        camera.position.copy(behind);
+        camera.lookAt(centre);
+        camera.updateMatrixWorld();
+        camera.updateProjectionMatrix();
         const normal = display.localToWorld(new THREE.Vector3(0, 0, 1)).sub(centre);
-        expect(normal.dot(camera.position.clone().sub(centre)), `seat ${seat.index} seen from the front`).toBeGreaterThan(0);
+        expect(normal.dot(camera.position.clone().sub(centre)), `seat ${seat.index} seen from the chair`).toBeGreaterThan(0);
         const right = display.localToWorld(new THREE.Vector3(0.3, 0, 0)).project(camera).x - centre.clone().project(camera).x;
         expect(right, `seat ${seat.index} reads left to right`).toBeGreaterThan(0);
         expect(display.matrixWorld.determinant(), 'not mirrored by a negative scale').toBeGreaterThan(0);
