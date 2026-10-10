@@ -164,6 +164,11 @@ describe('#47 AC4 phones and the agent card', () => {
     expect(16 + panelWidth + 16 + cardWidth + 16).toBeLessThanOrEqual(701);
   });
 
+  it('#47 AC4 the left column lets drags and clicks through to the office around the logo and panel', () => {
+    expect(rule('.left')).toMatch(/pointer-events:\s*none/);
+    expect(rule('.left > \\*')).toMatch(/pointer-events:\s*auto/);
+  });
+
   it('#47 AC4 phone: the left column ends above where the bottom card can reach (52% + 12px)', () => {
     const phone = css.match(/@media \(max-width: 700px\) \{([\s\S]*?)\n\}/)![1];
     expect(rule('.card', phone)).toMatch(/max-height:\s*52%/);

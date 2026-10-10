@@ -2,6 +2,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { claudeConfigDir, type Paths } from './transcript.ts';
+import { ownAddresses } from './http.ts';
 
 import type { TrackingStatus } from '../shared/usage.ts';
 
@@ -76,6 +77,6 @@ function copyScript({ scriptSource, scriptFile }: TrackingFiles) {
   copyFileSync(scriptSource, scriptFile);
 }
 
-/** Only requests from this machine may change its settings, even in LAN mode. */
-export const isThisMachine = (remoteAddress: string | undefined) =>
-  remoteAddress === '127.0.0.1' || remoteAddress === '::1' || remoteAddress === '::ffff:127.0.0.1';
+/** Only requests from this machine (by any of its own addresses) may change its settings, even in LAN mode. */
+export const isThisMachine = (remoteAddress: string | undefined, own = ownAddresses()) =>
+  !!remoteAddress && own.includes(remoteAddress.replace(/^::ffff:/, ''));

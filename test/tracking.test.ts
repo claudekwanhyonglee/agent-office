@@ -108,9 +108,10 @@ describe('#45 AC5 enabling', () => {
     expect(readFileSync(files.scriptFile, 'utf8')).toBe(readFileSync(scriptSource, 'utf8'));
   });
 
-  it('#45 AC5 only this machine counts as local', () => {
-    expect(['127.0.0.1', '::1', '::ffff:127.0.0.1'].every(isThisMachine)).toBe(true);
-    expect(['192.168.1.20', '::ffff:192.168.1.20', undefined].some(isThisMachine)).toBe(false);
+  it('#45 AC5 only this machine counts, by any of its own addresses', () => {
+    const own = ['127.0.0.1', '::1', '192.168.1.5'];
+    expect(['127.0.0.1', '::1', '::ffff:127.0.0.1', '192.168.1.5', '::ffff:192.168.1.5'].every((a) => isThisMachine(a, own))).toBe(true);
+    expect(['192.168.1.20', '::ffff:192.168.1.20', undefined].some((a) => isThisMachine(a, own))).toBe(false);
   });
 });
 
