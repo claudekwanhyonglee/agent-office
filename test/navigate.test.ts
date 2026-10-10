@@ -49,18 +49,24 @@ function boardSpot(office: ReturnType<typeof buildOffice>, camera: THREE.Camera)
 }
 
 describe('#41 AC1 pan', () => {
-  it('#41 AC1 middle-drag, right-drag and Shift+left-drag pan; a plain left drag does not', () => {
-    expect(pansWith({ button: 1, shiftKey: false })).toBe(true);
-    expect(pansWith({ button: 2, shiftKey: false })).toBe(true);
-    expect(pansWith({ button: 0, shiftKey: true })).toBe(true);
-    expect(pansWith({ button: 0, shiftKey: false })).toBe(false);
+  it('#41 AC1 / AC6 with a mouse, left-drag and middle-drag pan; right-drag and Shift+left-drag orbit', () => {
+    const mouse = (button: number, shiftKey = false) => pansWith({ button, shiftKey, pointerType: 'mouse' });
+    expect(mouse(0)).toBe(true);
+    expect(mouse(1)).toBe(true);
+    expect(mouse(2)).toBe(false);
+    expect(mouse(0, true)).toBe(false);
+  });
+
+  it('#41 AC6 on touch, one finger still orbits', () => {
+    expect(pansWith({ button: 0, shiftKey: false, pointerType: 'touch' })).toBe(false);
+    expect(pansWith({ button: 0, shiftKey: false, pointerType: 'pen' })).toBe(false);
   });
 
   it('#41 AC1 the floor point grabbed stays under the pointer; angle, tilt and zoom stay', () => {
     const { orbit, camera, pointer, gestures } = setup();
     const before = view(orbit);
     const grabbed = grabAt(pointer, orbit, 700, 700)!.point;
-    gestures.down(1, 700, 700, true);
+    gestures.down(1, 700, 700, { pans: true });
     gestures.move(1, 760, 690);
     gestures.move(1, 850, 640);
     expect(gestures.up(1)).toBe(false);
@@ -79,7 +85,7 @@ describe('#41 AC1 pan', () => {
     const { centre, pixels } = boardSpot(office, camera);
     const grab = grabAt(pointer, orbit, pixels.x, pixels.y)!;
     expect(grab.point.distanceTo(centre)).toBeLessThan(0.2); // it's the board that's grabbed
-    gestures.down(1, pixels.x, pixels.y, true);
+    gestures.down(1, pixels.x, pixels.y, { pans: true });
     gestures.move(1, pixels.x - 40, pixels.y + 120);
     placeCamera(camera, orbit);
     const now = toPixels(grab.point, camera);
@@ -116,7 +122,7 @@ describe('#41 AC2 the target stays in the room', () => {
   it('#41 AC2 panning far in any direction stops at the floor bounds, between the floor and the wall top', () => {
     for (const [dx, dy] of [[5000, 0], [-5000, 0], [0, 5000], [0, -5000], [4000, 4000]]) {
       const { orbit, gestures } = setup();
-      gestures.down(1, 800, 700, true);
+      gestures.down(1, 800, 700, { pans: true });
       for (let s = 1; s <= 10; s++) gestures.move(1, 800 + (dx * s) / 10, 700 + (dy * s) / 10);
       expect(inRoom(orbit), `${dx},${dy}`).toBe(true);
     }
@@ -130,7 +136,7 @@ describe('#41 AC2 the target stays in the room', () => {
       orbit.radius = 8;
       placeCamera(camera, orbit);
       const { pixels } = boardSpot(office, camera);
-      gestures.down(1, pixels.x, pixels.y, true);
+      gestures.down(1, pixels.x, pixels.y, { pans: true });
       for (let s = 1; s <= 10; s++) gestures.move(1, pixels.x, pixels.y + (dy * s) / 10);
       expect(inRoom(orbit), `${dy}`).toBe(true);
     }
@@ -264,7 +270,7 @@ describe('#41 AC5 Home', () => {
       gestures.down(1, 800, 500);
       gestures.move(1, 1100, 300);
       gestures.up(1);
-      gestures.down(1, 800, 600, true);
+      gestures.down(1, 800, 600, { pans: true });
       gestures.move(1, 600, 750);
       gestures.up(1);
       zoomToward(orbit, grabAt(pointer, orbit, 200, 700)?.point ?? null, 9);
@@ -284,28 +290,38 @@ describe('#41 AC5 Home', () => {
   });
 });
 
-describe('#41 AC6 tap and orbit as before', () => {
-  it('#41 AC6 a still left click (or one-finger tap) is a tap; a still pan-button click is not', () => {
+describe('#41 AC6 tap still selects; right-drag and one finger orbit', () => {
+  it('#41 AC6 a still left click (it pans when dragged) and a one-finger tap are taps', () => {
     const { gestures } = setup();
+    gestures.down(1, 800, 500, { pans: true });
+    expect(gestures.up(1), 'left click').toBe(true);
+    gestures.down(1, 800, 500, { pans: true });
+    gestures.move(1, 802, 501); // a hand's tremble
+    expect(gestures.up(1), 'left click, slight wobble').toBe(true);
     gestures.down(1, 800, 500);
-    expect(gestures.up(1)).toBe(true);
-    gestures.down(1, 800, 500, true);
-    expect(gestures.up(1)).toBe(false);
-    gestures.down(1, 800, 500, false);
-    expect(gestures.up(1)).toBe(true);
+    expect(gestures.up(1), 'one-finger tap').toBe(true);
   });
 
-  it('#41 AC6 a left drag orbits and leaves the target where it was; a pan drag does not orbit', () => {
+  it('#41 AC6 a left drag that moves is not a tap; a still right click is not a tap either', () => {
+    const { gestures } = setup();
+    gestures.down(1, 800, 500, { pans: true });
+    gestures.move(1, 860, 500);
+    expect(gestures.up(1)).toBe(false);
+    gestures.down(1, 800, 500, { taps: false });
+    expect(gestures.up(1)).toBe(false);
+  });
+
+  it('#41 AC6 an orbit drag (right-drag, one finger) turns and tilts and leaves the target; a pan drag does not orbit', () => {
     const { orbit, gestures } = setup();
     const before = view(orbit);
-    gestures.down(1, 800, 500);
+    gestures.down(1, 800, 500, { taps: false });
     gestures.move(1, 860, 480);
     expect(gestures.up(1)).toBe(false);
     expect(orbit.theta).toBeCloseTo(before.theta - 0.3);
     expect(orbit.phi).toBeCloseTo(before.phi + 0.08);
     expect(orbit.target.equals(before.target)).toBe(true);
     const turned = view(orbit);
-    gestures.down(1, 800, 600, true);
+    gestures.down(1, 800, 600, { pans: true });
     gestures.move(1, 860, 580);
     gestures.up(1);
     expect([orbit.theta, orbit.phi]).toEqual([turned.theta, turned.phi]);

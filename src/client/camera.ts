@@ -92,11 +92,14 @@ export function grabAt(pointer: Pointer, orbit: Orbit, x: number, y: number): Gr
   return point && { point, plane };
 }
 
-/** Pan buttons: middle, right, or Shift with the left. */
-export const pansWith = ({ button, shiftKey }: { button: number; shiftKey: boolean }) =>
-  button === 1 || button === 2 || (button === 0 && shiftKey);
+/**
+ * Map-style mouse: left (or middle) drag pans; right or Shift+left drag orbits. On touch and pen,
+ * one finger orbits (two fingers pan).
+ */
+export const pansWith = ({ button, shiftKey, pointerType }: { button: number; shiftKey: boolean; pointerType: string }) =>
+  pointerType === 'mouse' && (button === 1 || (button === 0 && !shiftKey));
 
-/** Right-click pans the office, so it doesn't open the browser's menu there. */
+/** Right-drag orbits the office, so it doesn't open the browser's menu there. */
 export const blockContextMenu = (canvas: EventTarget) => canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 /** Back to the view on first load: starting angle, tilt and target, zoomed to fit the floor. */
@@ -191,19 +194,26 @@ export function frameFloor(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: 
 
 type ScreenPoint = { x: number; y: number };
 
+/** How far (px) a press may wobble and still count as a tap. */
+const TAP_SLOP = 4;
+
 /**
- * Pointer gestures on the canvas: one finger (or left mouse) orbits; a pan button (see `pansWith`)
- * or two fingers pan, and two fingers pinch-zoom towards their centre. Panning grabs the surface
- * under the pointer (via `pointer`) and keeps it there. A left press or one finger that neither moves
- * nor ever had a second finger counts as a tap.
+ * Pointer gestures on the canvas: a press orbits, or pans if it `pans` (see `pansWith`); two fingers
+ * pan and pinch-zoom towards their centre. Panning grabs the surface under the pointer (via
+ * `pointer`) and keeps it there. A press that `taps` (left button, a finger), barely moves and never
+ * had a second finger counts as a tap.
  */
 export function createGestures(orbit: Orbit, pointer: Pointer | null = null) {
   const pointers = new Map<number, ScreenPoint>();
   let drag: { x: number; y: number; theta: number; phi: number } | null = null;
   let pan: { at: ScreenPoint; plane: THREE.Plane | null } | null = null;
   let pinch: { distance: number; radius: number; centre: ScreenPoint; plane: THREE.Plane | null } | null = null;
+  let pressedAt: ScreenPoint = { x: 0, y: 0 };
   let moved = false;
-  let multiTouch = false;
+  let tappable = false;
+  const noteMove = ({ x, y }: ScreenPoint) => {
+    if (Math.hypot(x - pressedAt.x, y - pressedAt.y) > TAP_SLOP) moved = true;
+  };
   const grabPlane = ({ x, y }: ScreenPoint) => (pointer && grabAt(pointer, orbit, x, y)?.plane) || null;
   const onPlane = (plane: THREE.Plane | null, { x, y }: ScreenPoint) =>
     (plane && pointer?.ray(x, y).intersectPlane(plane, new THREE.Vector3())) || null;
@@ -221,17 +231,18 @@ export function createGestures(orbit: Orbit, pointer: Pointer | null = null) {
 
   return {
     get dragging() { return moved; },
-    /** `pans`: pressed with a pan button (see `pansWith`). */
-    down(id: number, x: number, y: number, pans = false) {
+    /** `pans`: this press pans rather than orbits (see `pansWith`). `taps`: a still press is a click. */
+    down(id: number, x: number, y: number, { pans = false, taps = true } = {}) {
       pointers.set(id, { x, y });
       drag = pan = null;
       if (pointers.size === 1) {
+        pressedAt = { x, y };
         moved = false;
-        multiTouch = pans; // a pan-button click is never a tap
+        tappable = taps;
         if (pans) pan = { at: { x, y }, plane: grabPlane({ x, y }) };
         else drag = { x, y, theta: orbit.theta, phi: orbit.phi };
       } else {
-        multiTouch = true;
+        tappable = false;
         if (pointers.size === 2) {
           const { spread, centre } = twoFingers();
           pinch = { distance: spread, radius: orbit.radius, centre, plane: grabPlane(centre) };
@@ -252,12 +263,12 @@ export function createGestures(orbit: Orbit, pointer: Pointer | null = null) {
       if (pan) {
         slide(pan.plane, pan.at, { x, y });
         pan.at = { x, y };
-        moved = true;
+        noteMove({ x, y });
         return true;
       }
       if (!drag) return false;
       const dx = x - drag.x, dy = y - drag.y;
-      if (Math.hypot(dx, dy) > 4) moved = true;
+      noteMove({ x, y });
       orbit.theta = drag.theta - dx * 0.005;
       orbit.phi = THREE.MathUtils.clamp(drag.phi - dy * 0.004, TILT.min, TILT.max);
       return true;
@@ -267,7 +278,7 @@ export function createGestures(orbit: Orbit, pointer: Pointer | null = null) {
       if (!pointers.delete(id)) return false;
       if (pointers.size < 2) pinch = null;
       if (pointers.size > 0) { drag = pan = null; return false; }
-      const tap = !!drag && !moved && !multiTouch;
+      const tap = tappable && !moved;
       drag = pan = null;
       moved = false;
       return tap;

@@ -54,7 +54,7 @@ export function createView(host: HTMLElement) {
     frameFloor(camera, orbit, rows);
   }
 
-  // Drag to orbit; right-, middle- or Shift-drag (or two fingers) to pan; pinch or scroll to zoom
+  // Map-style: drag to pan, right- or Shift-drag to orbit (touch: one finger orbits, two pan); pinch or scroll to zoom
   // towards what's under the pointer; double-click to focus; Home to go back. A press that doesn't
   // move counts as a click.
   const canvas = renderer.domElement;
@@ -76,9 +76,8 @@ export function createView(host: HTMLElement) {
   const doubleTap = createDoubleTap();
   blockContextMenu(canvas);
   canvas.addEventListener('pointerdown', (e) => {
-    const pans = pansWith(e);
-    if (pans) e.preventDefault(); // no autoscroll on middle-drag
-    gestures.down(e.pointerId, e.clientX, e.clientY, pans);
+    if (e.button === 1) e.preventDefault(); // no autoscroll on middle-drag
+    gestures.down(e.pointerId, e.clientX, e.clientY, { pans: pansWith(e), taps: e.button === 0 });
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
