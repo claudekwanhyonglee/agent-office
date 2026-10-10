@@ -91,3 +91,23 @@ export function addSoloProps(group: THREE.Group) {
   stack.add(at(box(0.28, 0.06, 0.2, '#FFFFFF', { outline: 0.04 }), 0, 0.43, 0));
   group.add(turned(at(stack, paperStack.x, 0, paperStack.z), 0.2));
 }
+
+/** The pool table and ping-pong table (#31). */
+export function addGameTables(group: THREE.Group) {
+  const { poolTable: pool, pingPong: pong } = BREAK_ROOM;
+  const table = tag(new THREE.Group(), 'pool-table');
+  table.add(at(box(pool.w, 0.18, pool.d, WOOD), 0, 0.72, 0));
+  table.add(at(box(pool.w - 0.2, 0.03, pool.d - 0.2, '#3F8A5C', { outline: 0, shadow: false }), 0, 0.82, 0));
+  for (const dx of [-0.45, 0.45]) for (const dz of [-0.9, 0.9]) table.add(at(box(0.12, 0.65, 0.12, '#8C6A4A', { outline: 0.02 }), dx, 0.32, dz));
+  ['#FFFFFF', '#E2B347', '#C25B7A', '#4D86FF', '#241C2F'].forEach((color, i) => {
+    table.add(at(ball(0.05, color, { outline: 0.06, shadow: false }), -0.25 + (i % 3) * 0.2, 0.88, -0.3 + Math.floor(i / 3) * 0.5));
+  });
+  group.add(at(table, pool.x, 0, pool.z));
+
+  const pingPong = tag(new THREE.Group(), 'ping-pong-table');
+  pingPong.add(at(box(pong.w, 0.06, pong.d, '#3E6FD0'), 0, 0.74, 0));
+  pingPong.add(at(box(0.02, 0.005, pong.d, '#FFFFFF', { outline: 0, shadow: false }), 0, 0.775, 0));
+  pingPong.add(at(box(0.03, 0.15, pong.d + 0.1, '#F4EEE2', { outline: 0.02 }), 0, 0.85, 0)); // net
+  for (const dx of [-0.9, 0.9]) for (const dz of [-0.45, 0.45]) pingPong.add(at(box(0.06, 0.72, 0.06, INK, { outline: 0 }), dx, 0.36, dz));
+  group.add(at(pingPong, pong.x, 0, pong.z));
+}

@@ -83,6 +83,7 @@ export class OfficeController {
       if (listed.has(key)) continue;
       this.agents.delete(key);
       events.push({ type: 'leave', key, path: route(this.layout, this.whereNow(agent, now), this.layout.doorLink) });
+      this.endIfShortHanded(agent.place, now, events);
     }
 
     for (const [key, record] of listed) {
@@ -118,7 +119,7 @@ export class OfficeController {
     const path = arrivalPath(this.layout, seat);
     if (this.firstUpdate) {
       // Already there when the page opened: idle agents are found at a hangout spot.
-      const place = isIdle(record.state) ? this.pick(this.freePlaces()) : null;
+      const place = isIdle(record.state) ? this.pick(this.freePlaces().filter((p) => !this.spotOf(p).game)) : null;
       if (place) {
         agent.place = place;
         agent.nextAt = now + this.between(STAY);
@@ -147,40 +148,76 @@ export class OfficeController {
   }
 
   private wander(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
-    const free = this.freePlaces();
-    if (this.clock.random() < CHAT_CHANCE) {
-      const partner = this.chatPartner(key, now);
-      const spot = this.pick(this.layout.hangouts.filter((s) => s.chat && s.places.every((p) => free.includes(p))));
-      if (partner && spot) {
-        this.send(key, agent, spot.places[0], now, events);
-        this.send(partner[0], partner[1], spot.places[1], now, events);
-        return;
-      }
-    }
+    if (this.clock.random() < CHAT_CHANCE && this.startTogether(key, agent, now, events)) return;
     const here = agent.place?.spot;
-    const place = this.pick(free.filter((p) => !this.layout.hangouts.find((s) => s.name === p.spot)!.chat && p.spot !== here));
+    const place = this.pick(this.freePlaces().filter((p) => this.isSolo(p) && p.spot !== here));
     if (place) this.send(key, agent, place, now, events);
-    else agent.nextAt = now + RETRY;
+    else if (agent.place && !this.isSolo(agent.place)) {
+      // Nowhere free, but a game can't be played alone: wait at the desk instead.
+      this.send(key, agent, null, now, events);
+      agent.nextAt = agent.arrivesAt + RETRY;
+    } else agent.nextAt = now + RETRY;
   }
 
-  /** Another idle agent that is free to talk: arrived, and either at its desk or done with a minimum stay. */
-  private chatPartner(key: string, now: number) {
-    const candidates = [...this.agents].filter(([other, a]) =>
+  /**
+   * Starts a chat or game at a free spot, with enough free idle agents to start it (as many as
+   * it has places). A game's players all finish at the same time.
+   */
+  private startTogether(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
+    const free = this.freePlaces();
+    const spot = this.pick(this.layout.hangouts.filter((s) => !this.isSolo(s.places[0]) && s.places.every((p) => free.includes(p))));
+    if (!spot) return false;
+    const partners = this.shuffled(this.freeToJoin(key, now)).slice(0, spot.places.length - 1);
+    if (partners.length + 1 < (spot.game?.min ?? spot.places.length)) return false;
+    const players: [string, Occupant][] = [[key, agent], ...partners];
+    players.forEach(([k, a], i) => this.send(k, a, spot.places[i], now, events));
+    if (spot.game) {
+      // One end time that keeps every player's stay within STAY (when their arrivals are close enough).
+      const arrivals = players.map(([, a]) => a.arrivesAt);
+      const earliest = Math.max(...arrivals) + STAY.min, latest = Math.min(...arrivals) + STAY.max;
+      const end = this.between({ min: earliest, max: Math.max(earliest, latest) });
+      for (const [, a] of players) a.nextAt = end;
+    }
+    return true;
+  }
+
+  /** Other idle agents free to join in: arrived, and either at their desk or done with a minimum stay at a solo place. */
+  private freeToJoin(key: string, now: number) {
+    return [...this.agents].filter(([other, a]) =>
       other !== key && isIdle(a.record.state) && a.nextAt != null && a.arrivesAt <= now
-      && (!a.place || (!a.place.spot.startsWith('chat') && now - a.arrivesAt >= STAY.min)));
-    return this.pick(candidates);
+      && (!a.place || (this.isSolo(a.place) && now - a.arrivesAt >= STAY.min)));
+  }
+
+  /** After a player leaves `left`, a game left with fewer than 2 players ends and the rest move on. */
+  private endIfShortHanded(left: HangoutPlace | null, now: number, events: OfficeEvent[]) {
+    if (!left || !this.spotOf(left).game) return;
+    const players = [...this.agents].filter(([, a]) => a.place?.spot === left.spot);
+    if (players.length >= 2) return;
+    for (const [key, agent] of players) this.wander(key, agent, now, events);
+  }
+
+  private spotOf(place: HangoutPlace) {
+    return this.layout.hangouts.find((s) => s.name === place.spot)!;
+  }
+
+  /** A place one agent uses on its own (not part of a chat or game). */
+  private isSolo(place: HangoutPlace) {
+    const spot = this.spotOf(place);
+    return !spot.chat && !spot.game;
   }
 
   /** Walk the agent to `place` (null: its desk) from wherever it is now. */
   private send(key: string, agent: Occupant, place: HangoutPlace | null, now: number, events: OfficeEvent[]) {
     const origin = this.whereNow(agent, now);
     const path = route(this.layout, origin, place ? place.link : agent.seat.link);
+    const left = agent.place;
     agent.place = place;
     agent.walk = { path, origin, startedAt: now };
     agent.arrivesAt = now + pathLength(path) / WALK_SPEED;
     agent.nextAt = place ? agent.arrivesAt + this.between(STAY) : null;
     agent.actAt = agent.arrivesAt + PLANE_FIRST;
     events.push({ type: 'walk', key, path, place });
+    if (left !== place) this.endIfShortHanded(left, now, events);
   }
 
   /** Once arrived, an agent at the paper-plane place throws planes at the desks. */
@@ -206,6 +243,12 @@ export class OfficeController {
   private freePlaces() {
     const taken = new Set([...this.agents.values()].map((a) => a.place));
     return this.layout.hangouts.flatMap((s) => s.places).filter((p) => !taken.has(p));
+  }
+
+  private shuffled<T>(options: T[]): T[] {
+    const rest = [...options], out: T[] = [];
+    while (rest.length) out.push(rest.splice(Math.floor(this.clock.random() * rest.length), 1)[0]);
+    return out;
   }
 
   private pick<T>(options: T[]): T | null {

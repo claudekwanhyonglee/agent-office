@@ -7,6 +7,7 @@ import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
 
 const SEAT_Y = 0.38;
+const WOOD_DARK = '#8C6A4A';
 const HOP_SECONDS = 0.45;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const motion = REDUCED_MOTION ? 0.35 : 1;
@@ -521,6 +522,36 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     if (held) held.visible = windUp;
     return 2.2;
   },
+  'cue-shot': ({ pivot, head, hands: [hl, hr], held }, tt) => {
+    // Bent over the table, drawing the cue back and striking.
+    const stroke = Math.sin(tt * 2.2) * 0.12 * motion;
+    pivot.rotation.x = 0.5;
+    head.rotation.x = -0.35;
+    hl.position.set(-0.1, 0.95, 0.75);
+    hr.position.set(0.12, 0.85, 0.05 + stroke);
+    if (held) held.rotation.set(-1.35, 0, 0);
+    return 2.0;
+  },
+  'cue-wait': ({ pivot, head, hands: [hl, hr], held }, tt) => {
+    // Leaning on the cue, watching.
+    pivot.rotation.z = 0.06;
+    head.rotation.y = Math.sin(tt * 0.6) * 0.2 * motion;
+    hl.position.set(0.05, 1.0, 0.3);
+    hr.position.set(0.18, 0.85, 0.3);
+    if (held) held.rotation.set(-0.1, 0, 0);
+    return 2.2;
+  },
+  paddle: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
+    const swing = Math.sin(tt * 4.5);
+    pivot.position.x = swing * 0.12 * motion;
+    pivot.rotation.x = 0.15;
+    head.rotation.x = -0.1;
+    hl.position.set(-0.4, 0.7, 0.2);
+    hr.position.set(0.35 + swing * 0.15 * motion, 0.85, 0.45);
+    fl.position.set(-0.22 + swing * 0.1 * motion, 0.06, 0.04);
+    fr.position.set(0.22 + swing * 0.1 * motion, 0.06, 0.04);
+    return 2.2;
+  },
 };
 
 function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
@@ -531,7 +562,16 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   const dart = at(cyl(0.012, 0.03, 0.18, '#FF5A5A', { outline: 0.05 }), 0, 0.08, 0.05);
   dart.rotation.x = Math.PI / 2;
   const ball = at(mesh(new THREE.SphereGeometry(0.13, 16, 12), '#F07A4A', { outline: 0.06 }), 0, 0.15, 0.1);
-  return { fishing: rod, 'throwing-darts': dart, 'shooting-hoops': ball, 'throwing-plane': paperPlane() };
+  const cue = () => at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.4, 0);
+  const bat = new THREE.Group();
+  bat.add(at(cyl(0.14, 0.14, 0.03, '#C25B7A', { outline: 0.05 }), 0, 0.2, 0.05));
+  bat.add(at(cyl(0.025, 0.025, 0.12, WOOD_DARK, { outline: 0 }), 0, 0.05, 0.02));
+  bat.children[0].rotation.x = Math.PI / 2;
+  const holding = (o: THREE.Object3D) => new THREE.Group().add(o);
+  return {
+    fishing: rod, 'throwing-darts': dart, 'shooting-hoops': ball, 'throwing-plane': paperPlane(),
+    'cue-shot': holding(cue()), 'cue-wait': holding(cue()), paddle: bat,
+  };
 }
 
 /** A small white dart-shaped plane, nose along +z. */

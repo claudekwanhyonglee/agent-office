@@ -23,7 +23,8 @@ export interface SeatSpot {
 
 export type HangoutPose =
   | 'eating' | 'drinking' | 'lounging' | 'chatting'
-  | 'lounging-sun' | 'fishing' | 'swinging' | 'yoga' | 'bouncing' | 'throwing-darts' | 'shooting-hoops' | 'throwing-plane';
+  | 'lounging-sun' | 'fishing' | 'swinging' | 'yoga' | 'bouncing' | 'throwing-darts' | 'shooting-hoops' | 'throwing-plane'
+  | 'cue-shot' | 'cue-wait' | 'paddle';
 
 export interface HangoutPlace extends Point {
   spot: string;
@@ -36,7 +37,13 @@ export interface HangoutPlace extends Point {
   link: Point[];
 }
 
-export interface HangoutSpot { name: string; chat: boolean; places: HangoutPlace[] }
+export interface HangoutSpot {
+  name: string;
+  chat: boolean;
+  places: HangoutPlace[];
+  /** A game or group activity: it starts with at least `min` idle agents and takes one per place. */
+  game?: { min: number };
+}
 
 export interface Area { name: string; x0: number; x1: number; z0: number; z1: number }
 
@@ -133,6 +140,10 @@ export const BREAK_ROOM = {
   bin: { x: -8.5, z: 6.3 },
   /** Pin 12 marks the throwing spot on the right aisle; the paper stack sits beside it. */
   paperStack: { x: 6.6, z: 4.0 },
+  /** Long side along z. */
+  poolTable: { x: 7.4, z: 1.6, w: 1.2, d: 2.2 },
+  /** Long side along x. */
+  pingPong: { x: 6.3, z: 8.7, w: 2.2, d: 1.2 },
 };
 
 export const MEETING_ROOM ={ x0: -8.7, x1: -6.05, z0: -0.8, z1: 2.2 };
@@ -187,6 +198,7 @@ export function officeLayout(rows: number) {
     chatSpot('chat-deck', { x: -1.6, z: 8.3 }, { x: -0.8, z: 8.3 }, toDeck),
     chatSpot('chat-deck-right', { x: 2.0, z: 8.3 }, { x: 2.8, z: 8.3 }, toDeck),
     ...soloSpots(),
+    ...pairGames(),
   ];
 
   const walkways: Point[][] = [
@@ -247,6 +259,33 @@ function soloSpots(): HangoutSpot[] {
     solo('darts', 'throwing-darts', { x: -6.6, z: BREAK_ROOM.dartboard.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.dartboard.z }]),
     solo('hoops', 'shooting-hoops', { x: -6.8, z: BREAK_ROOM.bin.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.bin.z }]),
     solo('planes', 'throwing-plane', { x: 6.25, z: 4.4 }, left, [{ x: AISLE_X, z: 4.4 }]),
+  ];
+}
+
+/** Two-player games at either end of a table (#31). */
+function pairGames(): HangoutSpot[] {
+  const { poolTable: pool, pingPong: pong } = BREAK_ROOM;
+  const end = (spot: string, pose: HangoutPose, p: Point, toward: Point, link: Point[]): HangoutPlace =>
+    ({ ...p, spot, pose, yaw: yawTowards(p, toward), link: [p, ...link] });
+  const poolEnds = [pool.z - pool.d / 2 - 0.45, pool.z + pool.d / 2 + 0.45];
+  const pongEnds = [pong.x - pong.w / 2 - 0.5, pong.x + pong.w / 2 + 0.5];
+  return [
+    {
+      name: 'pool-table',
+      chat: false,
+      game: { min: 2 },
+      places: poolEnds.map((z, i) => end('pool-table', i ? 'cue-wait' : 'cue-shot', { x: pool.x, z }, pool,
+        [{ x: 6.4, z }, { x: AISLE_X, z }])),
+    },
+    {
+      name: 'ping-pong',
+      chat: false,
+      game: { min: 2 },
+      places: [
+        end('ping-pong', 'paddle', { x: pongEnds[0], z: pong.z }, pong, [{ x: pongEnds[0], z: DECK_Z }]),
+        end('ping-pong', 'paddle', { x: pongEnds[1], z: pong.z }, pong, [{ x: pongEnds[1], z: DECK_Z }, { x: AISLE_X, z: DECK_Z }]),
+      ],
+    },
   ];
 }
 
