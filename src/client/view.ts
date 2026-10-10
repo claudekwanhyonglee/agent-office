@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildOffice, type Seat } from './office.ts';
-import { floorDepth } from './layout.ts';
+import { FLOOR, floorFront } from './layout.ts';
 
 /** Renderer, lights, orbit camera and the office. Agents are layered on by callers. */
 export function createView(host: HTMLElement) {
@@ -20,8 +20,8 @@ export function createView(host: HTMLElement) {
   sun.shadow.bias = -0.0008;
   scene.add(sun, sun.target);
 
-  const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
-  const orbit = { theta: 0.28, phi: 0.86, radius: 13, target: new THREE.Vector3(1.1, 0.5, 0.3) };
+  const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 150);
+  const orbit = { theta: 0.22, phi: 0.86, radius: 18, target: new THREE.Vector3(0, 0.5, 0) };
 
   let office: { group: THREE.Group; seats: Seat[] } | undefined;
   let podCount = 0;
@@ -43,13 +43,14 @@ export function createView(host: HTMLElement) {
     office = buildOffice(count);
     scene.add(office.group);
     // Frame the whole floor and stretch the sun's shadow box over it.
-    const depth = floorDepth(count), centerZ = (depth - 7.8) / 2;
-    orbit.target.z = 0.3 + centerZ;
-    orbit.radius = Math.max(orbit.radius, 9 + depth * 0.55);
-    const half = Math.max(8, depth / 2 + 2);
+    const front = floorFront(count), depth = front - FLOOR.back, centerZ = (FLOOR.back + front) / 2;
+    const width = FLOOR.right - FLOOR.left;
+    orbit.target.z = centerZ + 1.5;
+    orbit.radius = Math.max(orbit.radius, 4 + Math.max(width, depth) * 0.9);
+    const half = Math.max(width, depth) / 2 + 2;
     Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 40 });
     sun.shadow.camera.updateProjectionMatrix();
-    sun.position.set(4, 9, 6 + centerZ);
+    sun.position.set(5, 14, 8 + centerZ);
     sun.target.position.set(0, 0, centerZ);
     resize();
     return office.seats;
@@ -59,7 +60,7 @@ export function createView(host: HTMLElement) {
     const w = host.clientWidth || innerWidth, h = host.clientHeight || innerHeight;
     renderer.setSize(w, h);
     camera.aspect = w / h;
-    if (w < 700) { orbit.radius = Math.max(orbit.radius, 18); orbit.target.x = 0; }
+    if (w < 700) orbit.radius = Math.max(orbit.radius, 30);
     camera.updateProjectionMatrix();
     placeCamera();
   }
@@ -87,7 +88,7 @@ export function createView(host: HTMLElement) {
   });
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    orbit.radius = THREE.MathUtils.clamp(orbit.radius * (e.deltaY > 0 ? 1.08 : 0.92), 6, 30);
+    orbit.radius = THREE.MathUtils.clamp(orbit.radius * (e.deltaY > 0 ? 1.08 : 0.92), 6, 45);
     placeCamera();
   }, { passive: false });
 

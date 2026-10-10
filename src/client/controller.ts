@@ -1,7 +1,7 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
-import { DESKS_PER_POD, arrivalPath, departurePath, seatLayout, type Point, type SeatSpot } from './layout.ts';
+import { PODS_PER_ROW, arrivalPath, departurePath, seatLayout, type Point, type SeatSpot } from './layout.ts';
 
-export const INITIAL_PODS = 2;
+export const INITIAL_PODS = 4;
 
 export interface Occupant { record: AgentRecord; seat: SeatSpot }
 
@@ -14,7 +14,7 @@ export type OfficeEvent =
 
 /**
  * Decides who sits where. Agents (keyed by session id) take the first free desk and keep it
- * while listed; when every desk is taken, a pod is added. Rendering only follows its events.
+ * while listed; when every desk is taken, a row of pods is added. Rendering only follows its events.
  */
 export class OfficeController {
   readonly agents = new Map<string, Occupant>();
@@ -55,13 +55,12 @@ export class OfficeController {
 
   private freeSeat(events: OfficeEvent[]) {
     const taken = new Set([...this.agents.values()].map((o) => o.seat.index));
-    let seat = this.seats.find((s) => !taken.has(s.index));
-    if (!seat) {
-      this.podCount++;
+    const free = () => this.seats.find((s) => !taken.has(s.index));
+    if (!free()) {
+      this.podCount += PODS_PER_ROW;
       this.seats = seatLayout(this.podCount);
       events.push({ type: 'pods', count: this.podCount });
-      seat = this.seats[(this.podCount - 1) * DESKS_PER_POD];
     }
-    return seat;
+    return free()!;
   }
 }
