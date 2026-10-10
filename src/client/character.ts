@@ -44,7 +44,7 @@ export class Character {
   place: HangoutPlace | null = null;
 
   private pivot = new THREE.Group();
-  private head = new THREE.Group();
+  readonly head = new THREE.Group();
   private eyes: THREE.Mesh[];
   private hands: THREE.Mesh[];
   private feet: THREE.Mesh[];

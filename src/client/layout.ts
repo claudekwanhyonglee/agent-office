@@ -91,6 +91,8 @@ export const GLASS_DOORS = [{ x0: -6.3, x1: -5.3 }, { x0: 5.3, x1: 6.3 }];
 /** Side aisles from the hall, through the glass doors, to the deck walkway. */
 export const AISLE_X = 5.8;
 export const DECK_Z = 7.6;
+/** Centre to centre between two people chatting. */
+const CHAT_GAP = 1.3;
 
 export const yawTowards = (from: Point, to: Point) => Math.atan2(to.x - from.x, to.z - from.z);
 
@@ -196,7 +198,9 @@ export function officeLayout(rows: number) {
   });
   const standing = (spot: string, p: Point, pose: HangoutPose, yaw = Math.PI): HangoutPlace =>
     ({ ...p, spot, yaw, pose, link: toHall(p) });
-  const chatSpot = (name: string, a: Point, c: Point, link: (p: Point) => Point[]): HangoutSpot => {
+  /** Two places facing each other across `centre`, CHAT_GAP apart (#56). */
+  const chatSpot = (name: string, centre: Point, link: (p: Point) => Point[]): HangoutSpot => {
+    const [a, c] = [-1, 1].map((side) => ({ x: centre.x + (side * CHAT_GAP) / 2, z: centre.z }));
     const place = (p: Point, other: Point): HangoutPlace => ({ ...p, spot: name, yaw: yawTowards(p, other), pose: 'chatting', link: link(p) });
     return { name, chat: true, places: [place(a, c), place(c, a)] };
   };
@@ -218,9 +222,9 @@ export function officeLayout(rows: number) {
       places: [standing('water-cooler', { x: cooler.x, z: -3.75 + b }, 'drinking'), standing('water-cooler', cooler2, 'drinking', yawTowards(cooler2, cooler))],
     },
     { name: 'lounge', chat: false, places: [sofaSeat(5.7), sofaSeat(6.4), sofaSeat(7.1)] },
-    chatSpot('chat-hall', { x: -1.4, z: -2.6 + b }, { x: -0.6, z: -2.6 + b }, toHall),
-    chatSpot('chat-deck', { x: -1.6, z: 8.3 }, { x: -0.8, z: 8.3 }, toDeck),
-    chatSpot('chat-deck-right', { x: 2.0, z: 8.3 }, { x: 2.8, z: 8.3 }, toDeck),
+    chatSpot('chat-hall', { x: -1.0, z: -2.6 + b }, toHall),
+    chatSpot('chat-deck', { x: -1.2, z: 8.3 }, toDeck),
+    chatSpot('chat-deck-right', { x: 2.4, z: 8.3 }, toDeck),
     ...soloSpots(),
     ...pairGames(),
     {
