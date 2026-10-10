@@ -1,2 +1,6 @@
 .claude/worktrees/
 design/
+node_modules/
+dist/
+.tk-*.md
+.shots/
