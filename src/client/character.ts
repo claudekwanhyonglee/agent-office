@@ -601,6 +601,36 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     hr.position.set(0.25, 0.85, 0.5);
     return 2.2;
   },
+  petting: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
+    // Crouched by the dog, a hand stroking its back.
+    pivot.position.y = -0.22;
+    pivot.rotation.x = 0.35;
+    head.rotation.x = 0.35;
+    hl.position.set(-0.4, 0.4, 0.15);
+    hr.position.set(0.05, 0.45, 0.62 + Math.sin(tt * 3) * 0.08 * motion);
+    fl.position.set(-0.2, 0.06, 0.2);
+    fr.position.set(0.2, 0.06, 0.2);
+    return 1.95;
+  },
+  feeding: ({ pivot, head, hands: [hl, hr], held }, tt) => {
+    // Bent over the bowl, shaking food out of a box.
+    pivot.rotation.x = 0.3;
+    head.rotation.x = 0.4;
+    hl.position.set(-0.4, 0.55, 0.15);
+    hr.position.set(0.12, 0.85, 0.55);
+    if (held) held.rotation.z = 1.6 + Math.sin(tt * 8) * 0.2 * motion;
+    return 2.1;
+  },
+  'throwing-ball': ({ pivot, head, hands: [hl, hr], held }, tt) => {
+    const k = throwPhase(tt, 6);
+    const windUp = k < 0.6;
+    pivot.rotation.y = windUp ? -0.2 : 0.15;
+    head.rotation.x = -0.1;
+    hl.position.set(-0.4, 0.75, 0.25);
+    hr.position.copy(windUp ? new THREE.Vector3(0.35, 1.4, -0.15) : new THREE.Vector3(0.25, 1.4, 0.6));
+    if (held) held.visible = windUp;
+    return 2.2;
+  },
   gaming: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
     // On the sofa, leaning in, thumbs going.
     const mash = Math.max(0, Math.sin(tt * 14)) * 0.025 * motion;
@@ -632,6 +662,8 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   return {
     fishing: rod, 'throwing-darts': dart, 'shooting-hoops': ball, 'throwing-plane': paperPlane(),
     'cue-shot': holding(cue()), 'cue-wait': holding(cue()), paddle: bat, gaming: gamepad(),
+    feeding: at(mesh(new THREE.BoxGeometry(0.14, 0.2, 0.08), '#F07A4A', { outline: 0.06 }), 0, 0.1, 0.05),
+    'throwing-ball': at(mesh(new THREE.SphereGeometry(0.08, 12, 10), '#C8E04A', { outline: 0.08 }), 0, 0.12, 0.08),
   };
 }
 

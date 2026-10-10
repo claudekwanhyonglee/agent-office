@@ -6,6 +6,7 @@ import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { PaperPlanes } from './paper-planes.ts';
 import { DeskMugs } from './break-room.ts';
+import { Dog } from './dog.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
 
@@ -27,6 +28,9 @@ export function createOfficeScene(host: HTMLElement) {
   let selected: string | null = null;
   const planes = new PaperPlanes(view.scene);
   const mugs = new DeskMugs(view.scene);
+  const dog = new Dog();
+  dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
+  view.scene.add(dog.root);
 
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.55, 0.68, 40),
@@ -66,6 +70,9 @@ export function createOfficeScene(host: HTMLElement) {
       } else if (event.type === 'high-five') {
         characters.get(event.key)?.highFive();
         characters.get(event.to)?.highFive();
+      } else if (event.type === 'dog') {
+        if (event.path.length === 1) dog.placeAt(event.path[0], event.lie);
+        else dog.go(event.path, event.lie);
       } else if (event.type === 'mug') {
         mugs.set(office.seats[event.desk], event.on);
       } else if (event.type === 'leave') {
@@ -106,6 +113,7 @@ export function createOfficeScene(host: HTMLElement) {
     apply(controller.tick());
     characters.forEach((c) => c.update(t, dt));
     planes.update(dt);
+    dog.update(t, dt);
     for (const c of leaving) {
       c.update(t, dt);
       if (c.mode === 'gone') { view.scene.remove(c.root); leaving.delete(c); }

@@ -133,6 +133,24 @@ export function addGameTables(group: THREE.Group) {
   group.add(at(pingPong, pong.x, 0, pong.z));
 }
 
+/** The dog's bed and bowl (#34). */
+export function addPetCorner(group: THREE.Group) {
+  const { petBed, bowl } = BREAK_ROOM;
+  const bed = tag(new THREE.Group(), 'pet-bed');
+  const cushion = cyl(1, 1, 0.12, '#E2B347', { outline: 0.03 }, 32);
+  cushion.scale.set(petBed.rx, 1, petBed.rz);
+  bed.add(at(cushion, 0, 0.06, 0));
+  const rim = mesh(new THREE.TorusGeometry(1, 0.12, 8, 32), '#C25B7A', { outline: 0.03 });
+  rim.rotation.x = Math.PI / 2;
+  rim.scale.set(petBed.rx * 0.9, petBed.rz * 0.9, 1);
+  bed.add(at(rim, 0, 0.12, 0));
+  group.add(at(bed, petBed.x, 0, petBed.z));
+  const dish = tag(new THREE.Group(), 'dog-bowl');
+  dish.add(at(cyl(bowl.r, bowl.r * 0.8, 0.07, '#4D86FF', { outline: 0.05 }), 0, 0.035, 0));
+  dish.add(at(cyl(bowl.r * 0.8, bowl.r * 0.8, 0.01, '#8C5A3A', { outline: 0, shadow: false }), 0, 0.07, 0));
+  group.add(at(dish, bowl.x, 0, bowl.z));
+}
+
 /** The pool with its four rubber rings (#32); couch co-op uses the lounge's sofa and TV. */
 export function addPool(group: THREE.Group) {
   const { pool } = BREAK_ROOM;

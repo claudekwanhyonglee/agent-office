@@ -6,7 +6,7 @@ import {
 import { SCREEN_OFF } from './poses.ts';
 import { DeskScreen, screenContent } from './screen.ts';
 import { BigBoard } from './board.ts';
-import { addGameTables, addPool, addSoloProps } from './break-room.ts';
+import { addGameTables, addPetCorner, addPool, addSoloProps } from './break-room.ts';
 import type { AgentRecord } from '../shared/agent.ts';
 
 export { SCREEN_OFF };
@@ -45,6 +45,7 @@ export function buildOffice(rows: number) {
   addSoloProps(group);
   addGameTables(group);
   addPool(group);
+  addPetCorner(group);
 
   const deskRows = Array.from({ length: rows }, () => tag(new THREE.Group(), 'desk-row'));
   group.add(...deskRows);

@@ -25,7 +25,8 @@ export type HangoutPose =
   | 'eating' | 'drinking' | 'lounging' | 'chatting'
   | 'lounging-sun' | 'fishing' | 'swinging' | 'yoga' | 'bouncing' | 'throwing-darts' | 'shooting-hoops' | 'throwing-plane'
   | 'cue-shot' | 'cue-wait' | 'paddle' | 'floating' | 'gaming'
-  | 'watching' | 'high-five' | 'delivering';
+  | 'watching' | 'high-five' | 'delivering'
+  | 'petting' | 'feeding' | 'throwing-ball';
 
 export interface HangoutPlace extends Point {
   spot: string;
@@ -46,6 +47,18 @@ export interface HangoutSpot {
   game?: { min: number };
 }
 
+/** Where the office dog stops (#34), how it gets there, and where agents stand to play with it. */
+export interface DogSpot {
+  name: string;
+  dog: Point;
+  /** From the dog's spot out to a walkway. */
+  link: Point[];
+  /** Where a thrown ball lands: the dog runs there and back. */
+  fetch: Point;
+  /** Where agents stand with the dog, and what they can do there. */
+  visitors: { at: Point; link: Point[]; poses: HangoutPose[] }[];
+}
+
 export interface Area { name: string; x0: number; x1: number; z0: number; z1: number }
 
 export const DESKS_PER_ROW = 8;
@@ -53,6 +66,7 @@ export const INITIAL_ROWS = 2;
 
 /** Metres per second; the controller uses it to know when a walk ends. */
 export const WALK_SPEED = 1.7;
+export const DOG_SPEED = 2.4;
 
 /** The rows curve around this point; every desk faces it. */
 const ARC_CENTER: Point = { x: 0, z: 11.5 };
@@ -141,6 +155,8 @@ export const BREAK_ROOM = {
   bin: { x: -8.5, z: 6.3 },
   /** Pin 12 marks the throwing spot on the right aisle; the paper stack sits beside it. */
   paperStack: { x: 6.6, z: 4.0 },
+  petBed: { x: 7.4, z: 5.4, rx: 0.45, rz: 0.32 },
+  bowl: { x: 8.05, z: 5.55, r: 0.13 },
   /** Long side along z. */
   poolTable: { x: 7.4, z: 1.6, w: 1.2, d: 2.2 },
   /** Long side along x. */
@@ -236,6 +252,7 @@ export function officeLayout(rows: number) {
     seats: seatsFor(rows),
     hangouts,
     walkways,
+    dogSpots: dogSpots(hallZ),
     /** The walkway behind each row of chairs. */
     lanes,
     kitchen,
@@ -380,6 +397,38 @@ export function along(path: Point[], d: number): { leg: number; done: boolean } 
 }
 
 export const pathLength = (path: Point[]) => path.slice(1).reduce((sum, p, i) => sum + distance(path[i], p), 0);
+
+/** The dog's bed (first: it starts there), a spot on the deck, one in the hall and one in the left aisle. */
+function dogSpots(hallZ: number): DogSpot[] {
+  const play: HangoutPose[] = ['petting', 'throwing-ball'];
+  const onWalkway = (p: Point) => ({ at: p, link: [p], poses: play });
+  const { petBed: bed } = BREAK_ROOM;
+  const onDeck = (x: number) => ({ at: { x, z: 8.25 }, link: [{ x, z: 8.25 }, { x, z: DECK_Z }], poses: play });
+  return [
+    {
+      name: 'bed',
+      dog: { x: bed.x, z: bed.z },
+      link: [{ x: bed.x, z: bed.z }, { x: 6.6, z: bed.z }, { x: AISLE_X, z: bed.z }],
+      fetch: { x: AISLE_X, z: 3.0 },
+      visitors: [
+        { at: { x: 6.45, z: bed.z }, link: [{ x: 6.45, z: bed.z }, { x: AISLE_X, z: bed.z }], poses: play },
+        { at: { x: 7.6, z: 6.15 }, link: [{ x: 7.6, z: 6.15 }, { x: AISLE_X, z: 6.15 }], poses: ['feeding'] },
+      ],
+    },
+    {
+      name: 'deck', dog: { x: 0.6, z: 8.25 }, link: [{ x: 0.6, z: 8.25 }, { x: 0.6, z: DECK_Z }], fetch: { x: -2.5, z: DECK_Z },
+      visitors: [onDeck(0), onDeck(1.2)],
+    },
+    {
+      name: 'hall', dog: { x: 1.5, z: hallZ }, link: [{ x: 1.5, z: hallZ }], fetch: { x: -1.5, z: hallZ },
+      visitors: [onWalkway({ x: 0.9, z: hallZ }), onWalkway({ x: 2.1, z: hallZ })],
+    },
+    {
+      name: 'left aisle', dog: { x: -AISLE_X, z: 3.0 }, link: [{ x: -AISLE_X, z: 3.0 }], fetch: { x: -AISLE_X, z: 0 },
+      visitors: [onWalkway({ x: -AISLE_X, z: 2.4 }), onWalkway({ x: -AISLE_X, z: 3.6 })],
+    },
+  ];
+}
 
 /** Gap between the spots where onlookers stand behind a chair. */
 const ONLOOKER_GAP = 0.45;

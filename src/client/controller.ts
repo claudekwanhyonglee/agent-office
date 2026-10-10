@@ -1,7 +1,7 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
 import {
-  INITIAL_ROWS, WALK_SPEED, along, arrivalPath, behindChair, officeLayout, pathLength, route, withoutLoops, yawTowards,
-  type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
+  DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, behindChair, officeLayout, pathLength, route, withoutLoops, yawTowards,
+  type DogSpot, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
 } from './layout.ts';
 
 /** Seconds an idle agent waits at its desk before wandering off (AC: within 3 s). */
@@ -18,6 +18,13 @@ const PLANE_FIRST = 1;
 const PLANE_EVERY = { min: 4, max: 7 };
 /** Seconds a high-fiver or coffee courier stays once there. */
 const ERRAND_STAY = 3;
+/** The dog (#34): how long it stops at a spot or rests in its bed, how often it goes to bed, how often agents go to it. */
+const DOG_PAUSE = { min: 5, max: 15 };
+const DOG_REST = { min: 20, max: 45 };
+const DOG_BED_CHANCE = 0.3;
+const DOG_CHANCE = 0.2;
+const DOG_VISITORS = 2;
+const FETCH_EVERY = { min: 5, max: 8 };
 
 const isIdle = (state: OfficeState) => state === 'done' || state === 'finished';
 
@@ -66,7 +73,20 @@ export type OfficeEvent =
   /** Agent `key` has walked over to agent `to` and they high-five. */
   | { type: 'high-five'; key: string; to: string }
   /** A coffee mug appears on (or is cleared from) desk `desk`. */
-  | { type: 'mug'; desk: number; on: boolean };
+  | { type: 'mug'; desk: number; on: boolean }
+  /** The dog runs along `path`, then lies down (in its bed) or stands. */
+  | { type: 'dog'; path: Point[]; lie: boolean }
+  /** Agent `key` throws a ball for the dog (the dog's run follows). */
+  | { type: 'fetch'; key: string };
+
+export interface DogState {
+  spot: DogSpot;
+  lying: boolean;
+  /** When its current walk or fetch run ends. */
+  arrivesAt: number;
+  /** When it next moves on (put off while agents are with it). */
+  nextAt: number;
+}
 
 export interface Clock {
   /** Seconds. */
@@ -89,9 +109,12 @@ export class OfficeController {
   private clock: Clock;
   /** Desks with a delivered mug, by the key of the agent working there. */
   private mugs = new Map<string, number>();
+  readonly dog: DogState;
 
   constructor(clock: Partial<Clock> = {}) {
     this.clock = { ...systemClock, ...clock };
+    const now = this.clock.now();
+    this.dog = { spot: this.layout.dogSpots[0], lying: true, arrivesAt: now, nextAt: now + this.between(DOG_REST) };
   }
 
   update(records: AgentRecord[]): OfficeEvent[] {
@@ -126,6 +149,7 @@ export class OfficeController {
       if (agent.nextAt != null && agent.nextAt <= now) this.wander(key, agent, now, events);
       else this.act(key, agent, now, events);
     }
+    this.moveDog(now, events);
     return events;
   }
 
@@ -168,6 +192,51 @@ export class OfficeController {
       agent.nextAt = now + this.between(SET_OFF);
     }
     this.react(key, agent, was, now, events);
+  }
+
+  /** The dog moves on when its time is up and nobody is with it: to its bed now and then, else to another spot. */
+  private moveDog(now: number, events: OfficeEvent[]) {
+    const dog = this.dog;
+    if (dog.nextAt > now || dog.arrivesAt > now) return;
+    if (this.dogVisitors().length) {
+      dog.nextAt = now + RETRY;
+      return;
+    }
+    const [bed, ...others] = this.layout.dogSpots;
+    const lie = dog.spot !== bed && this.clock.random() < DOG_BED_CHANCE;
+    const next = lie ? bed : this.pick([bed, ...others].filter((s) => s !== dog.spot && s !== bed))!;
+    const path = route(this.layout, dog.spot.link, next.link);
+    dog.spot = next;
+    dog.lying = lie;
+    dog.arrivesAt = now + pathLength(path) / DOG_SPEED;
+    dog.nextAt = dog.arrivesAt + this.between(lie ? DOG_REST : DOG_PAUSE);
+    events.push({ type: 'dog', path, lie });
+  }
+
+  private dogVisitors() {
+    return [...this.agents.values()].filter((a) => a.place?.spot === 'dog');
+  }
+
+  /** An idle agent goes to the dog where it is (if it has stopped there and has room) to pet it, feed it or play fetch. */
+  private visitDog(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
+    const dog = this.dog, visitors = this.dogVisitors();
+    if (dog.arrivesAt > now || visitors.length >= DOG_VISITORS) return false;
+    const visit = this.pick(dog.spot.visitors.filter((v) => !visitors.some((a) => a.place!.x === v.at.x && a.place!.z === v.at.z)));
+    if (!visit) return false;
+    const place = errandPlace('dog', this.pick(visit.poses)!, visit.at, visit.link, yawTowards(visit.at, dog.spot.dog));
+    this.send(key, agent, place, now, events);
+    dog.nextAt = Math.max(dog.nextAt, agent.nextAt!);
+    return true;
+  }
+
+  /** The dog runs to where the ball lands and back. */
+  private fetch(key: string, now: number, events: OfficeEvent[]) {
+    const dog = this.dog;
+    const out = route(this.layout, dog.spot.link, [dog.spot.fetch]);
+    const path = [...out, ...out.slice(0, -1).reverse()];
+    dog.lying = false;
+    dog.arrivesAt = now + pathLength(path) / DOG_SPEED;
+    events.push({ type: 'fetch', key }, { type: 'dog', path, lie: false });
   }
 
   /** Idle agents react to another agent's state change (#33). */
@@ -248,6 +317,7 @@ export class OfficeController {
 
   private wander(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
     if (this.clock.random() < CHAT_CHANCE && this.startTogether(key, agent, now, events)) return;
+    if (this.clock.random() < DOG_CHANCE && this.visitDog(key, agent, now, events)) return;
     const here = agent.place?.spot;
     const place = this.pick(this.freePlaces().filter((p) => this.isSolo(p) && p.spot !== here));
     if (place) this.send(key, agent, place, now, events);
@@ -327,6 +397,11 @@ export class OfficeController {
   private act(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
     if (agent.arrivesAt > now || agent.actAt > now) return;
     if (agent.reaction && !agent.reaction.done) return this.finishErrand(key, agent.reaction, events);
+    if (agent.place?.pose === 'throwing-ball' && this.dog.arrivesAt <= now) {
+      this.fetch(key, now, events);
+      agent.actAt = now + this.between(FETCH_EVERY);
+      return;
+    }
     if (agent.place?.pose !== 'throwing-plane') return;
     events.push({ type: 'plane', key, desk: this.pick(this.layout.seats)!.index });
     agent.actAt = now + this.between(PLANE_EVERY);
@@ -396,6 +471,10 @@ export class OfficeController {
     this.layout = officeLayout(this.rows);
     events.push({ type: 'rows', count: this.rows });
     const places = old.hangouts.flatMap((s) => s.places), moved = this.layout.hangouts.flatMap((s) => s.places);
+    // The hall moves back, and the dog's hall spot with it.
+    this.dog.spot = this.layout.dogSpots.find((s) => s.name === this.dog.spot.name)!;
+    this.dog.arrivesAt = now;
+    events.push({ type: 'dog', path: [this.dog.spot.dog], lie: this.dog.lying });
     for (const [key, agent] of this.agents) {
       agent.seat = this.layout.seats[agent.seat.index];
       const walking = agent.walk && now < agent.arrivesAt;

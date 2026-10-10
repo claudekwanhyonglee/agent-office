@@ -193,7 +193,7 @@ describe('#25 AC3 routes stay clear, and the next epic has room', () => {
   });
 
   // #29 filled these areas with its props and activity places; anything else must still keep out.
-  const BREAK_ROOM_PROPS = ['sun-lounger', 'pond', 'jetty', 'tree', 'hammock', 'yoga-mat', 'trampoline', 'dartboard', 'bin', 'paper-stack', 'pool-table', 'ping-pong-table', 'pool', 'pool-ring'];
+  const BREAK_ROOM_PROPS = ['sun-lounger', 'pond', 'jetty', 'tree', 'hammock', 'yoga-mat', 'trampoline', 'dartboard', 'bin', 'paper-stack', 'pool-table', 'ping-pong-table', 'pool', 'pool-ring', 'pet-bed', 'dog-bowl'];
   const BREAK_ROOM_SPOTS = ['loungers', 'fishing', 'hammock', 'yoga', 'trampoline', 'darts', 'hoops', 'planes', 'pool-table', 'ping-pong', 'pool-dip'];
   it('#25 AC3 the next epic\'s prop areas hold no furniture other than its own props', () => {
     // From the epic: darts lane y 9–10 on the left wall, bin (0.5, 11.3), pool table (16.4, 6.6), pet bed (16.4, 10.4),
