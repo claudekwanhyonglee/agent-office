@@ -1,0 +1,13 @@
+{
+  "enabledPlugins": {
+    "ticket-kit@ticket-kit": true
+  },
+  "extraKnownMarketplaces": {
+    "ticket-kit": {
+      "source": {
+        "source": "github",
+        "repo": "claudekwanhyonglee/ticketed-spec-driven-development-plugin"
+      }
+    }
+  }
+}
