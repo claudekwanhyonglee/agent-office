@@ -193,7 +193,7 @@ export class DeskScreen {
     }
     const body = at(box(DISPLAY.width + 0.1, DISPLAY.height + 0.1, 0.06, '#3A3150'), 0, MONITOR_Y, MONITOR_AHEAD);
     const stand = at(box(0.1, 0.25, 0.08, '#4A4068'), 0, 0.92, MONITOR_AHEAD - 0.02);
-    this.display = at(new THREE.Mesh(new THREE.PlaneGeometry(DISPLAY.width, DISPLAY.height), new THREE.MeshBasicMaterial()), 0, MONITOR_Y, MONITOR_AHEAD + 0.031);
+    this.display = at(new THREE.Mesh(new THREE.PlaneGeometry(DISPLAY.width, DISPLAY.height), new THREE.MeshBasicMaterial()), 0, MONITOR_Y, MONITOR_AHEAD + 0.035);
     this.root.add(body, stand, this.display);
     this.root.position.set(desk.x, 0, desk.z);
     this.root.rotation.y = yaw;
