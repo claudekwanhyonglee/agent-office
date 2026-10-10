@@ -5,6 +5,7 @@ import { OfficeController, type OfficeEvent } from './controller.ts';
 import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { PaperPlanes } from './paper-planes.ts';
+import { DeskMugs } from './break-room.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
 
@@ -25,6 +26,7 @@ export function createOfficeScene(host: HTMLElement) {
   let office = view.setRows(INITIAL_ROWS);
   let selected: string | null = null;
   const planes = new PaperPlanes(view.scene);
+  const mugs = new DeskMugs(view.scene);
 
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.55, 0.68, 40),
@@ -61,6 +63,11 @@ export function createOfficeScene(host: HTMLElement) {
       } else if (event.type === 'plane') {
         const thrower = characters.get(event.key);
         if (thrower) planes.throw(thrower.root.position, office.seats[event.desk].desk);
+      } else if (event.type === 'high-five') {
+        characters.get(event.key)?.highFive();
+        characters.get(event.to)?.highFive();
+      } else if (event.type === 'mug') {
+        mugs.set(office.seats[event.desk], event.on);
       } else if (event.type === 'leave') {
         const character = characters.get(event.key)!;
         characters.delete(event.key);

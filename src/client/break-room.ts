@@ -1,7 +1,28 @@
 // Break-room props (#29), at their plan C positions. Each is tagged so route tests treat it as furniture.
 import * as THREE from 'three';
 import { at, ball, box, cyl, mesh, tag } from './toon.ts';
-import { BREAK_ROOM } from './layout.ts';
+import { BREAK_ROOM, type SeatSpot } from './layout.ts';
+
+/** Coffee mugs left on desks by a coffee delivery (#33), one per desk at most. */
+export class DeskMugs {
+  private mugs = new Map<number, THREE.Object3D>();
+
+  constructor(private parent: THREE.Object3D) {}
+
+  set(seat: SeatSpot, on: boolean) {
+    const old = this.mugs.get(seat.index);
+    if (old) this.parent.remove(old);
+    this.mugs.delete(seat.index);
+    if (!on) return;
+    const mug = tag(new THREE.Group(), 'mug');
+    mug.add(cyl(0.06, 0.05, 0.12, '#FFFFFF', { outline: 0.08 }));
+    mug.add(at(cyl(0.05, 0.05, 0.01, '#6B4226', { outline: 0, shadow: false }), 0, 0.055, 0));
+    // On the desk's corner by the sitter's right hand.
+    const right = { x: -Math.cos(seat.yaw), z: Math.sin(seat.yaw) };
+    this.parent.add(at(mug, seat.desk.x + right.x * 0.42, 0.85, seat.desk.z + right.z * 0.42));
+    this.mugs.set(seat.index, mug);
+  }
+}
 
 const INK = '#3A3150';
 const WOOD = '#C98A55';

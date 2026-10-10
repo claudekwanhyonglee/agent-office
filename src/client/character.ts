@@ -9,6 +9,7 @@ import { bubbleTexture } from './bubbles.ts';
 const SEAT_Y = 0.38;
 const WOOD_DARK = '#8C6A4A';
 const INK_DARK = '#3A3150';
+const HIGH_FIVE_SECONDS = 1.2;
 const HOP_SECONDS = 0.45;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const motion = REDUCED_MOTION ? 0.35 : 1;
@@ -52,6 +53,8 @@ export class Character {
   private exitK = 0;
   private scale = 1;
   private growing = false;
+  /** Seconds left of a raised-hand high five (#33). */
+  private highFiving = 0;
 
   constructor(look: Look) {
     this.root.add(this.pivot);
@@ -156,6 +159,11 @@ export class Character {
     this.state = state;
     if (this.mode === 'seated' && state === 'finished') this.hopToPlace();
     else if (this.mode === 'standing' && state !== 'finished') this.hopToPlace();
+  }
+
+  /** Raise a hand for a high five (#33), whatever the agent is doing. */
+  highFive() {
+    this.highFiving = HIGH_FIVE_SECONDS;
   }
 
   /** Walk out along `path` (from wherever the agent is to the door), then disappear. */
@@ -282,6 +290,11 @@ export class Character {
       bubbleY = 2.15 + hopY;
     } else if (this.mode === 'hanging') {
       bubbleY = this.hangingPose(this.place!, tt, dt);
+    }
+
+    if (this.highFiving > 0) {
+      this.highFiving -= dt;
+      hr.position.set(0.3, 1.8 + Math.sin(this.highFiving * 12) * 0.05 * motion, 0.25);
     }
 
     this.bubbleKind = bubble;
@@ -564,6 +577,29 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     fl.position.set(-0.15, -0.6, 0.2);
     fr.position.set(0.15, -0.6, 0.2);
     return 1.5 + bob;
+  },
+  watching: ({ pivot, head, hands: [hl, hr] }, tt) => {
+    // Leaning in over someone's shoulder, hands on hips.
+    pivot.rotation.x = 0.22;
+    head.rotation.x = 0.25;
+    head.rotation.z = Math.sin(tt * 0.8) * 0.1 * motion;
+    hl.position.set(-0.42, 0.62, 0.1);
+    hr.position.set(0.42, 0.62, 0.1);
+    return 2.15;
+  },
+  'high-five': ({ head, hands: [hl, hr] }) => {
+    head.rotation.x = -0.15;
+    hl.position.set(-0.47, 0.6, 0.06);
+    hr.position.set(0.3, 1.75, 0.25);
+    return 2.3;
+  },
+  delivering: ({ pivot, head, hands: [hl, hr] }) => {
+    // Just set a mug down on the desk.
+    pivot.rotation.x = 0.18;
+    head.rotation.x = 0.2;
+    hl.position.set(-0.47, 0.6, 0.06);
+    hr.position.set(0.25, 0.85, 0.5);
+    return 2.2;
   },
   gaming: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
     // On the sofa, leaning in, thumbs going.

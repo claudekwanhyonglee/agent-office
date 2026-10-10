@@ -24,7 +24,8 @@ export interface SeatSpot {
 export type HangoutPose =
   | 'eating' | 'drinking' | 'lounging' | 'chatting'
   | 'lounging-sun' | 'fishing' | 'swinging' | 'yoga' | 'bouncing' | 'throwing-darts' | 'shooting-hoops' | 'throwing-plane'
-  | 'cue-shot' | 'cue-wait' | 'paddle' | 'floating' | 'gaming';
+  | 'cue-shot' | 'cue-wait' | 'paddle' | 'floating' | 'gaming'
+  | 'watching' | 'high-five' | 'delivering';
 
 export interface HangoutPlace extends Point {
   spot: string;
@@ -216,12 +217,13 @@ export function officeLayout(rows: number) {
     { name: 'couch-co-op', chat: false, game: { min: 2 }, places: [-0.87, -0.29, 0.29, 0.87].map((dx) => sofaSeat(lounge.sofa.x + dx, 'couch-co-op', 'gaming')) },
   ];
 
+  const lanes = Array.from({ length: rows }, (_, row) => lane(row));
   const walkways: Point[][] = [
     [{ x: door.x, z: hallZ }, { x: -8.2, z: hallZ }],
     [{ x: -AISLE_X, z: hallZ }, { x: -AISLE_X, z: DECK_Z }],
     [{ x: AISLE_X, z: hallZ }, { x: AISLE_X, z: DECK_Z }],
     [{ x: -AISLE_X, z: DECK_Z }, { x: AISLE_X, z: DECK_Z }],
-    ...Array.from({ length: rows }, (_, row) => lane(row)),
+    ...lanes,
   ];
 
   return {
@@ -234,6 +236,8 @@ export function officeLayout(rows: number) {
     seats: seatsFor(rows),
     hangouts,
     walkways,
+    /** The walkway behind each row of chairs. */
+    lanes,
     kitchen,
     cooler,
     bookshelf: { x: -8.78, z: -2.8 + b, length: 1.6 },
@@ -376,6 +380,28 @@ export function along(path: Point[], d: number): { leg: number; done: boolean } 
 }
 
 export const pathLength = (path: Point[]) => path.slice(1).reduce((sum, p, i) => sum + distance(path[i], p), 0);
+
+/** Gap between the spots where onlookers stand behind a chair. */
+const ONLOOKER_GAP = 0.45;
+
+/**
+ * Three spots behind `seat`'s chair, on the lane behind its row (#33 over the shoulder): straight
+ * behind, and either side along the lane. They're on a walkway, so each is its own link.
+ */
+export function behindChair(layout: OfficeLayout, seat: SeatSpot): Point[] {
+  const lanePoints = layout.lanes[seat.row];
+  const behind = seat.link.at(-1)!;
+  const i = lanePoints.findIndex((p) => same(p, behind));
+  const toward = (q: Point, gaps: number) => {
+    const k = (ONLOOKER_GAP * gaps) / distance(behind, q);
+    return { x: behind.x + (q.x - behind.x) * k, z: behind.z + (q.z - behind.z) * k };
+  };
+  const [prev, next] = [lanePoints[i - 1], lanePoints[i + 1]];
+  // At the end of a row the lane meets the aisle within a step: both side spots go on the inner side.
+  if (distance(behind, prev) < ONLOOKER_GAP) return [{ ...behind }, toward(next, 1), toward(next, 2)];
+  if (distance(behind, next) < ONLOOKER_GAP) return [{ ...behind }, toward(prev, 1), toward(prev, 2)];
+  return [{ ...behind }, toward(prev, 1), toward(next, 1)];
+}
 
 /** Door → hall → aisle → lane behind the row → into the chair. */
 export const arrivalPath = (layout: OfficeLayout, seat: SeatSpot) => route(layout, layout.doorLink, seat.link);
