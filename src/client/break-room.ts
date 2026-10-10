@@ -45,7 +45,12 @@ const part = <T extends THREE.Object3D>(obj: T, name: string) => {
 };
 
 /** The hammock trees' trunks taper from bottom to top; the ropes are tied on this high (#55). */
-const TRUNK = { bottom: 0.16, top: 0.12, height: 1.9 };
+const TRUNK = { bottom: 0.16, top: 0.11, height: 1.9 };
+const BARK = '#8C6A4A';
+/** The hammock trees' leaf balls: x, y, z, radius and green, all above the ropes' tie (#66). */
+const CANOPY: [number, number, number, number, string][] = [
+  [0, 2.35, 0, 0.5, '#5FA35A'], [0.4, 2.1, 0.1, 0.38, '#4E8F4A'], [-0.05, 2.15, -0.3, 0.4, '#6DB866'], [0.15, 2.7, -0.05, 0.33, '#4E8F4A'],
+];
 const ROPE_TIE = 1.3;
 const trunkRadius = (y: number) => TRUNK.bottom + (TRUNK.top - TRUNK.bottom) * (y / TRUNK.height);
 
@@ -80,8 +85,18 @@ export function addSoloProps(group: THREE.Group) {
 
   for (const x of hammock.trees) {
     const tree = tag(new THREE.Group(), 'tree');
-    tree.add(part(at(cyl(TRUNK.top, TRUNK.bottom, TRUNK.height, '#8C6A4A', { outline: 0.03 }), 0, TRUNK.height / 2, 0), 'trunk'));
-    tree.add(at(ball(0.55, '#5FA35A'), 0, 2.2, 0));
+    tree.add(part(at(cyl(TRUNK.top, TRUNK.bottom, TRUNK.height, BARK, { outline: 0.03 }), 0, TRUNK.height / 2, 0), 'trunk'));
+    // A few overlapping leaf balls in two greens, with two branches reaching up into them (#66); 12 meshes, outlines included.
+    // Each tree leans its fuller side towards the hammock, away from the walls.
+    const inward = Math.sign(hammock.x - x);
+    for (const [lx, ly, lz, r, color] of CANOPY) tree.add(part(at(ball(r, color), lx * inward, ly, lz), 'leaves'));
+    for (const [dx, dz] of [[0.56, 0], [-0.42, -0.31]]) {
+      const dir = new THREE.Vector3(dx * inward, 0.83, dz).normalize();
+      const branch = cyl(0.03, 0.05, 0.6, BARK, { outline: 0 });
+      branch.position.set(0, 1.55, 0).addScaledVector(dir, 0.3);
+      branch.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      tree.add(part(branch, 'branch'));
+    }
     group.add(at(tree, x, 0, hammock.z));
   }
   const sling = tag(new THREE.Group(), 'hammock');
