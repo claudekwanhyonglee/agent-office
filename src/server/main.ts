@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HOST, lanUrls, resolvePort, startServer, wantsLan } from './http.ts';
 import { createApi } from './api.ts';
@@ -6,6 +7,8 @@ import { listClaudeAgents } from './claude.ts';
 import { loadAgents } from './load.ts';
 import { createAckStore } from './acknowledged.ts';
 import { limitsFile, readLimits } from './limits.ts';
+import { weekStart, weeklyTokens } from './tokens.ts';
+import { claudeConfigDir } from './transcript.ts';
 import { enableTracking, refreshScript, trackingFiles, trackingStatus } from './tracking.ts';
 
 const POLL_MS = 2000;
@@ -16,7 +19,12 @@ const lan = wantsLan(process.argv, process.env);
 const acknowledged = createAckStore();
 const tracking = { ...trackingFiles(), scriptSource: fileURLToPath(new URL('../../../bin/statusline.js', import.meta.url)) };
 refreshScript(tracking);
-const readUsage = () => ({ tracking: trackingStatus(tracking), limits: readLimits(limitsFile(), Date.now()) });
+const projectsDir = join(claudeConfigDir(), 'projects');
+function readUsage() {
+  const now = Date.now();
+  const limits = readLimits(limitsFile(), now);
+  return { tracking: trackingStatus(tracking), limits, projects: weeklyTokens(projectsDir, weekStart(limits.weekly, now)) };
+}
 const usage = { read: readUsage, enable: () => (enableTracking(tracking), readUsage()) };
 const feed = createFeed(() => loadAgents({ list: listClaudeAgents, now: Date.now(), acknowledged }));
 await feed.poll(POLL_MS);
