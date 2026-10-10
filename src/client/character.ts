@@ -38,6 +38,8 @@ export class Character {
   private feet: THREE.Mesh[];
   private mug = new THREE.Group();
   private snack: THREE.Mesh;
+  /** Things held in the right hand for one pose: a fishing rod, dart, ball or paper plane. */
+  private held = heldProps();
   private bubble: THREE.Sprite;
   private path: THREE.Vector3[] = [];
   private onArrive?: () => void;
@@ -101,6 +103,7 @@ export class Character {
     this.snack = mesh(new THREE.BoxGeometry(0.2, 0.08, 0.14), '#E2B347', { outline: 0.06 });
     this.snack.position.set(-0.02, 0.1, 0.06);
     this.hands[0].add(this.snack);
+    for (const prop of Object.values(this.held)) this.hands[1].add(prop);
 
     this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true }));
     this.bubble.center.set(0.5, 0);
@@ -214,6 +217,7 @@ export class Character {
     head.rotation.set(0, 0, 0);
     this.mug.visible = false;
     this.snack.visible = false;
+    for (const prop of Object.values(this.held)) prop.visible = false;
     // Every agent keeps its state's bubble, wherever it is.
     const bubble: BubbleKind | null = POSES[this.state].bubble;
     let bubbleY = 2.2;
@@ -305,6 +309,12 @@ export class Character {
     }
     fl.position.set(-0.17, 0.06, 0.04);
     fr.position.set(0.17, 0.06, 0.04);
+    const activity = ACTIVITY_POSES[place.pose];
+    if (activity) {
+      const held = this.held[place.pose];
+      if (held) held.visible = true;
+      return activity({ pivot: p, head, hands: this.hands, feet: this.feet, held }, tt);
+    }
     if (place.pose === 'chatting') {
       const talk = Math.sin(tt * 6);
       p.position.y = Math.abs(Math.sin(tt * 3)) * 0.03 * motion;
@@ -418,4 +428,117 @@ function hat(kind: HatKind, color: string) {
     g.add(at(ball(0.16, color), 0, 0.46, -0.12));
   }
   return g;
+}
+
+interface Body { pivot: THREE.Group; head: THREE.Group; hands: THREE.Mesh[]; feet: THREE.Mesh[]; held?: THREE.Object3D }
+
+/** A throw every `period` seconds: 0 → 1 while winding up and letting go, then 0 while waiting. */
+const throwPhase = (tt: number, period: number) => Math.min(1, ((tt % period) / period) * 3);
+
+/** Break-room poses (#30); each sets the body and returns the bubble height. */
+const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => number>> = {
+  'lounging-sun': ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
+    pivot.rotation.x = -1.15;
+    pivot.position.set(0, 0.05, 0.35);
+    head.rotation.x = 0.5 + Math.sin(tt * 0.5) * 0.04 * motion;
+    hl.position.set(-0.32, 0.45, -0.75);
+    hr.position.set(0.32, 0.45, -0.75);
+    fl.position.set(-0.15, 0.02, 0.8);
+    fr.position.set(0.15, 0.02, 0.8);
+    return 1.4;
+  },
+  swinging: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
+    const sway = Math.sin(tt * 1.3) * 0.15 * motion;
+    pivot.rotation.set(-1.3, 0, sway);
+    pivot.position.set(sway * 0.6, 0.25, 0.4);
+    head.rotation.x = 0.6;
+    hl.position.set(-0.35, 0.55, -0.6);
+    hr.position.set(0.35, 0.55, -0.6);
+    fl.position.set(-0.15 + sway * 0.6, 0.45, 0.85);
+    fr.position.set(0.15 + sway * 0.6, 0.45, 0.85);
+    return 1.6;
+  },
+  bouncing: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
+    const k = Math.abs(Math.sin(tt * 3.4));
+    const y = 0.12 + k * 0.55 * motion;
+    pivot.position.y = y;
+    pivot.scale.y = k < 0.15 ? 0.9 : 1;
+    head.rotation.x = -0.2 * k;
+    hl.position.set(-0.45, 0.9 + y + k * 0.4, 0.05);
+    hr.position.set(0.45, 0.9 + y + k * 0.4, 0.05);
+    fl.position.set(-0.17, 0.08 + y, 0.04);
+    fr.position.set(0.17, 0.08 + y, 0.04);
+    return 2.3 + y;
+  },
+  yoga: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
+    // Tree pose: one foot on the other knee, palms together overhead, a slow sway.
+    pivot.rotation.z = Math.sin(tt * 0.7) * 0.04 * motion;
+    head.rotation.x = -0.05;
+    hl.position.set(-0.07, 1.85, 0.05);
+    hr.position.set(0.07, 1.85, 0.05);
+    fl.position.set(-0.05, 0.06, 0.04);
+    fr.position.set(0.12, 0.42, 0.12);
+    return 2.4;
+  },
+  fishing: ({ head, hands: [hl, hr], held }, tt) => {
+    const bob = Math.sin(tt * 2.2) * 0.05 * motion;
+    head.rotation.x = 0.15;
+    hl.position.set(-0.12, 0.75, 0.42);
+    hr.position.set(0.1, 0.82 + bob, 0.45);
+    if (held) held.rotation.x = -0.9 + bob;
+    return 2.2;
+  },
+  'throwing-darts': ({ pivot, head, hands: [hl, hr], held }, tt) => {
+    const k = throwPhase(tt, 2.6);
+    const windUp = k < 0.6;
+    pivot.rotation.y = windUp ? -0.15 : 0.1;
+    head.rotation.x = -0.05;
+    hl.position.set(-0.45, 0.65, 0.1);
+    hr.position.copy(windUp ? new THREE.Vector3(0.3, 1.35, -0.05) : new THREE.Vector3(0.22, 1.25, 0.55));
+    if (held) held.visible = windUp;
+    return 2.2;
+  },
+  'shooting-hoops': ({ pivot, head, hands: [hl, hr], feet: [fl, fr], held }, tt) => {
+    const k = throwPhase(tt, 3);
+    const jump = k > 0.3 && k < 1 ? Math.sin(((k - 0.3) / 0.7) * Math.PI) * 0.25 * motion : 0;
+    pivot.position.y = jump;
+    head.rotation.x = -0.25;
+    const handY = k < 0.3 ? 0.85 : 1.75;
+    hl.position.set(-0.15, handY + jump, 0.3);
+    hr.position.set(0.15, handY + jump, 0.3);
+    fl.position.set(-0.17, 0.06 + jump, 0.04);
+    fr.position.set(0.17, 0.06 + jump, 0.04);
+    if (held) held.visible = k < 0.8;
+    return 2.2 + jump;
+  },
+  'throwing-plane': ({ pivot, head, hands: [hl, hr], held }, tt) => {
+    const k = throwPhase(tt, 5);
+    const windUp = k < 0.6;
+    pivot.rotation.y = windUp ? -0.2 : 0.1;
+    head.rotation.x = -0.15;
+    hl.position.set(-0.4, 0.75, 0.25);
+    hr.position.copy(windUp ? new THREE.Vector3(0.35, 1.3, -0.1) : new THREE.Vector3(0.25, 1.35, 0.55));
+    if (held) held.visible = windUp;
+    return 2.2;
+  },
+};
+
+function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
+  const rod = new THREE.Group();
+  const pole = at(cyl(0.015, 0.025, 1.6, '#8C6A4A', { outline: 0 }), 0, 0.8, 0);
+  rod.add(pole);
+  rod.add(at(cyl(0.004, 0.004, 0.9, '#FFFFFF', { outline: 0, shadow: false }), 0, 1.6, 0.0));
+  const dart = at(cyl(0.012, 0.03, 0.18, '#FF5A5A', { outline: 0.05 }), 0, 0.08, 0.05);
+  dart.rotation.x = Math.PI / 2;
+  const ball = at(mesh(new THREE.SphereGeometry(0.13, 16, 12), '#F07A4A', { outline: 0.06 }), 0, 0.15, 0.1);
+  return { fishing: rod, 'throwing-darts': dart, 'shooting-hoops': ball, 'throwing-plane': paperPlane() };
+}
+
+/** A small white dart-shaped plane, nose along +z. */
+export function paperPlane() {
+  const plane = mesh(new THREE.ConeGeometry(0.1, 0.3, 3), '#FFFFFF', { outline: 0.06 });
+  plane.rotation.x = Math.PI / 2;
+  plane.scale.set(1, 1, 0.25);
+  plane.position.set(0, 0.12, 0.08);
+  return plane;
 }

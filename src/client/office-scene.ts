@@ -4,6 +4,7 @@ import { createView } from './view.ts';
 import { OfficeController, type OfficeEvent } from './controller.ts';
 import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
+import { PaperPlanes } from './paper-planes.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
 
@@ -23,6 +24,7 @@ export function createOfficeScene(host: HTMLElement) {
   const leaving = new Set<Character>();
   let office = view.setRows(INITIAL_ROWS);
   let selected: string | null = null;
+  const planes = new PaperPlanes(view.scene);
 
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.55, 0.68, 40),
@@ -56,6 +58,9 @@ export function createOfficeScene(host: HTMLElement) {
         characters.get(event.key)?.go(event.path, event.place);
       } else if (event.type === 'state') {
         characters.get(event.key)?.setState(event.state);
+      } else if (event.type === 'plane') {
+        const thrower = characters.get(event.key);
+        if (thrower) planes.throw(thrower.root.position, office.seats[event.desk].desk);
       } else if (event.type === 'leave') {
         const character = characters.get(event.key)!;
         characters.delete(event.key);
@@ -93,6 +98,7 @@ export function createOfficeScene(host: HTMLElement) {
   view.onFrame((t, dt) => {
     apply(controller.tick());
     characters.forEach((c) => c.update(t, dt));
+    planes.update(dt);
     for (const c of leaving) {
       c.update(t, dt);
       if (c.mode === 'gone') { view.scene.remove(c.root); leaving.delete(c); }

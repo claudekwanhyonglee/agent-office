@@ -11,6 +11,9 @@ const STAY = { min: 10, max: 30 };
 /** How often a due agent looks for someone to chat with, and how long to wait when every spot is full. */
 const CHAT_CHANCE = 0.35;
 const RETRY = 5;
+/** Seconds after arriving before the first paper plane, then between throws. */
+const PLANE_FIRST = 1;
+const PLANE_EVERY = { min: 4, max: 7 };
 
 const isIdle = (state: OfficeState) => state === 'done' || state === 'finished';
 
@@ -26,6 +29,8 @@ export interface Occupant {
   arrivesAt: number;
   /** When an idle agent next moves on; null while it isn't idle. */
   nextAt: number | null;
+  /** When the agent next does its place's one-off action (throwing a paper plane). */
+  actAt: number;
 }
 
 export type OfficeEvent =
@@ -41,7 +46,9 @@ export type OfficeEvent =
   /** Walk along `path` to `place`, or to the desk when `place` is null. */
   | { type: 'walk'; key: string; path: Point[]; place: HangoutPlace | null }
   | { type: 'leave'; key: string; path: Point[] }
-  | { type: 'state'; key: string; state: OfficeState };
+  | { type: 'state'; key: string; state: OfficeState }
+  /** A paper plane thrown from the agent's place, landing on desk `desk` (a seat index). */
+  | { type: 'plane'; key: string; desk: number };
 
 export interface Clock {
   /** Seconds. */
@@ -94,6 +101,7 @@ export class OfficeController {
     const events: OfficeEvent[] = [];
     for (const [key, agent] of this.agents) {
       if (agent.nextAt != null && agent.nextAt <= now) this.wander(key, agent, now, events);
+      else this.act(key, agent, now, events);
     }
     return events;
   }
@@ -105,7 +113,7 @@ export class OfficeController {
 
   private arrive(key: string, record: AgentRecord, now: number, events: OfficeEvent[]) {
     const seat = this.freeSeat(now, events);
-    const agent: Occupant = { record, seat, place: null, arrivesAt: now, nextAt: null };
+    const agent: Occupant = { record, seat, place: null, arrivesAt: now, nextAt: null, actAt: now + PLANE_FIRST };
     this.agents.set(key, agent);
     const path = arrivalPath(this.layout, seat);
     if (this.firstUpdate) {
@@ -171,7 +179,15 @@ export class OfficeController {
     agent.walk = { path, origin, startedAt: now };
     agent.arrivesAt = now + pathLength(path) / WALK_SPEED;
     agent.nextAt = place ? agent.arrivesAt + this.between(STAY) : null;
+    agent.actAt = agent.arrivesAt + PLANE_FIRST;
     events.push({ type: 'walk', key, path, place });
+  }
+
+  /** Once arrived, an agent at the paper-plane place throws planes at the desks. */
+  private act(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
+    if (agent.place?.pose !== 'throwing-plane' || agent.arrivesAt > now || agent.actAt > now) return;
+    events.push({ type: 'plane', key, desk: this.pick(this.layout.seats)!.index });
+    agent.actAt = now + this.between(PLANE_EVERY);
   }
 
   /**

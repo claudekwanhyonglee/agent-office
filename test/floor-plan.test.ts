@@ -192,7 +192,10 @@ describe('#25 AC3 routes stay clear, and the next epic has room', () => {
     expect(routeCollisions([{ x: 0, z: 6 }, { x: 0, z: 7.5 }], obstaclesIn(group))).not.toEqual([]);
   });
 
-  it('#25 AC3 the next epic\'s prop areas hold no furniture', () => {
+  // #29 filled these areas with its props and activity places; anything else must still keep out.
+  const BREAK_ROOM_PROPS = ['sun-lounger', 'pond', 'jetty', 'tree', 'hammock', 'yoga-mat', 'trampoline', 'dartboard', 'bin', 'paper-stack'];
+  const BREAK_ROOM_SPOTS = ['loungers', 'fishing', 'hammock', 'yoga', 'trampoline', 'darts', 'hoops', 'planes'];
+  it('#25 AC3 the next epic\'s prop areas hold no furniture other than its own props', () => {
     // From the epic: darts lane y 9–10 on the left wall, bin (0.5, 11.3), pool table (16.4, 6.6), pet bed (16.4, 10.4),
     // pool x 6.2–11.8 y 14.0–16.8, ping pong (15.3, 13.7), trampoline (16.6, 15.6), hammock trees (14.4/17.4, 17.6),
     // pond (2.4, 16.0) with a jetty, yoga mat (1.4, 13.5).
@@ -203,9 +206,10 @@ describe('#25 AC3 routes stay clear, and the next epic has room', () => {
       const { group, layout } = buildOffice(rows);
       for (const area of RESERVED) {
         const box = new THREE.Box3(new THREE.Vector3(area.x0, -1, area.z0), new THREE.Vector3(area.x1, 5, area.z1));
-        const inArea = obstaclesIn(group).filter((o) => o.kind !== 'wall' && o.box.intersectsBox(box)).map((o) => o.kind);
+        const inArea = obstaclesIn(group).filter((o) => o.kind !== 'wall' && !BREAK_ROOM_PROPS.includes(o.kind) && o.box.intersectsBox(box)).map((o) => o.kind);
         expect(inArea, area.name).toEqual([]);
-        for (const p of layout.hangouts.flatMap((s) => s.places)) expect(inside(p, box, 0), `${p.spot} in ${area.name}`).toBe(false);
+        const others = layout.hangouts.filter((s) => !BREAK_ROOM_SPOTS.includes(s.name)).flatMap((s) => s.places);
+        for (const p of others) expect(inside(p, box, 0), `${p.spot} in ${area.name}`).toBe(false);
       }
     }
   });

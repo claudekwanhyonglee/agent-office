@@ -21,7 +21,9 @@ export interface SeatSpot {
   link: Point[];
 }
 
-export type HangoutPose = 'eating' | 'drinking' | 'lounging' | 'chatting';
+export type HangoutPose =
+  | 'eating' | 'drinking' | 'lounging' | 'chatting'
+  | 'lounging-sun' | 'fishing' | 'swinging' | 'yoga' | 'bouncing' | 'throwing-darts' | 'shooting-hoops' | 'throwing-plane';
 
 export interface HangoutPlace extends Point {
   spot: string;
@@ -115,7 +117,25 @@ export const RESERVED: Area[] = [
   { name: 'yoga mat', x0: -8.5, x1: -6.7, z0: 8.2, z1: 8.8 },
 ];
 
-export const MEETING_ROOM = { x0: -8.7, x1: -6.05, z0: -0.8, z1: 2.2 };
+/**
+ * Break-room props from plan C (artifact x − 9, y − 5). They sit at the sides and on the deck, so
+ * they stay put when rows are added.
+ */
+export const BREAK_ROOM = {
+  loungers: [{ x: 3.5, z: 10.45 }, { x: 4.3, z: 10.45 }] as Point[],
+  lounger: { w: 0.6, d: 1.9 },
+  pond: { x: -6.6, z: 11.0, rx: 2.0, rz: 1.3 },
+  jetty: { x: -4.2, z: 11.0, w: 1.6, d: 0.8 },
+  hammock: { x: 6.9, z: 12.6, trees: [5.4, 8.4] },
+  yogaMat: { x: -7.6, z: 8.5, w: 1.8, d: 0.6 },
+  trampoline: { x: 7.6, z: 10.6, r: 0.85 },
+  dartboard: { x: -8.85, z: 4.4 },
+  bin: { x: -8.5, z: 6.3 },
+  /** Pin 12 marks the throwing spot on the right aisle; the paper stack sits beside it. */
+  paperStack: { x: 6.6, z: 4.0 },
+};
+
+export const MEETING_ROOM ={ x0: -8.7, x1: -6.05, z0: -0.8, z1: 2.2 };
 export const MEETING_TABLE = { x: -7.35, z: 0.7, w: 1.8, d: 1.0 };
 
 /** Everything for an office with `rows` rows of desks. Pieces along the back wall move back with each extra row. */
@@ -166,6 +186,7 @@ export function officeLayout(rows: number) {
     chatSpot('chat-hall', { x: -1.4, z: -2.6 + b }, { x: -0.6, z: -2.6 + b }, toHall),
     chatSpot('chat-deck', { x: -1.6, z: 8.3 }, { x: -0.8, z: 8.3 }, toDeck),
     chatSpot('chat-deck-right', { x: 2.0, z: 8.3 }, { x: 2.8, z: 8.3 }, toDeck),
+    ...soloSpots(),
   ];
 
   const walkways: Point[][] = [
@@ -201,6 +222,33 @@ export function officeLayout(rows: number) {
 }
 
 export type OfficeLayout = ReturnType<typeof officeLayout>;
+
+/** Between the loungers and the ping-pong table: the way from the deck walkway to the right of the deck. */
+const RIGHT_DECK_X = 4.95;
+
+/** One-agent activities (#30). Each link steps off the prop and out to the deck walkway or a side aisle. */
+function soloSpots(): HangoutSpot[] {
+  const { loungers, hammock, yogaMat, trampoline } = BREAK_ROOM;
+  const place = (spot: string, pose: HangoutPose, p: Point, yaw: number, link: Point[], sits?: boolean): HangoutPlace =>
+    ({ x: p.x, z: p.z, spot, yaw, pose, link: [{ x: p.x, z: p.z }, ...link], ...(sits && { sits }) });
+  const solo = (spot: string, pose: HangoutPose, p: Point, yaw: number, link: Point[], sits?: boolean): HangoutSpot =>
+    ({ name: spot, chat: false, places: [place(spot, pose, p, yaw, link, sits)] });
+  const left = -Math.PI / 2, right = Math.PI / 2;
+  return [
+    {
+      name: 'loungers',
+      chat: false,
+      places: loungers.map(({ x, z }) => place('loungers', 'lounging-sun', { x, z }, 0, [{ x, z: 9.3 }, { x, z: DECK_Z }], true)),
+    },
+    solo('fishing', 'fishing', { x: -4.4, z: 11.0 }, left, [{ x: -3.2, z: 11.0 }, { x: -3.2, z: DECK_Z }]),
+    solo('hammock', 'swinging', hammock, right, [{ x: hammock.x, z: 11.7 }, { x: RIGHT_DECK_X, z: 11.7 }, { x: RIGHT_DECK_X, z: DECK_Z }], true),
+    solo('yoga', 'yoga', yogaMat, 0, [{ x: -6.4, z: yogaMat.z }, { x: -AISLE_X, z: DECK_Z }]),
+    solo('trampoline', 'bouncing', trampoline, 0, [{ x: 6.5, z: trampoline.z }, { x: RIGHT_DECK_X, z: trampoline.z }, { x: RIGHT_DECK_X, z: DECK_Z }], true),
+    solo('darts', 'throwing-darts', { x: -6.6, z: BREAK_ROOM.dartboard.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.dartboard.z }]),
+    solo('hoops', 'shooting-hoops', { x: -6.8, z: BREAK_ROOM.bin.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.bin.z }]),
+    solo('planes', 'throwing-plane', { x: 6.25, z: 4.4 }, left, [{ x: AISLE_X, z: 4.4 }]),
+  ];
+}
 
 // Routes: every place links out to a walkway; a route walks out along one link, takes the
 // shortest way along the walkways, and walks in along the other link.
