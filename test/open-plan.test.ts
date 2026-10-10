@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import type { AgentRecord, OfficeState } from '../src/shared/agent.ts';
 import { OfficeController, INITIAL_PODS, type OfficeEvent } from '../src/client/controller.ts';
-import { DESKS_PER_POD, PODS_PER_ROW, DOOR, arrivalPath, departurePath, seatLayout, type Point, type SeatSpot } from '../src/client/layout.ts';
+import { DESKS_PER_POD, PODS_PER_ROW, DOOR, arrivalPath, departurePath, seatLayout, type SeatSpot } from '../src/client/layout.ts';
 import { buildOffice } from '../src/client/office.ts';
 import { Character } from '../src/client/character.ts';
 import { lookFor } from '../src/client/look.ts';
 import { POSES } from '../src/client/poses.ts';
+import { collisions, inside, obstaclesIn, type Obstacle } from './geometry.ts';
 
 const rec = (n: number, state: OfficeState = 'working'): AgentRecord => ({
   id: `a${n}`, sessionId: `session-${n}`, name: `agent ${n}`, project: 'demo-app',
@@ -15,45 +16,6 @@ const rec = (n: number, state: OfficeState = 'working'): AgentRecord => ({
 const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => rec(from + i));
 const ofType = <T extends OfficeEvent['type']>(events: OfficeEvent[], type: T) =>
   events.filter((e): e is Extract<OfficeEvent, { type: T }> => e.type === type);
-
-/** Things on the floor you can walk over, and zone groups (their pieces are checked one by one). */
-const WALKABLE = new Set(['floor', 'rug', 'door']);
-const ZONES = new Set(['pod', 'meeting-room', 'lounge', 'kitchen']);
-const CLEARANCE = 0.1;
-
-interface Obstacle { kind: string; box: THREE.Box3; object: THREE.Object3D }
-
-/** Footprints of every tagged piece, from the real 3D office. */
-export function obstaclesIn(group: THREE.Group): Obstacle[] {
-  group.updateMatrixWorld(true);
-  const obstacles: Obstacle[] = [];
-  group.traverse((o) => {
-    const kind = o.userData.kind as string | undefined;
-    if (!kind || WALKABLE.has(kind) || ZONES.has(kind)) return;
-    obstacles.push({ kind, box: new THREE.Box3().setFromObject(o), object: o });
-  });
-  return obstacles;
-}
-
-const inside = (p: Point, box: THREE.Box3, margin: number) =>
-  p.x > box.min.x - margin && p.x < box.max.x + margin && p.z > box.min.z - margin && p.z < box.max.z + margin;
-
-/** Obstacles a polyline passes through, sampled every 2 cm. `ignore(leg)` skips obstacles for one leg. */
-export function collisions(path: Point[], obstacles: Obstacle[], ignore: (legIndex: number) => Set<THREE.Object3D> = () => new Set()) {
-  const hits: string[] = [];
-  for (let i = 0; i < path.length - 1; i++) {
-    const a = path[i], b = path[i + 1];
-    const skip = ignore(i);
-    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.02));
-    for (let s = 0; s <= steps; s++) {
-      const p = { x: a.x + ((b.x - a.x) * s) / steps, z: a.z + ((b.z - a.z) * s) / steps };
-      for (const o of obstacles) {
-        if (!skip.has(o.object) && inside(p, o.box, CLEARANCE)) hits.push(`leg ${i} (${p.x.toFixed(2)},${p.z.toFixed(2)}) hits ${o.kind}`);
-      }
-    }
-  }
-  return [...new Set(hits)];
-}
 
 /** The agent's own chair: the last hop into it (and the first hop out) lands inside its footprint. */
 function ownChair(seat: SeatSpot, obstacles: Obstacle[]) {

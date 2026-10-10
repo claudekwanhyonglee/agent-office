@@ -103,9 +103,11 @@ describe('#5 AC4 walking in and out', () => {
   });
 
   it('#5 AC4 the walked character ends at its seat, and leaves through the door', () => {
-    const c = new OfficeController();
+    const clock = { t: 0 };
+    const c = new OfficeController({ now: () => clock.t });
     c.update([]);
     const [arrive] = ofType(c.update([rec(1)]), 'arrive');
+    clock.t = 30; // #14: the controller knows when the walk-in ends
     const character = new Character(lookFor('session-1'));
     character.arrive(arrive.seat, 'working', arrive.path);
     for (let t = 0; t < 30 && character.mode !== 'seated'; t += 0.05) character.update(t, 0.05);
