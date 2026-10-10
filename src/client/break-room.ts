@@ -33,6 +33,25 @@ const WOOD = '#C98A55';
 const WATER = '#8FD3F2';
 const FELT_TOP = 0.835;
 
+/** Marks a piece of a prop (not furniture of its own, so not tagged). */
+const part = <T extends THREE.Object3D>(obj: T, name: string) => {
+  obj.userData.part = name;
+  return obj;
+};
+
+/** The hammock trees' trunks taper from bottom to top; the ropes are tied on this high (#55). */
+const TRUNK = { bottom: 0.16, top: 0.12, height: 1.9 };
+const ROPE_TIE = 1.3;
+const trunkRadius = (y: number) => TRUNK.bottom + (TRUNK.top - TRUNK.bottom) * (y / TRUNK.height);
+
+/** A thin rope from a to b. */
+function rope(a: THREE.Vector3, b: THREE.Vector3) {
+  const line = cyl(0.015, 0.015, a.distanceTo(b), INK, { outline: 0, shadow: false });
+  line.position.copy(a).add(b).multiplyScalar(0.5);
+  line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  return line;
+}
+
 const turned = <T extends THREE.Object3D>(obj: T, yaw: number) => {
   obj.rotation.y = yaw;
   return obj;
@@ -66,19 +85,19 @@ export function addSoloProps(group: THREE.Group) {
 
   for (const x of hammock.trees) {
     const tree = tag(new THREE.Group(), 'tree');
-    tree.add(at(cyl(0.12, 0.16, 1.9, '#8C6A4A', { outline: 0.03 }), 0, 0.95, 0));
+    tree.add(part(at(cyl(TRUNK.top, TRUNK.bottom, TRUNK.height, '#8C6A4A', { outline: 0.03 }), 0, TRUNK.height / 2, 0), 'trunk'));
     tree.add(at(ball(0.55, '#5FA35A'), 0, 2.2, 0));
     group.add(at(tree, x, 0, hammock.z));
   }
   const sling = tag(new THREE.Group(), 'hammock');
-  const cloth = mesh(new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), '#E2B347', { outline: 0.02 });
+  const cloth = part(mesh(new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), '#E2B347', { outline: 0.02 }), 'cloth');
   cloth.scale.set(1.1, 0.25, 0.4);
   sling.add(at(cloth, 0, 0.75, 0));
-  const span = hammock.trees[1] - hammock.trees[0] - 0.4;
-  for (const side of [-1, 1]) {
-    const rope = at(cyl(0.015, 0.015, span / 2 - 1.05, INK, { outline: 0, shadow: false }), side * (span / 2 + 0.5) / 2, 0.85, 0);
-    rope.rotation.z = Math.PI / 2;
-    sling.add(rope);
+  // Each rope runs from an end of the cloth up to its tree, tied on at the trunk's surface (#55).
+  for (const [side, treeX] of [[-1, hammock.trees[0]], [1, hammock.trees[1]]]) {
+    const end = new THREE.Vector3(side * 1.1, 0.75, 0);
+    const trunkSide = treeX - hammock.x - side * (trunkRadius(ROPE_TIE) + 0.01);
+    sling.add(part(rope(end, new THREE.Vector3(trunkSide, ROPE_TIE, 0)), 'rope'));
   }
   group.add(at(sling, hammock.x, 0, hammock.z));
 
@@ -123,21 +142,15 @@ export function addGameTables(group: THREE.Group) {
   const { poolTable: pool, pingPong: pong } = BREAK_ROOM;
   const table = tag(new THREE.Group(), 'pool-table');
   table.add(at(box(pool.w, 0.18, pool.d, WOOD), 0, 0.72, 0));
-  // Parts of the table, not furniture of their own: marked with `part`, not tagged.
-  const felt = at(box(pool.w - 0.2, 0.03, pool.d - 0.2, '#3F8A5C', { outline: 0, shadow: false }), 0, 0.82, 0);
-  table.add(Object.assign(felt, { userData: { part: 'felt' } }));
-  for (const p of POCKETS) {
-    const pocket = at(cyl(POCKET_R, POCKET_R, 0.005, INK, { outline: 0, shadow: false }), p.x, FELT_TOP, p.z);
-    table.add(Object.assign(pocket, { userData: { part: 'pocket' } }));
-  }
+  table.add(part(at(box(pool.w - 0.2, 0.03, pool.d - 0.2, '#3F8A5C', { outline: 0, shadow: false }), 0, 0.82, 0), 'felt'));
+  for (const p of POCKETS) table.add(part(at(cyl(POCKET_R, POCKET_R, 0.005, INK, { outline: 0, shadow: false }), p.x, FELT_TOP, p.z), 'pocket'));
   for (const dx of [-0.45, 0.45]) for (const dz of [-0.9, 0.9]) table.add(at(box(0.12, 0.65, 0.12, '#8C6A4A', { outline: 0.02 }), dx, 0.32, dz));
   group.add(at(table, pool.x, 0, pool.z));
 
   const pingPong = tag(new THREE.Group(), 'ping-pong-table');
   pingPong.add(at(box(pong.w, 0.06, pong.d, '#3E6FD0'), 0, 0.74, 0));
   pingPong.add(at(box(0.02, 0.005, pong.d, '#FFFFFF', { outline: 0, shadow: false }), 0, 0.775, 0));
-  const net = at(box(0.03, NET_TOP - 0.775, pong.d + 0.1, '#F4EEE2', { outline: 0.02 }), 0, (NET_TOP + 0.775) / 2, 0);
-  pingPong.add(Object.assign(net, { userData: { part: 'net' } }));
+  pingPong.add(part(at(box(0.03, NET_TOP - 0.775, pong.d + 0.1, '#F4EEE2', { outline: 0.02 }), 0, (NET_TOP + 0.775) / 2, 0), 'net'));
   for (const dx of [-0.9, 0.9]) for (const dz of [-0.45, 0.45]) pingPong.add(at(box(0.06, 0.72, 0.06, INK, { outline: 0 }), dx, 0.36, dz));
   group.add(at(pingPong, pong.x, 0, pong.z));
 }
