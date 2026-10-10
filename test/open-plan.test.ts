@@ -93,15 +93,16 @@ describe('#13 AC3 zones and props', () => {
   it('#13 AC3 decor pieces stay on the floor and do not overlap desks or each other', () => {
     const { group } = buildOffice(INITIAL_ROWS + 1);
     group.updateMatrixWorld(true);
-    // #25: the floor is the indoor tiles plus the deck; the board, TV and see-through screens hang above it.
+    // #25: the floor is the indoor tiles plus the deck; the board and TV hang above it. #38: monitors stand on desks.
     const floor = find(group, 'floor').reduce((box, f) => box.union(new THREE.Box3().setFromObject(f)), new THREE.Box3());
-    const standing = obstaclesIn(group).filter((o) => !['wall', 'window', 'wall-art', 'glass-wall', 'big-board', 'tv', 'screen'].includes(o.kind));
+    const standing = obstaclesIn(group).filter((o) => !['wall', 'window', 'wall-art', 'glass-wall', 'big-board', 'tv'].includes(o.kind));
     for (const o of standing) {
       expect(o.box.min.x >= floor.min.x - 0.01 && o.box.max.x <= floor.max.x + 0.01, `${o.kind} x`).toBe(true);
       expect(o.box.min.z >= floor.min.z - 0.01 && o.box.max.z <= floor.max.z + 0.01, `${o.kind} z`).toBe(true);
     }
-    const desks = standing.filter((o) => o.kind === 'desk' || o.kind === 'chair');
-    const decor = standing.filter((o) => o.kind !== 'desk' && o.kind !== 'chair');
+    const deskParts = ['desk', 'chair', 'monitor'];
+    const desks = standing.filter((o) => deskParts.includes(o.kind));
+    const decor = standing.filter((o) => !deskParts.includes(o.kind));
     for (const d of decor) for (const k of desks) expect(d.box.intersectsBox(k.box), `${d.kind} vs ${k.kind}`).toBe(false);
   });
 });

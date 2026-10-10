@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { AgentRecord, OfficeState } from '../src/shared/agent.ts';
 import { OfficeController } from '../src/client/controller.ts';
 import { INITIAL_ROWS } from '../src/client/layout.ts';
-import { buildOffice, updateScreens } from '../src/client/office.ts';
+import { SCREEN_OFF, buildOffice, updateScreens } from '../src/client/office.ts';
 import { paintScreen, screenContent } from '../src/client/screen.ts';
 import { frameFloor, initialOrbit, placeCamera } from '../src/client/camera.ts';
 
@@ -28,40 +28,106 @@ function recorder() {
   return { g, texts, all: () => texts.join(' ') };
 }
 
-describe('#27 AC1 screens on the camera side, readable from the camera', () => {
-  it('#27 AC1 every desk has its screen on the camera side of the desk', () => {
-    const { seats } = buildOffice(INITIAL_ROWS);
+/** World-space forward of a seat: from the chair towards the desk, the front of the room. */
+const forwardOf = (seat: { yaw: number }) => new THREE.Vector3(Math.sin(seat.yaw), 0, Math.cos(seat.yaw));
+const kindsUnder = (root: THREE.Object3D, kind: string) => {
+  const found: THREE.Object3D[] = [];
+  root.traverse((o) => { if (o.userData.kind === kind) found.push(o); });
+  return found;
+};
+
+// #38 replaced #27's see-through panes (turned to face the camera) with fixed, solid monitors.
+describe('#38 AC1 a solid monitor on every desk, facing the front', () => {
+  it('#38 AC1 every desk has one dark monitor with a stand, on the camera side of the desk', () => {
+    const { group, seats } = buildOffice(INITIAL_ROWS);
+    group.updateMatrixWorld(true);
+    expect(kindsUnder(group, 'monitor')).toHaveLength(seats.length);
     for (const seat of seats) {
-      const forward = { x: Math.sin(seat.yaw), z: Math.cos(seat.yaw) };
-      const ahead = (seat.screen.root.position.x - seat.desk.x) * forward.x + (seat.screen.root.position.z - seat.desk.z) * forward.z;
-      expect(ahead, `seat ${seat.index}`).toBeGreaterThan(0.4);
+      const monitor = seat.screen.root;
+      expect(monitor.userData.kind).toBe('monitor');
+      const pos = seat.screen.display.getWorldPosition(new THREE.Vector3());
+      const ahead = new THREE.Vector3(pos.x - seat.desk.x, 0, pos.z - seat.desk.z).dot(forwardOf(seat));
+      expect(ahead, `seat ${seat.index} on the camera side`).toBeGreaterThan(0.1);
+      expect(ahead, `seat ${seat.index} on the desk`).toBeLessThan(0.35);
+      const solids = monitor.children.filter((c): c is THREE.Mesh => c instanceof THREE.Mesh && c !== seat.screen.display);
+      expect(solids.length, 'body and stand').toBeGreaterThanOrEqual(2);
+      for (const m of solids) expect((m.material as THREE.MeshToonMaterial).color.getHSL({ h: 0, s: 0, l: 0 }).l).toBeLessThan(0.35);
     }
   });
 
+  it('#38 AC1 the screen faces the front of the room, the same way as the desk', () => {
+    const { group, seats } = buildOffice(INITIAL_ROWS);
+    group.updateMatrixWorld(true);
+    for (const seat of seats) {
+      const normal = new THREE.Vector3(0, 0, 1).transformDirection(seat.screen.display.matrixWorld);
+      expect(normal.dot(forwardOf(seat)), `seat ${seat.index}`).toBeGreaterThan(0.99);
+    }
+  });
+
+  it('#38 AC1 monitors stay fixed when the camera moves', () => {
+    const { group, seats } = buildOffice(INITIAL_ROWS);
+    const occupants = new Map(seats.map((s) => [s.index, rec(s.index, 'working', { activity: ACTIVITY })]));
+    const camera = new THREE.PerspectiveCamera(34, 1.6, 0.1, 150);
+    const before: THREE.Matrix4[] = [];
+    for (const [i, theta] of [0.22, 2.5, -2].entries()) {
+      placeCamera(camera, { ...initialOrbit(), theta });
+      updateScreens(seats, occupants, i);
+      group.updateMatrixWorld(true);
+      seats.forEach((s, n) => {
+        if (i === 0) before[n] = s.screen.display.matrixWorld.clone();
+        else expect(s.screen.display.matrixWorld.equals(before[n]), `seat ${n}, theta ${theta}`).toBe(true);
+      });
+    }
+  });
+
+  it('#38 AC1 the screen is opaque, and there is no holo pane or projector', () => {
+    const { seats } = buildOffice(INITIAL_ROWS);
+    updateScreens(seats, new Map([[0, rec(0, 'working', { activity: ACTIVITY })]]), 0);
+    for (const seat of seats) {
+      seat.screen.root.traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return;
+        const material = o.material as THREE.Material;
+        expect(material.transparent, 'nothing see-through').toBe(false);
+        expect(material.opacity).toBe(1);
+        expect(o.geometry, 'no projector').not.toBeInstanceOf(THREE.CylinderGeometry);
+      });
+      expect(seat.screen.display.visible).toBe(true);
+    }
+  });
+});
+
+describe('#38 AC2 occupied monitors show the agent, readable from the front', () => {
   for (const [w, h] of [[1440, 900], [390, 844]]) {
-    it(`#27 AC1 each screen faces the camera and its text runs left to right on a ${w}×${h} screen`, () => {
+    it(`#38 AC2 the drawn text runs left to right from the front on a ${w}×${h} screen`, () => {
       const { group, seats } = buildOffice(INITIAL_ROWS);
       const camera = new THREE.PerspectiveCamera(34, w / h, 0.1, 150);
       const orbit = initialOrbit();
       frameFloor(camera, orbit, INITIAL_ROWS);
       placeCamera(camera, orbit);
       camera.updateProjectionMatrix();
-      updateScreens(seats, new Map(seats.map((s) => [s.index, rec(s.index, 'working', { activity: ACTIVITY })])), 0, camera.position);
+      updateScreens(seats, new Map(seats.map((s) => [s.index, rec(s.index, 'working', { activity: ACTIVITY })])), 0);
       group.updateMatrixWorld(true);
       for (const seat of seats) {
-        const pane = seat.screen.pane;
-        const centre = pane.localToWorld(new THREE.Vector3(0, 0, 0));
-        const normal = pane.localToWorld(new THREE.Vector3(0, 0, 1)).sub(centre);
-        expect(normal.dot(camera.position.clone().sub(centre)), `seat ${seat.index} faces the camera`).toBeGreaterThan(0);
-        const right = pane.localToWorld(new THREE.Vector3(0.4, 0, 0)).project(camera).x - centre.clone().project(camera).x;
+        const display = seat.screen.display;
+        const centre = display.localToWorld(new THREE.Vector3(0, 0, 0));
+        const normal = display.localToWorld(new THREE.Vector3(0, 0, 1)).sub(centre);
+        expect(normal.dot(camera.position.clone().sub(centre)), `seat ${seat.index} seen from the front`).toBeGreaterThan(0);
+        const right = display.localToWorld(new THREE.Vector3(0.3, 0, 0)).project(camera).x - centre.clone().project(camera).x;
         expect(right, `seat ${seat.index} reads left to right`).toBeGreaterThan(0);
-        expect(pane.matrixWorld.determinant(), 'not mirrored by a negative scale').toBeGreaterThan(0);
+        expect(display.matrixWorld.determinant(), 'not mirrored by a negative scale').toBeGreaterThan(0);
       }
       // The texture's left edge (u = 0) is on the plane's left (-x).
-      const { uv, position } = seats[0].screen.pane.geometry.attributes;
+      const { uv, position } = seats[0].screen.display.geometry.attributes;
       for (let i = 0; i < uv.count; i++) expect(Math.sign(uv.getX(i) - 0.5)).toBe(Math.sign(position.getX(i)));
     });
   }
+
+  it('#38 AC2 an occupied monitor shows the same content as before: name, then lines', () => {
+    const { seats } = buildOffice(INITIAL_ROWS);
+    const records = [rec(1, 'working', { activity: ACTIVITY }), rec(2, 'needs', { lastMessage: 'Which database?' }), rec(3, 'done', { lastMessage: 'All done.' }), rec(4, 'stale')];
+    updateScreens(seats, new Map(records.map((r, i) => [i, r])), 0);
+    records.forEach((r, i) => expect(seats[i].screen.content).toEqual(screenContent(r)));
+  });
 });
 
 describe('#27 AC2 content follows the state', () => {
@@ -112,8 +178,8 @@ describe('#27 AC2 content follows the state', () => {
   });
 });
 
-describe('#27 AC3 screens follow the feed', () => {
-  it('#27 AC3 a screen changes on the next refresh after its agent\'s state, activity or message changes', () => {
+describe('#27 AC3 / #38 AC4 monitors follow the feed', () => {
+  it('#27 AC3 / #38 AC4 a monitor changes on the next refresh after its agent\'s state, activity or message changes', () => {
     const c = new OfficeController();
     const { seats } = buildOffice(INITIAL_ROWS);
     const screenOf = () => seats[c.agents.get('session-1')!.seat.index].screen;
@@ -125,19 +191,32 @@ describe('#27 AC3 screens follow the feed', () => {
     expect(refresh(rec(1, 'done', { lastMessage: 'Second.', activity: ['Bash ls', 'Read a.ts'] }))!.lines).toEqual(['Second.']);
     expect(refresh(rec(1, 'stale', { lastMessage: 'Second.' }))!.lines).toEqual(['zz']);
   });
+
+  it('#38 AC4 the big board still shows every agent, as their monitors do', () => {
+    const { seats, board } = buildOffice(INITIAL_ROWS);
+    const occupants = new Map([[0, rec(1, 'working', { activity: ACTIVITY })], [4, rec(2, 'needs', { lastMessage: 'Which?' })]]);
+    updateScreens(seats, occupants, 0);
+    board.update(occupants);
+    expect(board.model.tiles).toEqual([seats[0].screen.content, seats[4].screen.content]);
+  });
 });
 
-describe('#27 AC4 empty desks', () => {
-  it('#27 AC4 an empty desk shows no screen content', () => {
+describe('#38 AC3 empty desks', () => {
+  it('#38 AC3 an empty desk\'s monitor screen is dark, with no content', () => {
     const { seats } = buildOffice(INITIAL_ROWS);
+    const dark = (i: number) => {
+      const { material } = seats[i].screen.display;
+      return material.map === null && `#${material.color.getHexString().toUpperCase()}` === SCREEN_OFF;
+    };
     updateScreens(seats, new Map([[0, rec(1, 'working', { activity: ACTIVITY })]]), 0);
-    expect(seats[0].screen.pane.visible).toBe(true);
+    expect(seats[0].screen.content).not.toBeNull();
+    expect(dark(0)).toBe(false);
     for (const seat of seats.slice(1)) {
       expect(seat.screen.content).toBeNull();
-      expect(seat.screen.pane.visible).toBe(false);
+      expect(dark(seat.index), `seat ${seat.index}`).toBe(true);
     }
     updateScreens(seats, new Map(), 1); // the agent left
     expect(seats[0].screen.content).toBeNull();
-    expect(seats[0].screen.pane.visible).toBe(false);
+    expect(dark(0)).toBe(true);
   });
 });

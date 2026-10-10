@@ -15,13 +15,12 @@ export interface Seat extends SeatSpot {
 }
 
 /**
- * Each desk's screen shows its occupant (empty desks show nothing), turned towards `camera` when given.
+ * Each desk's monitor shows its occupant (empty desks stay dark).
  * Call every frame: screens only redraw when their content changes.
  */
-export function updateScreens(seats: Seat[], occupants: Map<number, AgentRecord>, now: number, camera?: THREE.Vector3) {
+export function updateScreens(seats: Seat[], occupants: Map<number, AgentRecord>, now: number) {
   for (const seat of seats) {
     seat.screen.show(screenContent(occupants.get(seat.index)), now);
-    if (camera) seat.screen.face(camera);
   }
 }
 
@@ -44,7 +43,7 @@ export function buildOffice(rows: number) {
     const row = deskRows[spot.row];
     row.add(turned(at(buildDesk(), spot.desk.x, 0, spot.desk.z), spot.yaw));
     row.add(turned(at(buildChair(), spot.chair.x, 0, spot.chair.z), spot.yaw));
-    const screen = new DeskScreen(spot.screenAt, spot.yaw, Math.hypot(spot.screenAt.x - spot.desk.x, spot.screenAt.z - spot.desk.z) - 0.22);
+    const screen = new DeskScreen(spot.desk, spot.yaw);
     row.add(screen.root);
     return { ...spot, screen };
   });

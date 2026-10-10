@@ -98,7 +98,7 @@ export function createOfficeScene(host: HTMLElement) {
       if (c.mode === 'gone') { view.scene.remove(c.root); leaving.delete(c); }
     }
     const occupants = controller.occupants();
-    updateScreens(office.seats, occupants, t, view.camera.position);
+    updateScreens(office.seats, occupants, t);
     office.board.update(occupants);
     const target = selected ? characters.get(selected) : undefined;
     ring.visible = !!target;
