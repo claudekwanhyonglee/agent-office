@@ -11,6 +11,9 @@ const WOOD_DARK = '#8C6A4A';
 const INK_DARK = '#3A3150';
 const HIGH_FIVE_SECONDS = 1.2;
 const HOP_SECONDS = 0.45;
+/** A leaving agent's bubble grows for this long, then vanishes (#49). */
+const POP_SECONDS = 0.2;
+const BUBBLE_SIZE = 0.72;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const motion = REDUCED_MOTION ? 0.35 : 1;
 
@@ -43,7 +46,7 @@ export class Character {
   private snack: THREE.Mesh;
   /** Things held in the right hand for one pose: a fishing rod, dart, ball or paper plane. */
   private held = heldProps();
-  private bubble: THREE.Sprite;
+  readonly bubble: THREE.Sprite;
   private path: THREE.Vector3[] = [];
   private onArrive?: () => void;
   private hopTween?: { from: THREE.Vector3; to: THREE.Vector3; fromYaw: number; yaw: number; k: number; then: () => void };
@@ -55,6 +58,8 @@ export class Character {
   private growing = false;
   /** Seconds left of a raised-hand high five (#33). */
   private highFiving = 0;
+  /** Seconds since the agent started leaving; its bubble pops, then stays gone (#49). */
+  private leftFor: number | null = null;
 
   constructor(look: Look) {
     this.root.add(this.pivot);
@@ -112,7 +117,7 @@ export class Character {
 
     this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true }));
     this.bubble.center.set(0.5, 0);
-    this.bubble.scale.set(0.72, 0.72, 1);
+    this.bubble.scale.set(BUBBLE_SIZE, BUBBLE_SIZE, 1);
     this.bubble.renderOrder = 10;
     this.root.add(this.bubble);
   }
@@ -168,6 +173,7 @@ export class Character {
 
   /** Walk out along `path` (from wherever the agent is to the door), then disappear. */
   leave(path: Point[]) {
+    this.leftFor = 0;
     this.setOff(path, path.length, () => { this.mode = 'exiting'; this.exitK = 0; });
   }
 
@@ -228,8 +234,11 @@ export class Character {
     this.mug.visible = false;
     this.snack.visible = false;
     for (const prop of Object.values(this.held)) prop.visible = false;
-    // Every agent keeps its state's bubble, wherever it is.
-    const bubble: BubbleKind | null = POSES[this.state].bubble;
+    // Every agent keeps its state's bubble, wherever it is, until it pops on leaving.
+    if (this.leftFor != null) this.leftFor += dt;
+    const popping = this.leftFor != null && this.leftFor < POP_SECONDS;
+    const bubble: BubbleKind | null = this.leftFor == null || popping ? POSES[this.state].bubble : null;
+    this.bubble.scale.setScalar(BUBBLE_SIZE * (popping ? 1 + (this.leftFor! / POP_SECONDS) * 0.5 : 1));
     let bubbleY = 2.2;
 
     this.blinkAt -= dt;
