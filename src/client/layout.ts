@@ -1,128 +1,257 @@
 // Office floor plan in plain numbers (no three.js), so seating and routes are testable.
-// The back wall is at -z with the door, kitchen and meeting room along it; desk pods fill the
-// floor in a grid of rows that grows towards the camera (+z).
+// Plan C, "Mission Control Bay": curved rows of desks face the camera (+z) around a point on the
+// front deck. Kitchen, big board, TV and the door line the back wall (-z); a glass wall with two
+// doors opens onto the deck. Extra rows go in behind the last one and push the back wall back.
 
 export interface Point { x: number; z: number }
 
 export interface SeatSpot {
   index: number;
-  x: number;
-  deskZ: number;
-  chairZ: number;
-  /** 1 faces +z (back half of a pod), -1 faces -z (front half). */
-  facing: 1 | -1;
+  row: number;
+  desk: Point;
+  chair: Point;
+  /** The see-through screen, on the camera side of the desk. */
+  screenAt: Point;
+  /** Facing direction of the seated agent (towards the camera side): forward is (sin yaw, cos yaw). */
   yaw: number;
   sit: Point;
   /** Where the agent stands before hopping into the chair. */
   approach: Point;
-  /** Where a finished agent stands, next to its chair. */
+  /** Where a finished agent stands, behind its chair. */
   standSpot: Point;
+  /** From the chair out to a walkway. */
+  link: Point[];
 }
 
-export const DESKS_PER_POD = 4;
-export const PODS_PER_ROW = 2;
+export type HangoutPose = 'eating' | 'drinking' | 'lounging' | 'chatting';
 
-export const FLOOR = { left: -8, right: 8, back: -5 };
-export const DOOR: Point = { x: 6.6, z: -4.45 };
-/** Walkway in front of the back-wall zones, from the door to the central aisle. */
-export const HALL_Z = -2.6;
-/** Walkway between the two pod columns, from the hall to the front. */
-export const AISLE_X = 0;
+export interface HangoutPlace extends Point {
+  spot: string;
+  /** Facing direction, as for seats. */
+  yaw: number;
+  pose: HangoutPose;
+  /** Sits down on furniture (the last step is a hop onto it). */
+  sits?: boolean;
+  /** From this place out to a walkway. */
+  link: Point[];
+}
+
+export interface HangoutSpot { name: string; chat: boolean; places: HangoutPlace[] }
+
+export interface Area { name: string; x0: number; x1: number; z0: number; z1: number }
+
+export const DESKS_PER_ROW = 8;
+export const INITIAL_ROWS = 2;
 
 /** Metres per second; the controller uses it to know when a walk ends. */
 export const WALK_SPEED = 1.7;
 
-const POD_X = [-2.4, 2.4];
-const FIRST_ROW_Z = 0.6;
-const ROW_PITCH = 4.6;
-const DESK_HALF_DEPTH = 0.41;
-const CHAIR_OFFSET = 0.85;
+/** The rows curve around this point; every desk faces it. */
+const ARC_CENTER: Point = { x: 0, z: 11.5 };
+const FIRST_RADIUS = 7.5;
+const ROW_GAP = 3.4;
+/** Desk centre to desk centre along the arc. */
+const DESK_SPACING = 1.36;
+const CHAIR_BEHIND = 1.2;
+const SCREEN_AHEAD = 0.75;
 const APPROACH = 0.7;
-const STAND_ASIDE = 0.8;
-const POD_DESKS = [
-  { dx: -0.78, facing: 1 }, { dx: 0.78, facing: 1 },
-  { dx: -0.78, facing: -1 }, { dx: 0.78, facing: -1 },
-] as const;
+/** The walkway behind each row of chairs, measured from the row's desks. */
+const LANE_BEHIND = 2.1;
 
-const rowsFor = (podCount: number) => Math.ceil(podCount / PODS_PER_ROW);
+export const FLOOR = { left: -9, right: 9, front: 13.4 };
+/** The glass wall between the office and the deck. */
+export const GLASS_Z = 6.8;
+export const GLASS_DOORS = [{ x0: -6.3, x1: -5.3 }, { x0: 5.3, x1: 6.3 }];
+/** Side aisles from the hall, through the glass doors, to the deck walkway. */
+export const AISLE_X = 5.8;
+export const DECK_Z = 7.6;
 
-export function podCenter(pod: number): Point {
-  return { x: POD_X[pod % PODS_PER_ROW], z: FIRST_ROW_Z + Math.floor(pod / PODS_PER_ROW) * ROW_PITCH };
-}
+export const yawTowards = (from: Point, to: Point) => Math.atan2(to.x - from.x, to.z - from.z);
 
-export function seatLayout(podCount: number): SeatSpot[] {
+const onArc = (radius: number, angle: number): Point =>
+  ({ x: ARC_CENTER.x + radius * Math.sin(angle), z: ARC_CENTER.z - radius * Math.cos(angle) });
+
+const rowRadius = (row: number) => FIRST_RADIUS + row * ROW_GAP;
+const rowAngles = (row: number) =>
+  Array.from({ length: DESKS_PER_ROW }, (_, i) => (i - (DESKS_PER_ROW - 1) / 2) * (DESK_SPACING / rowRadius(row)));
+
+function seatsFor(rows: number): SeatSpot[] {
   const seats: SeatSpot[] = [];
-  for (let pod = 0; pod < podCount; pod++) {
-    const center = podCenter(pod);
-    for (const { dx, facing } of POD_DESKS) {
-      const x = center.x + dx;
-      const deskZ = center.z - DESK_HALF_DEPTH * facing;
-      const chairZ = deskZ - CHAIR_OFFSET * facing;
+  for (let row = 0; row < rows; row++) {
+    const r = rowRadius(row);
+    for (const angle of rowAngles(row)) {
+      const chair = onArc(r + CHAIR_BEHIND, angle), approach = onArc(r + CHAIR_BEHIND + APPROACH, angle);
+      const desk = onArc(r, angle);
       seats.push({
-        index: seats.length,
-        x,
-        deskZ,
-        chairZ,
-        facing,
-        yaw: facing === 1 ? 0 : Math.PI,
-        sit: { x, z: chairZ + 0.04 * facing },
-        approach: { x, z: chairZ - APPROACH * facing },
-        standSpot: { x: x + STAND_ASIDE * Math.sign(dx), z: chairZ },
+        index: seats.length, row, desk, chair, screenAt: onArc(r - SCREEN_AHEAD, angle),
+        yaw: yawTowards(chair, desk), sit: chair, approach, standSpot: approach,
+        link: [chair, approach, onArc(r + LANE_BEHIND, angle)],
       });
     }
   }
   return seats;
 }
 
-/** Front edge of the floor (+z); the back edge is FLOOR.back. */
-export function floorFront(podCount: number) {
-  return FIRST_ROW_Z + (rowsFor(podCount) - 1) * ROW_PITCH + 3.0;
+/** A row's walkway: an arc behind its chairs, from the left aisle to the right one. */
+function lane(row: number): Point[] {
+  const radius = rowRadius(row) + LANE_BEHIND;
+  const end = Math.asin(AISLE_X / radius);
+  return [-end, ...rowAngles(row), end].map((a) => onArc(radius, a));
 }
 
-// Fixed zones along the back and side walls. Positions are centres; sizes are full widths.
-export const MEETING_ROOM = { x0: -7.9, x1: -2.6, z0: -4.9, z1: -1.9 };
-export const MEETING_TABLE = { x: -5.25, z: -3.4, w: 2.6, d: 1.1 };
-export const WHITEBOARD = { x: -5.25, z: -4.8 };
-export const KITCHEN = { counter: { x: 2.7, z: -4.6, w: 3.0, d: 0.65 }, fridge: { x: 4.65, z: -4.55 }, table: { x: 2.7, z: -3.6 } };
-export const WATER_COOLER: Point = { x: -1.7, z: -4.6 };
-export const BOOKSHELF = { x: -0.15, z: -4.75, w: 1.6 };
-export const LOUNGE = { rug: { x: 6.3, z: 2.2 }, sofa: { x: 7.3, z: 2.2 }, table: { x: 6.0, z: 2.2 } };
+/**
+ * Areas the next epic's break-room props will fill (from plan C); no furniture may stand in them.
+ */
+export const RESERVED: Area[] = [
+  { name: 'darts lane', x0: -9, x1: -6.4, z0: 3.9, z1: 5.1 },
+  { name: 'bin', x0: -8.9, x1: -8.1, z0: 5.9, z1: 6.7 },
+  { name: 'pool table', x0: 6.6, x1: 8.2, z0: -0.5, z1: 2.9 },
+  { name: 'pet bed', x0: 6.9, x1: 8.2, z0: 5.0, z1: 5.8 },
+  { name: 'pool', x0: -2.8, x1: 2.8, z0: 9.0, z1: 11.8 },
+  { name: 'loungers', x0: 3.2, x1: 4.6, z0: 9.5, z1: 11.4 },
+  { name: 'ping pong', x0: 4.7, x1: 7.9, z0: 8.1, z1: 9.3 },
+  { name: 'trampoline', x0: 6.7, x1: 8.5, z0: 9.7, z1: 11.5 },
+  { name: 'hammock', x0: 4.65, x1: 9.0, z0: 11.85, z1: 13.4 },
+  { name: 'pond and jetty', x0: -8.6, x1: -3.4, z0: 9.7, z1: 12.3 },
+  { name: 'yoga mat', x0: -8.5, x1: -6.7, z0: 8.2, z1: 8.8 },
+];
 
-export function plantSpots(podCount: number): Point[] {
-  const front = floorFront(podCount) - 0.5;
-  return [
-    { x: -7.5, z: -1.3 }, { x: -2.15, z: -4.6 }, { x: 0.95, z: -4.6 }, { x: 5.6, z: -4.6 }, { x: 7.55, z: -4.6 },
-    { x: 7.55, z: -0.4 }, { x: 7.55, z: 4.6 }, { x: -7.5, z: 3.0 }, { x: -7.5, z: front }, { x: 7.5, z: front },
+export const MEETING_ROOM = { x0: -8.7, x1: -6.05, z0: -0.8, z1: 2.2 };
+export const MEETING_TABLE = { x: -7.35, z: 0.7, w: 1.8, d: 1.0 };
+
+/** Everything for an office with `rows` rows of desks. Pieces along the back wall move back with each extra row. */
+export function officeLayout(rows: number) {
+  const b = -ROW_GAP * (rows - INITIAL_ROWS);
+  const back = -5 + b;
+  const hallZ = -1.6 + b;
+  const door: Point = { x: 8.45, z: -4.45 + b };
+  const kitchen = {
+    counter: { x: -6.9, z: -4.525 + b, w: 3.6, d: 0.65 },
+    coffee: { x: -8.1, z: -4.525 + b },
+    table: { x: -6.9, z: -2.7 + b },
+  };
+  const cooler: Point = { x: -4.75, z: -4.6 + b };
+  const lounge = { tv: { x: 6.4, z: -4.82 + b, w: 2.6 }, sofa: { x: 6.4, z: -2.35 + b, w: 2.8 }, rug: { x: 6.4, z: -3.2 + b } };
+
+  const toHall = (p: Point): Point[] => [p, { x: p.x, z: hallZ }];
+  const toDeck = (p: Point): Point[] => [p, { x: p.x, z: DECK_Z }];
+  const sofaFront = lounge.sofa.z - 0.95;
+  const sofaSeat = (x: number): HangoutPlace => ({
+    x, z: lounge.sofa.z, spot: 'lounge', yaw: Math.PI, pose: 'lounging', sits: true,
+    link: [{ x, z: lounge.sofa.z }, { x, z: sofaFront }, { x: 4.75, z: sofaFront }, { x: 4.75, z: hallZ }],
+  });
+  const standing = (spot: string, p: Point, pose: HangoutPose, yaw = Math.PI): HangoutPlace =>
+    ({ ...p, spot, yaw, pose, link: toHall(p) });
+  const chatSpot = (name: string, a: Point, c: Point, link: (p: Point) => Point[]): HangoutSpot => {
+    const place = (p: Point, other: Point): HangoutPlace => ({ ...p, spot: name, yaw: yawTowards(p, other), pose: 'chatting', link: link(p) });
+    return { name, chat: true, places: [place(a, c), place(c, a)] };
+  };
+  const cooler2 = { x: -4.0, z: -3.9 + b };
+
+  const hangouts: HangoutSpot[] = [
+    {
+      name: 'kitchen',
+      chat: false,
+      places: [
+        standing('kitchen', { x: -8.2, z: -3.6 + b }, 'drinking'),
+        standing('kitchen', { x: -5.5, z: -3.6 + b }, 'eating'),
+        standing('kitchen', { x: -6.9, z: -1.95 + b }, 'eating'),
+      ],
+    },
+    {
+      name: 'water-cooler',
+      chat: false,
+      places: [standing('water-cooler', { x: cooler.x, z: -3.75 + b }, 'drinking'), standing('water-cooler', cooler2, 'drinking', yawTowards(cooler2, cooler))],
+    },
+    { name: 'lounge', chat: false, places: [sofaSeat(5.7), sofaSeat(6.4), sofaSeat(7.1)] },
+    chatSpot('chat-hall', { x: -1.4, z: -2.6 + b }, { x: -0.6, z: -2.6 + b }, toHall),
+    chatSpot('chat-deck', { x: -1.6, z: 8.3 }, { x: -0.8, z: 8.3 }, toDeck),
+    chatSpot('chat-deck-right', { x: 2.0, z: 8.3 }, { x: 2.8, z: 8.3 }, toDeck),
   ];
+
+  const walkways: Point[][] = [
+    [{ x: door.x, z: hallZ }, { x: -8.2, z: hallZ }],
+    [{ x: -AISLE_X, z: hallZ }, { x: -AISLE_X, z: DECK_Z }],
+    [{ x: AISLE_X, z: hallZ }, { x: AISLE_X, z: DECK_Z }],
+    [{ x: -AISLE_X, z: DECK_Z }, { x: AISLE_X, z: DECK_Z }],
+    ...Array.from({ length: rows }, (_, row) => lane(row)),
+  ];
+
+  return {
+    rows,
+    bounds: { ...FLOOR, back },
+    hallZ,
+    door,
+    /** From the door out to the hall. */
+    doorLink: [{ ...door }, { x: door.x, z: hallZ }] as Point[],
+    seats: seatsFor(rows),
+    hangouts,
+    walkways,
+    kitchen,
+    cooler,
+    bookshelf: { x: -8.78, z: -2.8 + b, length: 1.6 },
+    lounge,
+    board: { x: 0, w: 8.8 },
+    windows: [-7.8, -6.0],
+    plants: [
+      { x: -4.0, z: -4.5 + b }, { x: 4.7, z: -4.4 + b }, { x: 8.5, z: -1.0 }, { x: -8.5, z: 7.4 }, { x: -3.2, z: 12.9 },
+      { x: 3.0, z: 12.9 }, { x: 8.5, z: 3.6 }, { x: -8.5, z: 2.9 }, { x: 8.5, z: 6.4 },
+    ] as Point[],
+    wallArt: [0.5, 3.0],
+  };
 }
 
-export function wallArt(podCount: number): { x: number; z: number; wall: 'back' | 'left' }[] {
-  const art: { x: number; z: number; wall: 'back' | 'left' }[] = [{ x: 2.0, z: FLOOR.back, wall: 'back' }, { x: 3.4, z: FLOOR.back, wall: 'back' }];
-  for (let z = 1.2; z < floorFront(podCount) - 1; z += 3.2) art.push({ x: FLOOR.left, z, wall: 'left' });
-  return art;
+export type OfficeLayout = ReturnType<typeof officeLayout>;
+
+// Routes: every place links out to a walkway; a route walks out along one link, takes the
+// shortest way along the walkways, and walks in along the other link.
+
+const same = (a: Point, b: Point) => Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.z - b.z) < 1e-9;
+const distance = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.z - a.z);
+const onSegment = (p: Point, a: Point, b: Point) => Math.abs(distance(a, p) + distance(p, b) - distance(a, b)) < 1e-6;
+
+/** Shortest walk between two points on the walkways (each walkway is a polyline; walkways meet where one's point lies on another). */
+export function shortestWalk(walkways: Point[][], from: Point, to: Point): Point[] {
+  const nodes: Point[] = [];
+  const nodeOf = (p: Point) => {
+    const i = nodes.findIndex((q) => same(p, q));
+    return i >= 0 ? i : nodes.push(p) - 1;
+  };
+  [...walkways.flat(), from, to].forEach(nodeOf);
+  const next: number[][] = nodes.map(() => []);
+  for (const line of walkways) {
+    for (let s = 0; s + 1 < line.length; s++) {
+      const a = line[s], b = line[s + 1];
+      const on = nodes.map((_, i) => i).filter((i) => onSegment(nodes[i], a, b)).sort((i, j) => distance(a, nodes[i]) - distance(a, nodes[j]));
+      for (let k = 0; k + 1 < on.length; k++) { next[on[k]].push(on[k + 1]); next[on[k + 1]].push(on[k]); }
+    }
+  }
+  const start = nodeOf(from), end = nodeOf(to);
+  for (const i of [start, end]) if (!next[i].length) throw new Error(`(${nodes[i].x}, ${nodes[i].z}) is not on a walkway`);
+
+  // Dijkstra; the network has a few dozen points.
+  const dist = nodes.map(() => Infinity), prev = nodes.map(() => -1), done = new Set<number>();
+  dist[start] = 0;
+  while (!done.has(end)) {
+    let u = -1;
+    for (let i = 0; i < nodes.length; i++) if (!done.has(i) && (u < 0 || dist[i] < dist[u])) u = i;
+    if (dist[u] === Infinity) throw new Error('walkways are not connected');
+    done.add(u);
+    for (const v of next[u]) {
+      const d = dist[u] + distance(nodes[u], nodes[v]);
+      if (d < dist[v]) { dist[v] = d; prev[v] = u; }
+    }
+  }
+  const path: Point[] = [];
+  for (let i = end; i >= 0; i = prev[i]) path.unshift({ ...nodes[i] });
+  return path;
 }
-
-// Routes: every place links to the walkway "spine" (the hall plus the central aisle);
-// a route walks out along one link, along the spine, and in along the other link.
-
-const onHall = (p: Point) => p.z === HALL_Z;
-const onAisle = (p: Point) => p.x === AISLE_X;
-
-function spine(from: Point, to: Point): Point[] {
-  if ((onHall(from) && onHall(to)) || (onAisle(from) && onAisle(to))) return [to];
-  return [{ x: AISLE_X, z: HALL_Z }, to];
-}
-
-/** From a place (first point) out to the spine (last point). */
-export const doorLink = (): Point[] => [{ ...DOOR }, { x: DOOR.x, z: HALL_Z }];
-export const seatLink = (seat: SeatSpot): Point[] => [{ ...seat.sit }, { ...seat.approach }, { x: AISLE_X, z: seat.approach.z }];
 
 /** Walk from the start of link `from` to the start of link `to`. */
-export function route(from: Point[], to: Point[]): Point[] {
-  return withoutLoops([...from, ...spine(from.at(-1)!, to.at(-1)!), ...[...to].reverse().slice(1)]);
+export function route(layout: OfficeLayout, from: Point[], to: Point[]): Point[] {
+  const walk = shortestWalk(layout.walkways, from.at(-1)!, to.at(-1)!);
+  return withoutLoops([...from, ...walk.slice(1), ...[...to].reverse().slice(1)]);
 }
-
-const same = (a: Point, b: Point) => a.x === b.x && a.z === b.z;
 
 /** Drops repeats and any detour that comes back to a point already passed. */
 export function withoutLoops(points: Point[]): Point[] {
@@ -138,91 +267,17 @@ export function withoutLoops(points: Point[]): Point[] {
 /** The point at distance `d` along `path`, and the index of the leg it's on. */
 export function along(path: Point[], d: number): { leg: number; done: boolean } {
   for (let i = 0; i < path.length - 1; i++) {
-    const len = Math.hypot(path[i + 1].x - path[i].x, path[i + 1].z - path[i].z);
+    const len = distance(path[i], path[i + 1]);
     if (d < len) return { leg: i, done: false };
     d -= len;
   }
   return { leg: path.length - 1, done: true };
 }
 
-export const pathLength = (path: Point[]) =>
-  path.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - path[i].x, p.z - path[i].z), 0);
+export const pathLength = (path: Point[]) => path.slice(1).reduce((sum, p, i) => sum + distance(path[i], p), 0);
 
-// Hangout spots for idle agents. Each place links to the spine like a seat does.
-
-/** The walkway across the floor between the first two pod rows. */
-const LANE_Z = FIRST_ROW_Z + ROW_PITCH / 2;
-const LOUNGE_LANE_X = 5.0;
-
-export type HangoutPose = 'eating' | 'drinking' | 'lounging' | 'chatting';
-
-export interface HangoutPlace extends Point {
-  spot: string;
-  /** Facing direction, as for seats: forward is (sin yaw, cos yaw). */
-  yaw: number;
-  pose: HangoutPose;
-  /** Sits down on furniture (the last step is a hop onto it). */
-  sits?: boolean;
-  /** From this place out to the spine. */
-  link: Point[];
-}
-
-export interface HangoutSpot { name: string; chat: boolean; places: HangoutPlace[] }
-
-export const yawTowards = (from: Point, to: Point) => Math.atan2(to.x - from.x, to.z - from.z);
-
-const toHall = (p: Point): Point[] => [p, { x: p.x, z: HALL_Z }];
-const viaLane = (p: Point): Point[] => [p, { x: p.x, z: LANE_Z }, { x: AISLE_X, z: LANE_Z }];
-const viaLoungeLane = (...points: Point[]): Point[] => [...points, { x: LOUNGE_LANE_X, z: points.at(-1)!.z }, { x: LOUNGE_LANE_X, z: HALL_Z }];
-
-function chatSpot(name: string, a: Point, b: Point, link: (p: Point) => Point[]): HangoutSpot {
-  const place = (p: Point, other: Point): HangoutPlace => ({ ...p, spot: name, yaw: yawTowards(p, other), pose: 'chatting', link: link(p) });
-  return { name, chat: true, places: [place(a, b), place(b, a)] };
-}
-
-function sofaSeat(z: number): HangoutPlace {
-  const seat = { x: LOUNGE.sofa.x - 0.35, z };
-  return { ...seat, spot: 'lounge', yaw: -Math.PI / 2, pose: 'lounging', sits: true, link: viaLoungeLane(seat, { x: 6.25, z }) };
-}
-
-const cooler2 = { x: -1.05, z: -3.75 };
-
-export const HANGOUTS: HangoutSpot[] = [
-  {
-    name: 'kitchen',
-    chat: false,
-    places: [
-      { x: 2.3, z: -2.95, spot: 'kitchen', yaw: Math.PI, pose: 'eating', link: toHall({ x: 2.3, z: -2.95 }) },
-      { x: 3.1, z: -2.95, spot: 'kitchen', yaw: Math.PI, pose: 'drinking', link: toHall({ x: 3.1, z: -2.95 }) },
-      { x: 1.45, z: -3.85, spot: 'kitchen', yaw: Math.PI, pose: 'drinking', link: toHall({ x: 1.45, z: -3.85 }) },
-    ],
-  },
-  {
-    name: 'water-cooler',
-    chat: false,
-    places: [
-      { x: WATER_COOLER.x, z: -3.9, spot: 'water-cooler', yaw: Math.PI, pose: 'drinking', link: toHall({ x: WATER_COOLER.x, z: -3.9 }) },
-      { ...cooler2, spot: 'water-cooler', yaw: yawTowards(cooler2, WATER_COOLER), pose: 'drinking', link: toHall(cooler2) },
-    ],
-  },
-  {
-    name: 'lounge',
-    chat: false,
-    places: [
-      sofaSeat(1.6),
-      sofaSeat(2.8),
-      { x: 5.45, z: LOUNGE.table.z, spot: 'lounge', yaw: Math.PI / 2, pose: 'drinking', link: viaLoungeLane({ x: 5.45, z: LOUNGE.table.z }) },
-    ],
-  },
-  chatSpot('chat-hall', { x: 1.3, z: -1.95 }, { x: 2.1, z: -1.95 }, toHall),
-  chatSpot('chat-left', { x: -6.4, z: 0.8 }, { x: -5.6, z: 0.8 }, viaLane),
-  chatSpot('chat-left-front', { x: -6.4, z: 4.8 }, { x: -5.6, z: 4.8 }, viaLane),
-];
-
-export const HANGOUT_PLACES = HANGOUTS.flatMap((s) => s.places);
-
-/** Door → hall → aisle → in front of the desk → into the chair. */
-export const arrivalPath = (seat: SeatSpot) => route(doorLink(), seatLink(seat));
+/** Door → hall → aisle → lane behind the row → into the chair. */
+export const arrivalPath = (layout: OfficeLayout, seat: SeatSpot) => route(layout, layout.doorLink, seat.link);
 
 /** Chair → door: the arrival route walked backwards. */
-export const departurePath = (seat: SeatSpot) => route(seatLink(seat), doorLink());
+export const departurePath = (layout: OfficeLayout, seat: SeatSpot) => route(layout, seat.link, layout.doorLink);

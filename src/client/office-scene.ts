@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { AgentRecord } from '../shared/agent.ts';
 import { createView } from './view.ts';
-import { OfficeController, INITIAL_PODS, type OfficeEvent } from './controller.ts';
+import { OfficeController, type OfficeEvent } from './controller.ts';
+import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { lookFor } from './look.ts';
 import { updateScreens, type Seat } from './office.ts';
@@ -20,7 +21,7 @@ export function createOfficeScene(host: HTMLElement) {
   const characters = new Map<string, Character>();
   /** Walking out; kept until they're through the door. */
   const leaving = new Set<Character>();
-  let seats: Seat[] = view.setPodCount(INITIAL_PODS);
+  let seats: Seat[] = view.setRows(INITIAL_ROWS);
   let selected: string | null = null;
 
   const ring = new THREE.Mesh(
@@ -37,8 +38,12 @@ export function createOfficeScene(host: HTMLElement) {
 
   function apply(events: OfficeEvent[]) {
     for (const event of events) {
-      if (event.type === 'pods') {
-        seats = view.setPodCount(event.count);
+      if (event.type === 'rows') {
+        seats = view.setRows(event.count);
+      } else if (event.type === 'place') {
+        const character = characters.get(event.key)!;
+        if (event.place) character.placeAt(event.seat, event.state, event.place);
+        else character.sitAt(event.seat, event.state);
       } else if (event.type === 'arrive') {
         const character = new Character(lookFor(event.key));
         character.root.userData.agentKey = event.key;

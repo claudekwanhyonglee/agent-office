@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLOOR, floorFront } from './layout.ts';
+import { officeLayout } from './layout.ts';
 
 /** How far the camera can zoom, in metres from its target. Narrow screens may raise `max` to fit the floor (#22). */
 export const ZOOM = { min: 6, max: 45 };
@@ -37,10 +37,10 @@ export const fovFor = (aspect: number) => {
   return THREE.MathUtils.clamp(keepHorizontal, FOV.base, FOV.max);
 };
 
-export const floorCorners = (podCount: number) => {
-  const front = floorFront(podCount);
-  return [[FLOOR.left, FLOOR.back], [FLOOR.right, FLOOR.back], [FLOOR.left, front], [FLOOR.right, front]]
-    .map(([x, z]) => new THREE.Vector3(x, 0, z));
+/** The corners of the whole floor, deck included. */
+export const floorCorners = (rows: number) => {
+  const { left, right, back, front } = officeLayout(rows).bounds;
+  return [[left, back], [right, back], [left, front], [right, front]].map(([x, z]) => new THREE.Vector3(x, 0, z));
 };
 
 /** Whether every point lands inside the screen, leaving `margin` (in NDC units) at the edges. */
@@ -71,12 +71,13 @@ export function fitRadius(camera: THREE.PerspectiveCamera, orbit: Orbit, points:
 }
 
 /** Sets the fov for the screen shape, aims at the floor and backs off until all of it is on screen. */
-export function frameFloor(camera: THREE.PerspectiveCamera, orbit: Orbit, podCount: number) {
+export function frameFloor(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: number) {
   camera.fov = fovFor(camera.aspect);
-  orbit.target.z = (FLOOR.back + floorFront(podCount)) / 2 + 1.5;
+  const { left, right, back, front } = officeLayout(rows).bounds;
+  orbit.target.z = (back + front) / 2 + 1.5;
   // Never closer than the hand-tuned desktop framing, so walls and furniture above the floor stay in view.
-  const handTuned = 4 + Math.max(FLOOR.right - FLOOR.left, floorFront(podCount) - FLOOR.back) * 0.9;
-  orbit.radius = Math.max(fitRadius(camera, orbit, floorCorners(podCount)), handTuned);
+  const handTuned = 4 + Math.max(right - left, front - back) * 0.9;
+  orbit.radius = Math.max(fitRadius(camera, orbit, floorCorners(rows)), handTuned);
   orbit.maxRadius = Math.max(ZOOM.max, orbit.radius);
   placeCamera(camera, orbit);
 }

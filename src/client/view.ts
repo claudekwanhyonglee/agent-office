@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { buildOffice, type Seat } from './office.ts';
-import { FLOOR, floorFront } from './layout.ts';
+import { buildOffice } from './office.ts';
 import { createGestures, frameFloor, initialOrbit, placeCamera, wheelRadius } from './camera.ts';
 
 /** Renderer, lights, orbit camera and the office. Agents are layered on by callers. */
@@ -24,18 +23,18 @@ export function createView(host: HTMLElement) {
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 150);
   const orbit = initialOrbit();
 
-  let office: { group: THREE.Group; seats: Seat[] } | undefined;
-  let podCount = 0;
+  let office: ReturnType<typeof buildOffice> | undefined;
+  let rows = 0;
 
-  function setPodCount(count: number) {
-    if (count === podCount) return office!.seats;
+  function setRows(count: number) {
+    if (count === rows) return office!.seats;
     if (office) scene.remove(office.group);
-    podCount = count;
+    rows = count;
     office = buildOffice(count);
     scene.add(office.group);
     // Frame the whole floor and stretch the sun's shadow box over it.
-    const front = floorFront(count), depth = front - FLOOR.back, centerZ = (FLOOR.back + front) / 2;
-    const width = FLOOR.right - FLOOR.left;
+    const { left, right, back, front } = office.layout.bounds;
+    const depth = front - back, centerZ = (back + front) / 2, width = right - left;
     const half = Math.max(width, depth) / 2 + 2;
     Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 40 });
     sun.shadow.camera.updateProjectionMatrix();
@@ -49,7 +48,7 @@ export function createView(host: HTMLElement) {
     const w = host.clientWidth || innerWidth, h = host.clientHeight || innerHeight;
     renderer.setSize(w, h);
     camera.aspect = w / h;
-    frameFloor(camera, orbit, podCount);
+    frameFloor(camera, orbit, rows);
   }
 
   // Drag to orbit, pinch or scroll to zoom. A press that doesn't move counts as a click.
@@ -92,7 +91,7 @@ export function createView(host: HTMLElement) {
     scene,
     camera,
     canvas,
-    setPodCount,
+    setRows,
     onClick: (handle: (e: PointerEvent) => void) => clickHandlers.push(handle),
     onFrame: (handle: (t: number, dt: number) => void) => frameHandlers.push(handle),
   };

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import {
   FOV, ZOOM, allOnScreen, clampTooltip, createGestures, floorCorners, fovFor, frameFloor, initialOrbit, pinchRadius, placeCamera, wheelRadius,
 } from '../src/client/camera.ts';
-import { INITIAL_PODS } from '../src/client/controller.ts';
+import { INITIAL_ROWS } from '../src/client/layout.ts';
 
 describe('#21 AC1 pinch zoom', () => {
   it('#21 AC1 spreading the fingers moves the camera closer, pinching moves it away, in proportion', () => {
@@ -78,14 +78,14 @@ describe('#21 AC2 two fingers neither orbit nor tap', () => {
 
 describe('#21 AC3 the floor fits any screen shape on first load', () => {
   for (const [w, h] of [[390, 844], [1440, 900], [375, 667], [844, 390], [768, 1024], [2560, 1080]]) {
-    for (const pods of [INITIAL_PODS, 6, 8]) {
-      it(`#21 AC3 all four floor corners project inside a ${w}×${h} screen (${pods} pods)`, () => {
+    for (const rows of [INITIAL_ROWS, 3, 4]) {
+      it(`#21 AC3 all four floor corners project inside a ${w}×${h} screen (${rows} rows)`, () => {
         const camera = new THREE.PerspectiveCamera(34, w / h, 0.1, 150);
         const orbit = initialOrbit();
-        frameFloor(camera, orbit, pods);
+        frameFloor(camera, orbit, rows);
         placeCamera(camera, orbit);
         camera.updateProjectionMatrix();
-        expect(allOnScreen(camera, floorCorners(pods))).toBe(true);
+        expect(allOnScreen(camera, floorCorners(rows))).toBe(true);
         expect(orbit.radius).toBeLessThanOrEqual(orbit.maxRadius);
         expect(orbit.radius).toBeLessThan(camera.far);
       });
@@ -100,7 +100,7 @@ describe('#21 AC3 the floor fits any screen shape on first load', () => {
     expect(fovFor(0.85)).toBeLessThan(FOV.max);
     const camera = new THREE.PerspectiveCamera(34, 1440 / 900, 0.1, 150);
     const orbit = initialOrbit();
-    frameFloor(camera, orbit, INITIAL_PODS);
+    frameFloor(camera, orbit, INITIAL_ROWS);
     expect(orbit.maxRadius).toBe(ZOOM.max);
   });
 });
