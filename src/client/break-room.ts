@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { at, ball, box, cyl, mesh, tag } from './toon.ts';
 import { BREAK_ROOM, type SeatSpot } from './layout.ts';
+import { BALL_R, POCKETS, POCKET_R, SHOT_SECONDS, ballsAt } from './pool.ts';
 
 /** Coffee mugs left on desks by a coffee delivery (#33), one per desk at most. */
 export class DeskMugs {
@@ -27,6 +28,7 @@ export class DeskMugs {
 const INK = '#3A3150';
 const WOOD = '#C98A55';
 const WATER = '#8FD3F2';
+const FELT_TOP = 0.835;
 
 const turned = <T extends THREE.Object3D>(obj: T, yaw: number) => {
   obj.rotation.y = yaw;
@@ -118,11 +120,14 @@ export function addGameTables(group: THREE.Group) {
   const { poolTable: pool, pingPong: pong } = BREAK_ROOM;
   const table = tag(new THREE.Group(), 'pool-table');
   table.add(at(box(pool.w, 0.18, pool.d, WOOD), 0, 0.72, 0));
-  table.add(at(box(pool.w - 0.2, 0.03, pool.d - 0.2, '#3F8A5C', { outline: 0, shadow: false }), 0, 0.82, 0));
+  // Parts of the table, not furniture of their own: marked with `part`, not tagged.
+  const felt = at(box(pool.w - 0.2, 0.03, pool.d - 0.2, '#3F8A5C', { outline: 0, shadow: false }), 0, 0.82, 0);
+  table.add(Object.assign(felt, { userData: { part: 'felt' } }));
+  for (const p of POCKETS) {
+    const pocket = at(cyl(POCKET_R, POCKET_R, 0.005, INK, { outline: 0, shadow: false }), p.x, FELT_TOP, p.z);
+    table.add(Object.assign(pocket, { userData: { part: 'pocket' } }));
+  }
   for (const dx of [-0.45, 0.45]) for (const dz of [-0.9, 0.9]) table.add(at(box(0.12, 0.65, 0.12, '#8C6A4A', { outline: 0.02 }), dx, 0.32, dz));
-  ['#FFFFFF', '#E2B347', '#C25B7A', '#4D86FF', '#241C2F'].forEach((color, i) => {
-    table.add(at(ball(0.05, color, { outline: 0.06, shadow: false }), -0.25 + (i % 3) * 0.2, 0.88, -0.3 + Math.floor(i / 3) * 0.5));
-  });
   group.add(at(table, pool.x, 0, pool.z));
 
   const pingPong = tag(new THREE.Group(), 'ping-pong-table');
@@ -131,6 +136,38 @@ export function addGameTables(group: THREE.Group) {
   pingPong.add(at(box(0.03, 0.15, pong.d + 0.1, '#F4EEE2', { outline: 0.02 }), 0, 0.85, 0)); // net
   for (const dx of [-0.9, 0.9]) for (const dz of [-0.45, 0.45]) pingPong.add(at(box(0.06, 0.72, 0.06, INK, { outline: 0 }), dx, 0.36, dz));
   group.add(at(pingPong, pong.x, 0, pong.z));
+}
+
+/** The pool balls (#53): they follow the scripted rack from the turn the controller says, or sit racked. */
+export class PoolBalls {
+  readonly meshes = ['#FFFFFF', '#E2B347', '#C25B7A', '#4D86FF', '#241C2F'].map((color) => ball(BALL_R, color, { outline: 0.06, shadow: false }));
+  /** Seconds into the rack; null while nobody plays. */
+  private t: number | null = null;
+
+  constructor(parent: THREE.Object3D) {
+    parent.add(...this.meshes);
+    this.place(0);
+  }
+
+  /** Turn `shot` of the rack starts now; null: play stopped, the balls go back in the rack. */
+  play(shot: number | null) {
+    this.t = shot == null ? null : shot * SHOT_SECONDS;
+    this.place(this.t ?? 0);
+  }
+
+  update(dt: number) {
+    if (this.t == null) return;
+    this.t += dt;
+    this.place(this.t);
+  }
+
+  private place(t: number) {
+    const { poolTable: table } = BREAK_ROOM;
+    ballsAt(t).forEach((b, i) => {
+      this.meshes[i].position.set(table.x + b.x, FELT_TOP + BALL_R, table.z + b.z);
+      this.meshes[i].visible = !b.potted;
+    });
+  }
 }
 
 /** The dog's bed and bowl (#34). */

@@ -3,6 +3,7 @@ import {
   DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, behindChair, officeLayout, pathLength, route, withoutLoops, yawTowards,
   type DogSpot, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
 } from './layout.ts';
+import { SHOT_COUNT, SHOT_SECONDS } from './pool.ts';
 
 /** Seconds an idle agent waits at its desk before wandering off (AC: within 3 s). */
 const SET_OFF = { min: 1, max: 2.5 };
@@ -77,7 +78,9 @@ export type OfficeEvent =
   /** The dog runs along `path`, then lies down (in its bed) or stands. */
   | { type: 'dog'; path: Point[]; lie: boolean }
   /** Agent `key` throws a ball for the dog (the dog's run follows). */
-  | { type: 'fetch'; key: string };
+  | { type: 'fetch'; key: string }
+  /** Turn `shot` of the pool rack starts (#53); null: play stopped, the balls go back in the rack. */
+  | { type: 'pool'; shot: number | null };
 
 export interface DogState {
   spot: DogSpot;
@@ -110,6 +113,8 @@ export class OfficeController {
   /** Desks with a delivered mug, by the key of the agent working there. */
   private mugs = new Map<string, number>();
   readonly dog: DogState;
+  /** The pool game in play (#53): its two players (the first breaks), the turn it's on and when the next starts. */
+  private pool: { players: [string, string]; turn: number; nextAt: number } | null = null;
 
   constructor(clock: Partial<Clock> = {}) {
     this.clock = { ...systemClock, ...clock };
@@ -150,7 +155,45 @@ export class OfficeController {
       else this.act(key, agent, now, events);
     }
     this.moveDog(now, events);
+    this.playPool(now, events);
     return events;
+  }
+
+  /**
+   * Pool (#53): once both players are at the table, turns follow every SHOT_SECONDS. Each turn the
+   * last shooter steps back to wait at its end, and the other player steps up to the next shot's spot.
+   */
+  private playPool(now: number, events: OfficeEvent[]) {
+    if (!this.pool) {
+      const players = [...this.agents].filter(([, a]) => a.place?.spot === 'pool-table');
+      if (players.length < 2 || players.some(([, a]) => a.arrivesAt > now)) return;
+      const breaker = players.find(([, a]) => a.place!.pose === 'cue-shot') ?? players[0];
+      const other = players.find((p) => p !== breaker)!;
+      this.pool = { players: [breaker[0], other[0]], turn: 0, nextAt: now + SHOT_SECONDS };
+      events.push({ type: 'pool', shot: 0 });
+      return;
+    }
+    const pool = this.pool;
+    if (now < pool.nextAt) return;
+    const last = pool.turn % SHOT_COUNT, shot = (pool.turn + 1) % SHOT_COUNT;
+    const [waiter, shooter] = [pool.players[pool.turn % 2], pool.players[(pool.turn + 1) % 2]];
+    pool.turn += 1;
+    pool.nextAt += SHOT_SECONDS;
+    const turns = this.layout.poolTurns;
+    this.step(waiter, turns[last].wait, now, events);
+    this.step(shooter, turns[shot].shoot, now, events);
+    events.push({ type: 'pool', shot });
+  }
+
+  /** Walks a player straight to another place at the same table (its stay there is unchanged). */
+  private step(key: string, place: HangoutPlace, now: number, events: OfficeEvent[]) {
+    const agent = this.agents.get(key)!;
+    const from = agent.place!;
+    const path = [{ x: from.x, z: from.z }, { x: place.x, z: place.z }];
+    agent.place = place;
+    agent.walk = { path, origin: from.link, startedAt: now };
+    agent.arrivesAt = now + pathLength(path) / WALK_SPEED;
+    events.push({ type: 'walk', key, path, place });
   }
 
   /** Who sits at each desk (their latest record), by seat index. */
@@ -363,6 +406,10 @@ export class OfficeController {
     if (!left || !this.spotOf(left)?.game) return;
     const players = [...this.agents].filter(([, a]) => a.place?.spot === left.spot);
     if (players.length >= 2) return;
+    if (left.spot === 'pool-table' && this.pool) {
+      this.pool = null;
+      events.push({ type: 'pool', shot: null });
+    }
     for (const [key, agent] of players) this.wander(key, agent, now, events);
   }
 

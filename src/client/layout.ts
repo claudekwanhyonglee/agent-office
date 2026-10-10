@@ -1,4 +1,6 @@
 // Office floor plan in plain numbers (no three.js), so seating and routes are testable.
+import { SHOT_COUNT, shotSetup } from './pool.ts';
+
 // Plan C, "Mission Control Bay": curved rows of desks face the camera (+z) around a point on the
 // front deck. Kitchen, big board, TV and the door line the back wall (-z); a glass wall with two
 // doors opens onto the deck. Extra rows go in behind the last one and push the back wall back.
@@ -253,6 +255,7 @@ export function officeLayout(rows: number) {
     hangouts,
     walkways,
     dogSpots: dogSpots(hallZ),
+    poolTurns: POOL_TURNS,
     /** The walkway behind each row of chairs. */
     lanes,
     kitchen,
@@ -298,21 +301,37 @@ function soloSpots(): HangoutSpot[] {
   ];
 }
 
+/** A pool shooter stands this far from the cue ball, behind it (#53). */
+export const CUE_REACH = 1.1;
+/** The waiting player stands this much further back from the table's end, a little towards the aisle. */
+const WAIT_BACK = 0.45;
+const WAIT_X = -0.15;
+
+/**
+ * For each shot of the pool rack (#53): where its shooter stands, behind the cue ball facing along
+ * the table, and where the shooter then waits, at the same end. Each links straight out to the aisle.
+ */
+const POOL_TURNS = Array.from({ length: SHOT_COUNT }, (_, k) => {
+  const { poolTable: table } = BREAK_ROOM;
+  const { cue, aim } = shotSetup(k);
+  const at = { x: table.x + cue.x, z: table.z + cue.z - aim * CUE_REACH };
+  const wait = { x: table.x + WAIT_X, z: at.z - aim * WAIT_BACK };
+  const shoot: HangoutPlace = { ...at, spot: 'pool-table', pose: 'cue-shot', yaw: aim > 0 ? 0 : Math.PI, link: [at, { x: AISLE_X, z: at.z }] };
+  const waiting: HangoutPlace = {
+    ...wait, spot: 'pool-table', pose: 'cue-wait', yaw: yawTowards(wait, table), link: [wait, { x: wait.x, z: at.z }, { x: AISLE_X, z: at.z }],
+  };
+  return { shoot, wait: waiting };
+});
+
 /** Two-player games at either end of a table (#31). */
 function pairGames(): HangoutSpot[] {
-  const { poolTable: pool, pingPong: pong } = BREAK_ROOM;
+  const { pingPong: pong } = BREAK_ROOM;
   const end = (spot: string, pose: HangoutPose, p: Point, toward: Point, link: Point[]): HangoutPlace =>
     ({ ...p, spot, pose, yaw: yawTowards(p, toward), link: [p, ...link] });
-  const poolEnds = [pool.z - pool.d / 2 - 0.45, pool.z + pool.d / 2 + 0.45];
   const pongEnds = [pong.x - pong.w / 2 - 0.5, pong.x + pong.w / 2 + 0.5];
   return [
-    {
-      name: 'pool-table',
-      chat: false,
-      game: { min: 2 },
-      places: poolEnds.map((z, i) => end('pool-table', i ? 'cue-wait' : 'cue-shot', { x: pool.x, z }, pool,
-        [{ x: 6.4, z }, { x: AISLE_X, z }])),
-    },
+    // The first shooter breaks; the other waits at the far end, where they'll shoot next.
+    { name: 'pool-table', chat: false, game: { min: 2 }, places: [POOL_TURNS[0].shoot, POOL_TURNS[1].wait] },
     {
       name: 'ping-pong',
       chat: false,

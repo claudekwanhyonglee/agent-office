@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { OfficeState } from '../shared/agent.ts';
-import { at, ball, cyl, mesh } from './toon.ts';
+import { at, ball, cyl, mesh, tag } from './toon.ts';
 import type { Look, HatKind } from './look.ts';
 import { WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
@@ -13,6 +13,10 @@ const HIGH_FIVE_SECONDS = 1.2;
 const HOP_SECONDS = 0.45;
 /** A leaving agent's bubble grows for this long, then vanishes (#49). */
 const POP_SECONDS = 0.2;
+/** Pool (#53): the cue is held level this high, over the playing surface (0.835 m); the bridge hand stops short of the table's edge, 0.85 m ahead. */
+const CUE_Y = 0.9;
+const BRIDGE = 0.62;
+const UP = new THREE.Vector3(0, 1, 0);
 const BUBBLE_SIZE = 0.72;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const motion = REDUCED_MOTION ? 0.35 : 1;
@@ -546,13 +550,13 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     return 2.2;
   },
   'cue-shot': ({ pivot, head, hands: [hl, hr], held }, tt) => {
-    // Bent over the table, drawing the cue back and striking.
-    const stroke = Math.sin(tt * 2.2) * 0.12 * motion;
-    pivot.rotation.x = 0.5;
-    head.rotation.x = -0.35;
-    hl.position.set(-0.1, 0.95, 0.75);
-    hr.position.set(0.12, 0.85, 0.05 + stroke);
-    if (held) held.rotation.set(-1.35, 0, 0);
+    // Leaning in at the end of the table, drawing the cue back and striking along it.
+    const drawBack = (1 - Math.sin(tt * 2.2)) * 0.08 * motion;
+    pivot.rotation.x = 0.1;
+    head.rotation.x = 0.1;
+    hl.position.set(0.04, CUE_Y, BRIDGE);
+    hr.position.set(0.36, CUE_Y, 0.1 - drawBack);
+    if (held) held.quaternion.setFromUnitVectors(UP, hl.position.clone().sub(hr.position).normalize());
     return 2.0;
   },
   'cue-wait': ({ pivot, head, hands: [hl, hr], held }, tt) => {
@@ -662,7 +666,8 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   const dart = at(cyl(0.012, 0.03, 0.18, '#FF5A5A', { outline: 0.05 }), 0, 0.08, 0.05);
   dart.rotation.x = Math.PI / 2;
   const ball = at(mesh(new THREE.SphereGeometry(0.13, 16, 12), '#F07A4A', { outline: 0.06 }), 0, 0.15, 0.1);
-  const cue = () => at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.4, 0);
+  // Gripped near the butt: the tip is 1.025 m along from the hand.
+  const cue = () => tag(at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.3, 0), 'cue');
   const bat = new THREE.Group();
   bat.add(at(cyl(0.14, 0.14, 0.03, '#C25B7A', { outline: 0.05 }), 0, 0.2, 0.05));
   bat.add(at(cyl(0.025, 0.025, 0.12, WOOD_DARK, { outline: 0 }), 0, 0.05, 0.02));
