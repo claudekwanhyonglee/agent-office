@@ -24,11 +24,16 @@ export function updateScreens(seats: Seat[], occupants: Map<number, AgentRecord>
   }
 }
 
+/** Hides the back wall while the camera is behind it, so it doesn't block the view of the floor. */
+export function updateBackWall(office: { backWall: THREE.Object3D; layout: OfficeLayout }, camera: THREE.Vector3) {
+  office.backWall.visible = camera.z > office.layout.bounds.back;
+}
+
 /** The office with `rows` curved rows of desks. Builds without a DOM or WebGL. */
 export function buildOffice(rows: number) {
   const layout = officeLayout(rows);
   const group = new THREE.Group();
-  addRoom(group, layout);
+  const backWall = addRoom(group, layout);
   addFrontGlass(group);
   addMeetingRoom(group);
   addKitchen(group, layout);
@@ -47,7 +52,7 @@ export function buildOffice(rows: number) {
     row.add(screen.root);
     return { ...spot, screen };
   });
-  return { group, seats, layout, board };
+  return { group, seats, layout, board, backWall };
 }
 
 const turned = <T extends THREE.Object3D>(obj: T, yaw: number) => {
@@ -89,11 +94,13 @@ function addRoom(group: THREE.Group, layout: OfficeLayout) {
 
   // The back wall is tall (the camera faces it, and the big board hangs on it); the left wall stays low.
   const backZ = back - 0.15;
-  group.add(tag(at(box(width + 0.3, 3.4, 0.25, WALL, { outline: 0.01 }), centerX, 1.7, backZ), 'wall'));
-  group.add(tag(at(box(0.25, 1.4, indoorDepth + 0.25, WALL, { outline: 0.01 }), left - 0.15, 0.7, indoorZ), 'wall'));
+  const backWall = new THREE.Group();
+  backWall.add(tag(at(box(width + 0.3, 3.4, 0.25, WALL, { outline: 0.01 }), centerX, 1.7, backZ), 'wall'));
   for (const x of layout.windows) {
-    group.add(tag(at(box(1.0, 0.6, 0.05, '#BFE6F5', { outline: 0.03, shadow: false }), x, 1.9, backZ + 0.14), 'window'));
+    backWall.add(tag(at(box(1.0, 0.6, 0.05, '#BFE6F5', { outline: 0.03, shadow: false }), x, 1.9, backZ + 0.14), 'window'));
   }
+  group.add(backWall);
+  group.add(tag(at(box(0.25, 1.4, indoorDepth + 0.25, WALL, { outline: 0.01 }), left - 0.15, 0.7, indoorZ), 'wall'));
 
   const door = tag(new THREE.Group(), 'door');
   door.add(at(box(0.9, 2.0, 0.06, INK, { outline: 0, shadow: false }), 0, 1.0, 0));
@@ -102,6 +109,7 @@ function addRoom(group: THREE.Group, layout: OfficeLayout) {
   door.add(at(box(1.14, 0.12, 0.3, WOOD), 0, 2.06, 0.01));
   door.add(at(box(0.9, 0.03, 0.6, '#7FB069', { outline: 0.02, shadow: false }), 0, 0.015, 0.57));
   group.add(at(door, layout.door.x, 0, back + 0.13));
+  return backWall;
 }
 
 const glass = new THREE.MeshBasicMaterial({ color: '#BFE6F5', transparent: true, opacity: 0.28, depthWrite: false });

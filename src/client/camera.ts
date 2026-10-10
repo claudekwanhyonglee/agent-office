@@ -5,6 +5,8 @@ import { officeLayout } from './layout.ts';
 export const ZOOM = { min: 6, max: 45 };
 /** Vertical field of view: 34° normally, widened up to 45° on narrow screens (#22). */
 export const FOV = { base: 34, max: 45 };
+/** Tilt from straight down, in radians: nearly overhead to nearly level, never below the floor. */
+export const TILT = { min: 0.1, max: 1.45 };
 /** Furthest the fit will back off; the camera's far plane is 150 m. */
 const FIT_LIMIT = 120;
 
@@ -122,8 +124,8 @@ export function createGestures(orbit: Orbit) {
       if (!drag) return false;
       const dx = x - drag.x, dy = y - drag.y;
       if (Math.hypot(dx, dy) > 4) moved = true;
-      orbit.theta = THREE.MathUtils.clamp(drag.theta - dx * 0.005, -0.9, 0.9);
-      orbit.phi = THREE.MathUtils.clamp(drag.phi - dy * 0.004, 0.5, 1.15);
+      orbit.theta = drag.theta - dx * 0.005;
+      orbit.phi = THREE.MathUtils.clamp(drag.phi - dy * 0.004, TILT.min, TILT.max);
       return true;
     },
     /** Returns whether this release was a tap. */
