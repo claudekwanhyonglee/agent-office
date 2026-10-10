@@ -11,13 +11,19 @@ export function acknowledgedFile(homedir = os.homedir(), pathApi: PathApi = path
 /** Session ids the user dismissed with "Got it", kept in a JSON list on disk. */
 export function createAckStore(file = acknowledgedFile()) {
   const ids = new Set<string>(readIds(file));
+  function save() {
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify([...ids], null, 2));
+  }
   return {
     has: (sessionId: string) => ids.has(sessionId),
     add(sessionId: string) {
       if (ids.has(sessionId)) return;
       ids.add(sessionId);
-      mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, JSON.stringify([...ids], null, 2));
+      save();
+    },
+    remove(sessionId: string) {
+      if (ids.delete(sessionId)) save();
     },
   };
 }
