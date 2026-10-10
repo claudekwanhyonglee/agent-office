@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentRecord, OfficeState } from '../src/shared/agent.ts';
 import { OfficeController, type OfficeEvent } from '../src/client/controller.ts';
-import { DOOR, seatLayout } from '../src/client/layout.ts';
+import { INITIAL_ROWS, officeLayout } from '../src/client/layout.ts';
 import { lookFor } from '../src/client/look.ts';
 import { POSES, screenColor } from '../src/client/poses.ts';
 import { Character } from '../src/client/character.ts';
@@ -9,8 +9,10 @@ import { buildOffice, SCREEN_OFF, updateScreens } from '../src/client/office.ts'
 
 const rec = (n: number, state: OfficeState = 'working'): AgentRecord => ({
   id: `a${n}`, sessionId: `session-${n}`, name: `agent ${n}`, project: 'demo-app',
-  cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null,
+  cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null, activity: [],
 });
+const START = officeLayout(INITIAL_ROWS);
+const DOOR = START.door;
 const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => rec(from + i));
 const seatOf = (c: OfficeController, n: number) => c.agents.get(`session-${n}`)?.seat.index;
 const ofType = <T extends OfficeEvent['type']>(events: OfficeEvent[], type: T) =>
@@ -36,16 +38,17 @@ describe('#5 AC1 seating', () => {
   });
 });
 
-describe('#5 AC2 more pods', () => {
+describe('#5 AC2 more desks', () => {
   // #13 changed the unit: pods of 4, grown a whole row (2 pods) at a time, starting at 16 desks.
+  // #25 changed it to curved rows of 8, starting with 2; a new row goes in behind the last.
   it('#5 AC2 adds desks when every desk is taken', () => {
     const c = new OfficeController();
     c.update(range(1, 16));
-    expect(c.podCount).toBe(4);
+    expect(c.rows).toBe(2);
     c.update(range(1, 17));
-    expect(c.podCount).toBe(6);
+    expect(c.rows).toBe(3);
     expect(seatOf(c, 17)).toBe(16);
-    expect(seatLayout(6)[16].deskZ).toBeGreaterThan(seatLayout(4)[15].deskZ);
+    expect(officeLayout(3).seats[16].desk.z).toBeLessThan(officeLayout(2).seats[15].desk.z);
   });
 });
 
@@ -67,7 +70,7 @@ describe('#5 AC3 poses and bubbles', () => {
     expect(ofType(events, 'state')).toEqual([{ type: 'state', key: 'session-1', state: 'needs' }]);
 
     const character = new Character(lookFor('session-1'));
-    character.sitAt(seatLayout(2)[0], 'working');
+    character.sitAt(START.seats[0], 'working');
     character.update(1, 0.016);
     expect([character.pose, character.bubbleKind]).toEqual(['typing', null]);
     for (const state of ['needs', 'done', 'stale'] as const) {
@@ -158,10 +161,11 @@ describe('#5 AC6 monitors', () => {
     for (const s of ['done', 'stale', 'finished'] as const) expect(screenColor(s)).toBe(SCREEN_OFF);
   });
 
+  // #27: the glow is the projector under each see-through screen.
   it('#5 AC6 each desk shows its occupant, empty desks are dark', () => {
     const { seats } = buildOffice(2);
-    updateScreens(seats, new Map([[0, 'working'], [1, 'needs'], [2, 'done']]));
-    const hex = (i: number) => `#${seats[i].screen.material.color.getHexString().toUpperCase()}`;
+    updateScreens(seats, new Map([[0, rec(1, 'working')], [1, rec(2, 'needs')], [2, rec(3, 'done')]]), 0);
+    const hex = (i: number) => `#${seats[i].screen.glow.material.color.getHexString().toUpperCase()}`;
     expect([hex(0), hex(1), hex(2), hex(3)]).toEqual(['#7FB2FF', '#FFB648', SCREEN_OFF, SCREEN_OFF]);
   });
 });

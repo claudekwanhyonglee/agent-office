@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import type { AgentRecord, OfficeState } from '../src/shared/agent.ts';
-import { OfficeController, INITIAL_PODS, type OfficeEvent } from '../src/client/controller.ts';
-import {
-  DOOR, HANGOUTS, HANGOUT_PLACES, PODS_PER_ROW, WALK_SPEED, doorLink, pathLength, route, seatLink, seatLayout,
-  type HangoutPlace, type Point,
-} from '../src/client/layout.ts';
+import { OfficeController, type OfficeEvent } from '../src/client/controller.ts';
+import { INITIAL_ROWS, WALK_SPEED, officeLayout, pathLength, route, type HangoutPlace, type Point } from '../src/client/layout.ts';
 import { buildOffice } from '../src/client/office.ts';
 import { Character } from '../src/client/character.ts';
 import { lookFor } from '../src/client/look.ts';
@@ -15,9 +12,13 @@ import { obstaclesIn, routeCollisions } from './geometry.ts';
 
 const rec = (n: number, state: OfficeState = 'working'): AgentRecord => ({
   id: `a${n}`, sessionId: `session-${n}`, name: `agent ${n}`, project: 'demo-app',
-  cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null,
+  cwd: '/home/alex/projects/demo-app', state, lastMessage: null, branch: null, activity: [],
 });
 const key = (n: number) => `session-${n}`;
+// #25 moved the plan into officeLayout(rows); these tests run in the starting office.
+const START = officeLayout(INITIAL_ROWS);
+const { door: DOOR, hangouts: HANGOUTS } = START;
+const HANGOUT_PLACES = HANGOUTS.flatMap((s) => s.places);
 const ofType = <T extends OfficeEvent['type']>(events: OfficeEvent[], type: T) =>
   events.filter((e): e is Extract<OfficeEvent, { type: T }> => e.type === type);
 
@@ -140,7 +141,7 @@ describe('#14 AC2 chatting', () => {
   it('#14 AC2 a character at a chat place plays a talking animation', () => {
     const place = HANGOUTS.find((s) => s.chat)!.places[0];
     const character = new Character(lookFor(key(1)));
-    character.placeAt(seatLayout(INITIAL_PODS)[0], 'done', place);
+    character.placeAt(START.seats[0], 'done', place);
     const snapshot = () => {
       character.root.updateMatrixWorld(true);
       const parts: number[] = [];
@@ -191,16 +192,16 @@ describe('#14 AC3 staying and moving on', () => {
 });
 
 describe('#14 AC4 wander routes stay on walkways', () => {
-  for (const podCount of [INITIAL_PODS, INITIAL_PODS + PODS_PER_ROW]) {
-    it(`#14 AC4 every route between places, desks and the door misses all furniture (${podCount} pods)`, () => {
-      const { group, seats } = buildOffice(podCount);
+  for (const rows of [INITIAL_ROWS, INITIAL_ROWS + 1]) {
+    it(`#14 AC4 every route between places, desks and the door misses all furniture (${rows} rows)`, () => {
+      const { group, seats, layout } = buildOffice(rows);
       const obstacles = obstaclesIn(group);
-      const links = [...HANGOUT_PLACES.map((p) => ({ name: `${p.spot}@${p.x},${p.z}`, link: p.link }))];
-      const ends = [...links, ...seats.map((s) => ({ name: `seat ${s.index}`, link: seatLink(s) })), { name: 'door', link: doorLink() }];
+      const links = [...layout.hangouts.flatMap((s) => s.places).map((p) => ({ name: `${p.spot}@${p.x},${p.z}`, link: p.link }))];
+      const ends = [...links, ...seats.map((s) => ({ name: `seat ${s.index}`, link: s.link })), { name: 'door', link: layout.doorLink }];
       for (const from of links) {
         for (const to of ends) {
           if (from === to) continue;
-          for (const path of [route(from.link, to.link), route(to.link, from.link)]) {
+          for (const path of [route(layout, from.link, to.link), route(layout, to.link, from.link)]) {
             expect(routeCollisions(path, obstacles), `${from.name} ↔ ${to.name}`).toEqual([]);
           }
         }
@@ -210,7 +211,7 @@ describe('#14 AC4 wander routes stay on walkways', () => {
 
   it('#14 AC4 routes taken during a busy simulation, including turn-backs mid-walk, miss all furniture', () => {
     const o = office(8, 11);
-    const obstacles = obstaclesIn(buildOffice(INITIAL_PODS).group);
+    const obstacles = obstaclesIn(buildOffice(INITIAL_ROWS).group);
     const random = seeded(99);
     const states: OfficeState[] = ['done', 'finished', 'working', 'needs', 'stale'];
     o.run(10 * 60, 0.25, () => {
@@ -314,7 +315,7 @@ describe('#14 AC7 bubbles and picking while wandering', () => {
     const place = HANGOUT_PLACES.find((p) => p.spot === 'lounge' && p.sits)!;
     const character = new Character(lookFor(key(1)));
     character.root.userData.agentKey = key(1);
-    character.placeAt(seatLayout(INITIAL_PODS)[0], 'done', place);
+    character.placeAt(START.seats[0], 'done', place);
     character.update(0, 0.016);
     character.root.updateMatrixWorld(true);
     const ray = new THREE.Raycaster(new THREE.Vector3(place.x, 6, place.z), new THREE.Vector3(0, -1, 0));
@@ -333,7 +334,7 @@ describe('#14 AC8 page opens on idle agents', () => {
     expect(arrivals.map((a) => !!a.place)).toEqual([true, true, false]);
     expect(ofType(events, 'walk')).toEqual([]);
     const [first] = arrivals;
-    expect(HANGOUT_PLACES).toContain(first.place);
+    expect(HANGOUT_PLACES).toContainEqual(first.place);
 
     const character = new Character(lookFor(first.key));
     character.placeAt(first.seat, 'done', first.place!);

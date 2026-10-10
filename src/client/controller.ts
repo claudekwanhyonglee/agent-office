@@ -1,10 +1,8 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
 import {
-  HANGOUTS, PODS_PER_ROW, WALK_SPEED, along, arrivalPath, doorLink, pathLength, route, seatLayout, seatLink, withoutLoops,
+  INITIAL_ROWS, WALK_SPEED, along, arrivalPath, officeLayout, pathLength, route, withoutLoops,
   type HangoutPlace, type Point, type SeatSpot,
 } from './layout.ts';
-
-export const INITIAL_PODS = 4;
 
 /** Seconds an idle agent waits at its desk before wandering off (AC: within 3 s). */
 const SET_OFF = { min: 1, max: 2.5 };
@@ -31,7 +29,10 @@ export interface Occupant {
 }
 
 export type OfficeEvent =
-  | { type: 'pods'; count: number }
+  /** The office grew to `count` rows of desks. */
+  | { type: 'rows'; count: number }
+  /** Put straight at `place` (or the desk when null): the room was rearranged under the agent. */
+  | { type: 'place'; key: string; seat: SeatSpot; state: OfficeState; place: HangoutPlace | null }
   /**
    * `walk` is false for agents already listed when the page opened: they're placed straight away,
    * at their desk or (idle ones) at `place`.
@@ -52,13 +53,13 @@ const systemClock: Clock = { now: () => performance.now() / 1000, random: Math.r
 
 /**
  * Decides who sits where, and where idle agents wander. Agents (keyed by session id) take the
- * first free desk and keep it while listed; when every desk is taken, a row of pods is added.
+ * first free desk and keep it while listed; when every desk is taken, a row of desks is added.
  * Done and Finished agents leave their desk for hangout spots. Rendering only follows its events.
  */
 export class OfficeController {
   readonly agents = new Map<string, Occupant>();
-  podCount = INITIAL_PODS;
-  private seats = seatLayout(INITIAL_PODS);
+  rows = INITIAL_ROWS;
+  layout = officeLayout(INITIAL_ROWS);
   private firstUpdate = true;
   private clock: Clock;
 
@@ -74,7 +75,7 @@ export class OfficeController {
     for (const [key, agent] of this.agents) {
       if (listed.has(key)) continue;
       this.agents.delete(key);
-      events.push({ type: 'leave', key, path: route(this.whereNow(agent, now), doorLink()) });
+      events.push({ type: 'leave', key, path: route(this.layout, this.whereNow(agent, now), this.layout.doorLink) });
     }
 
     for (const [key, record] of listed) {
@@ -97,16 +98,16 @@ export class OfficeController {
     return events;
   }
 
-  /** Who sits at each desk, by seat index. */
+  /** Who sits at each desk (their latest record), by seat index. */
   occupants() {
-    return new Map([...this.agents.values()].map((o) => [o.seat.index, o.record.state]));
+    return new Map([...this.agents.values()].map((o) => [o.seat.index, o.record]));
   }
 
   private arrive(key: string, record: AgentRecord, now: number, events: OfficeEvent[]) {
-    const seat = this.freeSeat(events);
+    const seat = this.freeSeat(now, events);
     const agent: Occupant = { record, seat, place: null, arrivesAt: now, nextAt: null };
     this.agents.set(key, agent);
-    const path = arrivalPath(seat);
+    const path = arrivalPath(this.layout, seat);
     if (this.firstUpdate) {
       // Already there when the page opened: idle agents are found at a hangout spot.
       const place = isIdle(record.state) ? this.pick(this.freePlaces()) : null;
@@ -117,7 +118,7 @@ export class OfficeController {
       events.push({ type: 'arrive', key, record, seat, path, walk: false, place });
       return;
     }
-    agent.walk = { path, origin: doorLink(), startedAt: now };
+    agent.walk = { path, origin: this.layout.doorLink, startedAt: now };
     agent.arrivesAt = now + pathLength(path) / WALK_SPEED;
     if (isIdle(record.state)) agent.nextAt = agent.arrivesAt + this.between(SET_OFF);
     events.push({ type: 'arrive', key, record, seat, path, walk: true, place: null });
@@ -141,7 +142,7 @@ export class OfficeController {
     const free = this.freePlaces();
     if (this.clock.random() < CHAT_CHANCE) {
       const partner = this.chatPartner(key, now);
-      const spot = this.pick(HANGOUTS.filter((s) => s.chat && s.places.every((p) => free.includes(p))));
+      const spot = this.pick(this.layout.hangouts.filter((s) => s.chat && s.places.every((p) => free.includes(p))));
       if (partner && spot) {
         this.send(key, agent, spot.places[0], now, events);
         this.send(partner[0], partner[1], spot.places[1], now, events);
@@ -149,7 +150,7 @@ export class OfficeController {
       }
     }
     const here = agent.place?.spot;
-    const place = this.pick(free.filter((p) => !HANGOUTS.find((s) => s.name === p.spot)!.chat && p.spot !== here));
+    const place = this.pick(free.filter((p) => !this.layout.hangouts.find((s) => s.name === p.spot)!.chat && p.spot !== here));
     if (place) this.send(key, agent, place, now, events);
     else agent.nextAt = now + RETRY;
   }
@@ -165,7 +166,7 @@ export class OfficeController {
   /** Walk the agent to `place` (null: its desk) from wherever it is now. */
   private send(key: string, agent: Occupant, place: HangoutPlace | null, now: number, events: OfficeEvent[]) {
     const origin = this.whereNow(agent, now);
-    const path = route(origin, place ? place.link : seatLink(agent.seat));
+    const path = route(this.layout, origin, place ? place.link : agent.seat.link);
     agent.place = place;
     agent.walk = { path, origin, startedAt: now };
     agent.arrivesAt = now + pathLength(path) / WALK_SPEED;
@@ -183,12 +184,12 @@ export class OfficeController {
       const { leg } = along(walk.path, (now - walk.startedAt) * WALK_SPEED);
       return withoutLoops([...walk.path.slice(0, leg + 1).reverse(), ...walk.origin.slice(1)]);
     }
-    return agent.place ? agent.place.link : seatLink(agent.seat);
+    return agent.place ? agent.place.link : agent.seat.link;
   }
 
   private freePlaces() {
     const taken = new Set([...this.agents.values()].map((a) => a.place));
-    return HANGOUTS.flatMap((s) => s.places).filter((p) => !taken.has(p));
+    return this.layout.hangouts.flatMap((s) => s.places).filter((p) => !taken.has(p));
   }
 
   private pick<T>(options: T[]): T | null {
@@ -199,14 +200,32 @@ export class OfficeController {
     return min + this.clock.random() * (max - min);
   }
 
-  private freeSeat(events: OfficeEvent[]) {
+  private freeSeat(now: number, events: OfficeEvent[]) {
     const taken = new Set([...this.agents.values()].map((o) => o.seat.index));
-    const free = () => this.seats.find((s) => !taken.has(s.index));
-    if (!free()) {
-      this.podCount += PODS_PER_ROW;
-      this.seats = seatLayout(this.podCount);
-      events.push({ type: 'pods', count: this.podCount });
-    }
+    const free = () => this.layout.seats.find((s) => !taken.has(s.index));
+    if (!free()) this.addRow(now, events);
     return free()!;
+  }
+
+  /**
+   * A new row goes in behind the last and pushes the back wall (and the hangouts along it) back.
+   * Agents away from their desks are put straight at their moved spot, or back at their desk.
+   */
+  private addRow(now: number, events: OfficeEvent[]) {
+    const old = this.layout;
+    this.rows += 1;
+    this.layout = officeLayout(this.rows);
+    events.push({ type: 'rows', count: this.rows });
+    const places = old.hangouts.flatMap((s) => s.places), moved = this.layout.hangouts.flatMap((s) => s.places);
+    for (const [key, agent] of this.agents) {
+      agent.seat = this.layout.seats[agent.seat.index];
+      const walking = agent.walk && now < agent.arrivesAt;
+      if (!agent.place && !walking) continue;
+      agent.place = agent.place && moved[places.indexOf(agent.place)];
+      agent.walk = undefined;
+      agent.arrivesAt = now;
+      if (agent.place && agent.nextAt == null) agent.nextAt = now + this.between(STAY);
+      events.push({ type: 'place', key, seat: agent.seat, state: agent.record.state, place: agent.place });
+    }
   }
 }

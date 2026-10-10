@@ -8,7 +8,7 @@ const body = readFileSync('index.html', 'utf8').match(/<body>([\s\S]*)<\/body>/)
 
 const rec = (n: number, state: OfficeState): AgentRecord => ({
   id: `a${n}`, sessionId: `session-${n}`, name: `demo-app #${n} · Add search`, project: 'demo-app',
-  cwd: '/home/alex/projects/demo-app', state, lastMessage: `Message ${n}`, branch: `feature/${n}`,
+  cwd: '/home/alex/projects/demo-app', state, lastMessage: `Message ${n}`, branch: `feature/${n}`, activity: [],
 });
 
 function start(records: AgentRecord[]) {

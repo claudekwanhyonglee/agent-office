@@ -14,6 +14,8 @@ export interface SessionRecord {
 export interface AgentRecord extends SessionRecord {
   lastMessage: string | null;
   branch: string | null;
+  /** The last few tool calls, oldest first, one short line each (e.g. `Edit src/client/card.ts`). */
+  activity: string[];
 }
 
 /** What /api/agents returns and the event stream sends. */

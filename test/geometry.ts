@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import type { Point } from '../src/client/layout.ts';
 
 /** Things on the floor you can walk over, and zone groups (their pieces are checked one by one). */
-const WALKABLE = new Set(['floor', 'rug', 'door']);
-const ZONES = new Set(['pod', 'meeting-room', 'lounge', 'kitchen']);
+const WALKABLE = new Set(['floor', 'rug', 'door', 'glass-door']);
+const ZONES = new Set(['desk-row', 'meeting-room', 'lounge', 'kitchen', 'deck', 'glass-front']);
 const CLEARANCE = 0.1;
 
 export interface Obstacle { kind: string; box: THREE.Box3; object: THREE.Object3D }
