@@ -15,8 +15,11 @@ export interface FloorBounds { left: number; right: number; back: number; front:
 
 export interface Orbit { theta: number; phi: number; radius: number; target: THREE.Vector3; maxRadius: number; bounds: FloorBounds }
 
+/** The starting (and reset) view looks at the office square-on, this many degrees below horizontal. */
+export const HOME_LOOK_DOWN = 25;
+
 export const initialOrbit = (): Orbit => ({
-  theta: 0.22, phi: 0.86, radius: 18, target: new THREE.Vector3(0, 0.5, 0), maxRadius: ZOOM.max, bounds: officeLayout(INITIAL_ROWS).bounds,
+  theta: 0, phi: THREE.MathUtils.degToRad(90 - HOME_LOOK_DOWN), radius: 18, target: new THREE.Vector3(0, 0.5, 0), maxRadius: ZOOM.max, bounds: officeLayout(INITIAL_ROWS).bounds,
 });
 
 /** Metres the target moves per pixel dragged, per metre of zoom. */
@@ -109,6 +112,15 @@ export function goHome(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: numb
   orbit.phi = start.phi;
   orbit.target.copy(start.target);
   frameFloor(camera, orbit, rows);
+}
+
+/** The Home key goes back to the starting view. */
+export function bindHomeKey(target: EventTarget, home: () => void) {
+  target.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key !== 'Home') return;
+    e.preventDefault();
+    home();
+  });
 }
 
 /** Returns a tap checker: true when a tap lands soon after, and close to, the previous one. */

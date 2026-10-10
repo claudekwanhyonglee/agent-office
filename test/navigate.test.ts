@@ -179,7 +179,9 @@ describe('#41 AC3 zoom towards what is under the pointer', () => {
 
   it('#41 AC3 zooming at the big board goes right up to it, keeping it under the pointer', () => {
     const { orbit, camera, office, pointer } = setup();
-    placeCamera(camera, orbit);
+    // Seen from a little to the side and above, as the starting view was before #50.
+    Object.assign(orbit, { theta: 0.22, phi: 0.86 });
+    frameFloor(camera, orbit, INITIAL_ROWS);
     const start = boardSpot(office, camera);
     for (let i = 0; i < 40; i++) {
       zoomToward(orbit, grabAt(pointer, orbit, start.pixels.x, start.pixels.y)!.point, wheelRadius(orbit.radius, -1, orbit.maxRadius));

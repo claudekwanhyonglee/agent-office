@@ -29,8 +29,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 .left {
   position: absolute; left: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
   max-width: calc(100% - 32px);
-  /* Clears the Home button at the bottom left. */
-  max-height: calc(100% - 88px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  max-height: calc(100% - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
   /* The gaps around the logo and panel belong to the office: drags and clicks go through. */
   pointer-events: none;
@@ -67,8 +66,9 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 .count.needs b { color: var(--amber); }
 
 .card {
-  position: absolute; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
-  width: 340px; max-width: calc(100% - 32px); max-height: calc(100% - 32px); overflow-y: auto; box-sizing: border-box;
+  /* Opens below the reset button (top right). */
+  position: absolute; right: 16px; top: calc(72px + env(safe-area-inset-top, 0px));
+  width: 340px; max-width: calc(100% - 32px); max-height: calc(100% - 88px - env(safe-area-inset-top, 0px)); overflow-y: auto; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 12px; padding: 18px;
   border-radius: 18px; background: var(--panel); border: 1px solid var(--line);
   box-shadow: 0 18px 40px rgba(0, 0, 0, .35);
@@ -135,8 +135,8 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 @media (max-width: 860px) { .hint { display: none; } }
 
 .home {
-  position: absolute; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  min-width: 44px; min-height: 44px; font-size: 22px;
+  position: absolute; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
+  min-width: 44px; min-height: 44px; display: grid; place-items: center;
 }
 
 .status {
