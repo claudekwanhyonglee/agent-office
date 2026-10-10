@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Agent Office</title>
+</head>
+<body>
+<main class="stage">
+  <div id="scene" aria-label="3D office with agent characters"></div>
+  <div id="status" class="status" role="status">Loading the 3D office…</div>
+
+  <header class="brand">
+    <h1>Agent Office</h1>
+    <span id="counts"></span>
+  </header>
+
+  <aside class="card" id="card" aria-live="polite" hidden></aside>
+  <div id="tooltip" class="tooltip" hidden></div>
+  <div class="hint">Drag to orbit · scroll to zoom · click an agent</div>
+</main>
+<script type="module" src="/src/client/main.ts"></script>
+</body>
+</html>
