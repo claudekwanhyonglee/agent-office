@@ -8,6 +8,7 @@ import { bubbleTexture } from './bubbles.ts';
 
 const SEAT_Y = 0.38;
 const WOOD_DARK = '#8C6A4A';
+const INK_DARK = '#3A3150';
 const HOP_SECONDS = 0.45;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const motion = REDUCED_MOTION ? 0.35 : 1;
@@ -552,6 +553,30 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     fr.position.set(0.22 + swing * 0.1 * motion, 0.06, 0.04);
     return 2.2;
   },
+  floating: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
+    // Sitting low in a rubber ring, arms over its sides; the water hides the legs.
+    const bob = Math.sin(tt * 1.5) * 0.03 * motion;
+    pivot.position.y = -0.72 + bob;
+    pivot.rotation.x = -0.15;
+    head.rotation.x = -0.2;
+    hl.position.set(-0.36, -0.22 + bob, 0.1);
+    hr.position.set(0.36, -0.22 + bob, 0.1);
+    fl.position.set(-0.15, -0.6, 0.2);
+    fr.position.set(0.15, -0.6, 0.2);
+    return 1.5 + bob;
+  },
+  gaming: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
+    // On the sofa, leaning in, thumbs going.
+    const mash = Math.max(0, Math.sin(tt * 14)) * 0.025 * motion;
+    pivot.rotation.x = 0.12;
+    pivot.rotation.z = Math.sin(tt * 0.9) * 0.08 * motion;
+    head.rotation.x = -0.05;
+    hl.position.set(-0.12, 0.62 + mash, 0.4);
+    hr.position.set(0.12, 0.62, 0.4);
+    fl.position.set(-0.16, -0.24, 0.34);
+    fr.position.set(0.16, -0.24, 0.34);
+    return 2.1;
+  },
 };
 
 function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
@@ -570,8 +595,18 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   const holding = (o: THREE.Object3D) => new THREE.Group().add(o);
   return {
     fishing: rod, 'throwing-darts': dart, 'shooting-hoops': ball, 'throwing-plane': paperPlane(),
-    'cue-shot': holding(cue()), 'cue-wait': holding(cue()), paddle: bat,
+    'cue-shot': holding(cue()), 'cue-wait': holding(cue()), paddle: bat, gaming: gamepad(),
   };
+}
+
+/** A game controller, held in both hands (it hangs off the right one). */
+function gamepad() {
+  const pad = new THREE.Group();
+  pad.userData.kind = 'controller';
+  pad.add(at(mesh(new THREE.BoxGeometry(0.3, 0.06, 0.12), INK_DARK, { outline: 0.06 }), -0.12, 0.06, 0.02));
+  pad.add(at(ball(0.025, '#FF5A5A', { outline: 0, shadow: false }), -0.04, 0.1, 0.02));
+  pad.add(at(ball(0.025, '#4D86FF', { outline: 0, shadow: false }), -0.2, 0.1, 0.02));
+  return pad;
 }
 
 /** A small white dart-shaped plane, nose along +z. */

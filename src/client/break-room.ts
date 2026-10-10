@@ -111,3 +111,20 @@ export function addGameTables(group: THREE.Group) {
   for (const dx of [-0.9, 0.9]) for (const dz of [-0.45, 0.45]) pingPong.add(at(box(0.06, 0.72, 0.06, INK, { outline: 0 }), dx, 0.36, dz));
   group.add(at(pingPong, pong.x, 0, pong.z));
 }
+
+/** The pool with its four rubber rings (#32); couch co-op uses the lounge's sofa and TV. */
+export function addPool(group: THREE.Group) {
+  const { pool } = BREAK_ROOM;
+  const basin = tag(new THREE.Group(), 'pool');
+  basin.add(at(box(pool.w, 0.06, pool.d, '#F4EEE2', { outline: 0.01 }), 0, 0.03, 0));
+  basin.add(at(box(pool.w - 0.25, 0.02, pool.d - 0.25, '#5BC0EB', { outline: 0, shadow: false }), 0, 0.065, 0));
+  const ladder = at(box(0.05, 0.5, 0.05, '#C9C0E3', { outline: 0.02 }), pool.w / 2 - 0.3, 0.25, -pool.d / 2 - 0.02);
+  basin.add(ladder);
+  const colors = ['#F07A4A', '#E2B347', '#C25B7A', '#5BA37A'];
+  pool.rings.forEach((r, i) => {
+    const ring = tag(mesh(new THREE.TorusGeometry(0.4, 0.08, 10, 24), colors[i], { outline: 0.05 }), 'pool-ring');
+    ring.rotation.x = Math.PI / 2;
+    basin.add(at(ring, r.x - pool.x, 0.1, r.z - pool.z));
+  });
+  group.add(at(basin, pool.x, 0, pool.z));
+}

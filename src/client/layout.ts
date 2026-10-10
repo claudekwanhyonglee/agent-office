@@ -24,7 +24,7 @@ export interface SeatSpot {
 export type HangoutPose =
   | 'eating' | 'drinking' | 'lounging' | 'chatting'
   | 'lounging-sun' | 'fishing' | 'swinging' | 'yoga' | 'bouncing' | 'throwing-darts' | 'shooting-hoops' | 'throwing-plane'
-  | 'cue-shot' | 'cue-wait' | 'paddle';
+  | 'cue-shot' | 'cue-wait' | 'paddle' | 'floating' | 'gaming';
 
 export interface HangoutPlace extends Point {
   spot: string;
@@ -144,6 +144,10 @@ export const BREAK_ROOM = {
   poolTable: { x: 7.4, z: 1.6, w: 1.2, d: 2.2 },
   /** Long side along x. */
   pingPong: { x: 6.3, z: 8.7, w: 2.2, d: 1.2 },
+  pool: {
+    x: 0, z: 10.4, w: 5.6, d: 2.8,
+    rings: [{ x: -1.4, z: 9.98 }, { x: -0.28, z: 10.82 }, { x: 1.12, z: 10.12 }, { x: -1.25, z: 11.2 }] as Point[],
+  },
 };
 
 export const MEETING_ROOM ={ x0: -8.7, x1: -6.05, z0: -0.8, z1: 2.2 };
@@ -166,8 +170,8 @@ export function officeLayout(rows: number) {
   const toHall = (p: Point): Point[] => [p, { x: p.x, z: hallZ }];
   const toDeck = (p: Point): Point[] => [p, { x: p.x, z: DECK_Z }];
   const sofaFront = lounge.sofa.z - 0.95;
-  const sofaSeat = (x: number): HangoutPlace => ({
-    x, z: lounge.sofa.z, spot: 'lounge', yaw: Math.PI, pose: 'lounging', sits: true,
+  const sofaSeat = (x: number, spot = 'lounge', pose: HangoutPose = 'lounging'): HangoutPlace => ({
+    x, z: lounge.sofa.z, spot, yaw: Math.PI, pose, sits: true,
     link: [{ x, z: lounge.sofa.z }, { x, z: sofaFront }, { x: 4.75, z: sofaFront }, { x: 4.75, z: hallZ }],
   });
   const standing = (spot: string, p: Point, pose: HangoutPose, yaw = Math.PI): HangoutPlace =>
@@ -199,6 +203,17 @@ export function officeLayout(rows: number) {
     chatSpot('chat-deck-right', { x: 2.0, z: 8.3 }, { x: 2.8, z: 8.3 }, toDeck),
     ...soloSpots(),
     ...pairGames(),
+    {
+      name: 'pool-dip',
+      chat: false,
+      game: { min: 3 },
+      // The back ring is reached from the pool's left side, clear of the ring in front of it.
+      places: BREAK_ROOM.pool.rings.map((r, i) => {
+        const edge = i === 3 ? { x: -3.0, z: r.z } : { x: r.x, z: 8.8 };
+        return { ...r, spot: 'pool-dip', yaw: 0, pose: 'floating' as const, sits: true, link: [{ ...r }, edge, { x: edge.x, z: DECK_Z }] };
+      }),
+    },
+    { name: 'couch-co-op', chat: false, game: { min: 2 }, places: [-0.87, -0.29, 0.29, 0.87].map((dx) => sofaSeat(lounge.sofa.x + dx, 'couch-co-op', 'gaming')) },
   ];
 
   const walkways: Point[][] = [

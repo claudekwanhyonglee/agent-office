@@ -61,7 +61,7 @@ describe('#30 AC3 any free solo place can be chosen', () => {
     for (let n = 1; n <= 4; n++) o.set(n, 'done');
     o.run(60 * 60);
     const chosen = new Set(o.log.flatMap(({ event }) => (event.type === 'walk' && event.place ? [placeName(event.place)] : [])));
-    const solo = START.hangouts.filter((s) => !s.chat).flatMap((s) => s.places).map(placeName);
+    const solo = START.hangouts.filter((s) => !s.chat && !s.game).flatMap((s) => s.places).map(placeName);
     expect(solo.filter((p) => !chosen.has(p))).toEqual([]);
     for (const s of SOLO) expect(solo.some((p) => p.startsWith(`${s.spot}@`)), s.spot).toBe(true);
   });

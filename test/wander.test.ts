@@ -83,7 +83,7 @@ describe('#14 AC1 idle agents leave their desk', () => {
       expect(walk.place).not.toBeNull();
       expect(walk.path.at(-1)).toEqual({ x: walk.place!.x, z: walk.place!.z });
       // #30 added solo activities alongside the kitchen, cooler and lounge.
-      expect(HANGOUTS.filter((s) => !s.chat).map((s) => s.name)).toContain(walk.place!.spot);
+      expect(HANGOUTS.filter((s) => !s.chat && !s.game).map((s) => s.name)).toContain(walk.place!.spot);
     });
   }
 

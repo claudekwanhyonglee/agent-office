@@ -11,6 +11,8 @@ const STAY = { min: 10, max: 30 };
 /** How often a due agent looks for someone to chat with, and how long to wait when every spot is full. */
 const CHAT_CHANCE = 0.35;
 const RETRY = 5;
+/** Places closer than this share furniture: only one of them can be used at a time. */
+const OVERLAP = 0.5;
 /** Seconds after arriving before the first paper plane, then between throws. */
 const PLANE_FIRST = 1;
 const PLANE_EVERY = { min: 4, max: 7 };
@@ -170,7 +172,8 @@ export class OfficeController {
     const partners = this.shuffled(this.freeToJoin(key, now)).slice(0, spot.places.length - 1);
     if (partners.length + 1 < (spot.game?.min ?? spot.places.length)) return false;
     const players: [string, Occupant][] = [[key, agent], ...partners];
-    players.forEach(([k, a], i) => this.send(k, a, spot.places[i], now, events));
+    // Partners first: sending the starter may end its old game, and those players then look for partners too.
+    for (let i = players.length - 1; i >= 0; i--) this.send(players[i][0], players[i][1], spot.places[i], now, events);
     if (spot.game) {
       // One end time that keeps every player's stay within STAY (when their arrivals are close enough).
       const arrivals = players.map(([, a]) => a.arrivesAt);
@@ -240,9 +243,14 @@ export class OfficeController {
     return agent.place ? agent.place.link : agent.seat.link;
   }
 
+  /**
+   * Places nobody is at or walking to, and not overlapping a taken one (the sofa seats lounging and
+   * co-op players). A game in progress holds all its places, even with fewer players than places.
+   */
   private freePlaces() {
-    const taken = new Set([...this.agents.values()].map((a) => a.place));
-    return this.layout.hangouts.flatMap((s) => s.places).filter((p) => !taken.has(p));
+    const held = (p: HangoutPlace) => (this.spotOf(p).game ? this.spotOf(p).places : [p]);
+    const taken = [...this.agents.values()].flatMap((a) => (a.place ? held(a.place) : []));
+    return this.layout.hangouts.flatMap((s) => s.places).filter((p) => taken.every((q) => Math.hypot(p.x - q.x, p.z - q.z) >= OVERLAP));
   }
 
   private shuffled<T>(options: T[]): T[] {
