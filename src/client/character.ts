@@ -44,7 +44,7 @@ export class Character {
   seat?: SeatSpot;
   place: HangoutPlace | null = null;
 
-  private pivot = new THREE.Group();
+  readonly pivot = new THREE.Group();
   readonly head = new THREE.Group();
   private eyes: THREE.Mesh[];
   private hands: THREE.Mesh[];
@@ -571,6 +571,22 @@ function batHand({ rally, side, t }: { rally: Rally; side: Side; t: number }) {
 /** A throw every `period` seconds: 0 → 1 while winding up and letting go, then 0 while waiting. */
 const throwPhase = (tt: number, period: number) => Math.min(1, ((tt % period) / period) * 3);
 
+/** Trampoline (#60): on the mat for CONTACT seconds, squashing and springing back, then a FLIGHT up and down. */
+const BOUNCE = { low: 0.12, height: 0.55, contact: 0.18, flight: 0.75 };
+
+/**
+ * The bounce `t` seconds in: body height (a parabola in time through each flight, like a thrown
+ * ball), its squash on the mat (eased in and out), and how high it is as a fraction of the top.
+ */
+export function bounceAt(t: number) {
+  const { low, height, contact, flight } = BOUNCE;
+  const period = contact + flight, u = ((t % period) + period) % period;
+  const top = height * motion;
+  if (u < contact) return { y: low, squash: 1 - 0.1 * motion * Math.sin((Math.PI * u) / contact), k: 0, period, flight };
+  const f = (u - contact) / flight, rise = 4 * f * (1 - f);
+  return { y: low + top * rise, squash: 1, k: rise, period, flight };
+}
+
 /** Break-room poses (#30); each sets the body and returns the bubble height. */
 const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => number>> = {
   'lounging-sun': ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
@@ -595,10 +611,9 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     return 1.6;
   },
   bouncing: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
-    const k = Math.abs(Math.sin(tt * 3.4));
-    const y = 0.12 + k * 0.55 * motion;
+    const { y, squash, k } = bounceAt(tt);
     pivot.position.y = y;
-    pivot.scale.y = k < 0.15 ? 0.9 : 1;
+    pivot.scale.y = squash;
     head.rotation.x = -0.2 * k;
     hl.position.set(-0.45, 0.9 + y + k * 0.4, 0.05);
     hr.position.set(0.45, 0.9 + y + k * 0.4, 0.05);

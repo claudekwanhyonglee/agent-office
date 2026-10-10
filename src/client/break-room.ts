@@ -107,7 +107,7 @@ export function addSoloProps(group: THREE.Group) {
 
   const bouncer = tag(new THREE.Group(), 'trampoline');
   bouncer.add(at(cyl(trampoline.r, trampoline.r, 0.06, '#4D86FF'), 0, 0.42, 0));
-  bouncer.add(at(cyl(trampoline.r * 0.85, trampoline.r * 0.85, 0.02, INK, { outline: 0 }), 0, 0.46, 0));
+  bouncer.add(part(at(cyl(trampoline.r * 0.85, trampoline.r * 0.85, 0.02, INK, { outline: 0 }), 0, 0.46, 0), 'mat'));
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
     bouncer.add(at(cyl(0.04, 0.04, 0.42, INK, { outline: 0 }), Math.sin(a) * trampoline.r * 0.85, 0.21, Math.cos(a) * trampoline.r * 0.85));
