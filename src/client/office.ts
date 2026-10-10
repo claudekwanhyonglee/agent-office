@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { at, ball, box, cyl, tag, toonRamp } from './toon.ts';
 import {
-  DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, MEETING_ROOM, MEETING_TABLE, officeLayout, type OfficeLayout, type SeatSpot,
+  DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, MEETING_ROOM, MEETING_TABLE, WALL_HEIGHT, officeLayout, type OfficeLayout, type SeatSpot,
 } from './layout.ts';
 import { SCREEN_OFF } from './poses.ts';
 import { DeskScreen, screenContent } from './screen.ts';
@@ -95,7 +95,7 @@ function addRoom(group: THREE.Group, layout: OfficeLayout) {
   // The back wall is tall (the camera faces it, and the big board hangs on it); the left wall stays low.
   const backZ = back - 0.15;
   const backWall = new THREE.Group();
-  backWall.add(tag(at(box(width + 0.3, 3.4, 0.25, WALL, { outline: 0.01 }), centerX, 1.7, backZ), 'wall'));
+  backWall.add(tag(at(box(width + 0.3, WALL_HEIGHT, 0.25, WALL, { outline: 0.01 }), centerX, WALL_HEIGHT / 2, backZ), 'wall'));
   for (const x of layout.windows) {
     backWall.add(tag(at(box(1.0, 0.6, 0.05, '#BFE6F5', { outline: 0.03, shadow: false }), x, 1.9, backZ + 0.14), 'window'));
   }

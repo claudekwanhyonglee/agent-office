@@ -56,6 +56,8 @@ const APPROACH = 0.7;
 const LANE_BEHIND = 2.1;
 
 export const FLOOR = { left: -9, right: 9, front: 13.4 };
+/** The back wall's height; the camera's pivot stays below it. */
+export const WALL_HEIGHT = 3.4;
 /** The glass wall between the office and the deck. */
 export const GLASS_Z = 6.8;
 export const GLASS_DOORS = [{ x0: -6.3, x1: -5.3 }, { x0: 5.3, x1: 6.3 }];
