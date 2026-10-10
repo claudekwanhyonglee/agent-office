@@ -95,7 +95,7 @@ describe('#3 AC5 claude agents failures', () => {
   });
 
   it('#3 AC5 reports a missing command', async () => {
-    await expect(listClaudeAgents({ command: 'definitely-not-a-real-command-xyz', args: [] })).rejects.toThrow(/not found/i);
+    await expect(listClaudeAgents({ command: 'definitely-not-a-real-command-xyz', args: [] })).rejects.toThrow(/isn.t installed/i);
   });
 
   it('#3 AC5 reports a non-zero exit', async () => {

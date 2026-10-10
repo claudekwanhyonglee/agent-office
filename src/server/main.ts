@@ -14,5 +14,14 @@ const acknowledged = createAckStore();
 const feed = createFeed(() => loadAgents({ list: listClaudeAgents, now: Date.now(), acknowledged }));
 await feed.poll(POLL_MS);
 
-await startServer({ port, staticDir, api: createApi(feed, acknowledged) });
+try {
+  await startServer({ port, staticDir, api: createApi(feed, acknowledged) });
+} catch (error) {
+  const inUse = (error as NodeJS.ErrnoException).code === 'EADDRINUSE';
+  console.error(inUse ? `Port ${port} is already in use. Start with another port, e.g. PORT=${port + 1}.` : String(error));
+  process.exit(1);
+}
 console.log(`Agent Office is running at http://${HOST}:${port}`);
+
+const startup = feed.current();
+if (!Array.isArray(startup)) console.error(startup.error);
