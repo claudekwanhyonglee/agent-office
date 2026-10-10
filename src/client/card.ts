@@ -21,14 +21,13 @@ interface CardActions {
 const PREVIEW_LINES = 4;
 const PREVIEW_CHARS = 280;
 const isLong = (text: string) => text.split('\n').length > PREVIEW_LINES || text.length > PREVIEW_CHARS;
-const preview = (text: string) => `${text.split('\n').slice(0, PREVIEW_LINES).join('\n').slice(0, PREVIEW_CHARS).trimEnd()}…`;
 
 function messageSection(text: string | null, expanded: boolean) {
   if (!text) return '';
   const long = isLong(text);
-  const shown = long && !expanded ? preview(text) : text;
+  const collapsed = long && !expanded ? ' collapsed' : '';
   const toggle = long ? `<button class="btn link" data-more aria-expanded="${expanded}">${expanded ? 'Show less' : 'Show more'}</button>` : '';
-  return `<div class="section"><span class="label">Last message</span><div class="desc">${renderMarkdown(shown)}</div>${toggle}</div>`;
+  return `<div class="section"><span class="label">Last message</span><div class="desc${collapsed}">${renderMarkdown(text)}</div>${toggle}</div>`;
 }
 
 export const attachCommand = (record: AgentRecord) => `claude attach ${record.id}`;

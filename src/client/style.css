@@ -55,6 +55,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 .pill.stale { background: #4A4466; color: #D9D3E6; }
 .pill.finished { background: var(--blue); color: #FFFFFF; }
 .desc { min-width: 0; font-size: 14px; line-height: 1.5; color: var(--ink); overflow-wrap: anywhere; }
+.desc.collapsed { max-height: 6em; overflow: hidden; mask-image: linear-gradient(#000 60%, transparent); }
 .desc > :first-child { margin-top: 0; }
 .desc > :last-child { margin-bottom: 0; }
 .desc p, .desc ul, .desc ol, .desc blockquote, .desc pre, .desc table { margin: 0 0 8px; }
