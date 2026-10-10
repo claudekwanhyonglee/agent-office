@@ -178,7 +178,8 @@ function addMeetingRoom(group: THREE.Group) {
   for (const [sx, sy, sw, color] of [[-0.5, 1.5, 0.7, '#4D86FF'], [0.3, 1.3, 0.9, '#F07A4A'], [-0.2, 1.1, 0.6, '#5BA37A']] as const) {
     board.add(at(box(sw, 0.04, 0.02, color, { outline: 0 }), sx, sy, 0.04));
   }
-  room.add(at(board, x, 0, z0 + 0.12));
+  // Flat on the room's solid side (the office's left wall), facing in: nothing opaque against the glass (#62).
+  room.add(turned(at(board, x0 + 0.04, 0, z), Math.PI / 2));
   group.add(room);
 }
 
