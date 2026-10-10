@@ -14,6 +14,9 @@ const WOOD_DARK = '#8C6A4A';
 const INK_DARK = '#3A3150';
 const HIGH_FIVE_SECONDS = 1.2;
 const HOP_SECONDS = 0.45;
+/** A sofa cheer (#61): both fists up, pumping. */
+const CHEER_SECONDS = 1.5;
+const SOFA_SPOTS = ['lounge', 'couch-co-op'];
 /** A leaving agent's bubble grows for this long, then vanishes (#49). */
 const POP_SECONDS = 0.2;
 /** Pool (#53): the cue is held level this high, over the playing surface (0.835 m); the bridge hand stops short of the table's edge, 0.85 m ahead. */
@@ -47,7 +50,7 @@ export class Character {
   readonly pivot = new THREE.Group();
   readonly head = new THREE.Group();
   private eyes: THREE.Mesh[];
-  private hands: THREE.Mesh[];
+  readonly hands: THREE.Mesh[];
   private feet: THREE.Mesh[];
   private mug = new THREE.Group();
   private snack: THREE.Mesh;
@@ -65,6 +68,8 @@ export class Character {
   private growing = false;
   /** Seconds left of a raised-hand high five (#33). */
   private highFiving = 0;
+  /** Seconds left of a sofa cheer (#61). */
+  private cheering = 0;
   /** The table-tennis rally this agent is playing (#70): which end it's at, and seconds into the rally. */
   private rally: { rally: Rally; side: Side; t: number } | null = null;
   /** How this agent's ring drifts in a pool dip (#57), and the paddle home before climbing out. */
@@ -204,6 +209,16 @@ export class Character {
   /** At the darts line (#54): where, and seconds since arriving there (the board's darts follow it). */
   dartsThrower() {
     return this.mode === 'hanging' && this.place?.pose === 'throwing-darts' ? { place: this.place, t: this.placeTime } : null;
+  }
+
+  /** Sitting on the lounge sofa, watching TV or playing (#61). */
+  onSofa() {
+    return this.mode === 'hanging' && SOFA_SPOTS.includes(this.place!.spot);
+  }
+
+  /** Fist-pump with everyone else on the sofa (#61). */
+  cheer() {
+    this.cheering = CHEER_SECONDS;
   }
 
   /** Raise a hand for a high five (#33), whatever the agent is doing. */
@@ -349,6 +364,12 @@ export class Character {
       bubbleY = this.hangingPose(this.place!, tt, dt);
     }
 
+    if (this.cheering > 0) {
+      this.cheering -= dt;
+      const pump = Math.abs(Math.sin(this.cheering * 9)) * 0.15 * motion;
+      hl.position.set(-0.3, 1.7 + pump, 0.15);
+      hr.position.set(0.3, 1.7 + pump, 0.15);
+    }
     if (this.highFiving > 0) {
       this.highFiving -= dt;
       hr.position.set(0.3, 1.8 + Math.sin(this.highFiving * 12) * 0.05 * motion, 0.25);

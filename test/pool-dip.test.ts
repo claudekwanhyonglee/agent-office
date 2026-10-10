@@ -76,20 +76,22 @@ describe('#57 AC3 inside the water, never touching another ring', () => {
     const inner = { x0: box.min.x + 0.125, x1: box.max.x - 0.125, z0: box.min.z + 0.125, z1: box.max.z - 0.125 };
     const outer = new THREE.Box3().setFromObject(all[0]);
     const radius = (outer.max.x - outer.min.x) / 2;
+    const problems: string[] = [];
     for (let seed = 1; seed <= 25; seed++) {
       const random = seeded(seed);
       const drifts = RINGS.map(() => driftParams(random));
       for (let t = 0; t < 200; t += 0.25) {
         const at = RINGS.map((home, i) => { const d = driftAt(drifts[i], t); return { x: home.x + d.x, z: home.z + d.z }; });
         at.forEach((p, i) => {
-          expect(p.x - radius, `seed ${seed} ring ${i}`).toBeGreaterThan(inner.x0);
-          expect(p.x + radius).toBeLessThan(inner.x1);
-          expect(p.z - radius).toBeGreaterThan(inner.z0);
-          expect(p.z + radius).toBeLessThan(inner.z1);
-          for (let j = i + 1; j < at.length; j++) expect(Math.hypot(p.x - at[j].x, p.z - at[j].z), `seed ${seed} rings ${i}/${j}`).toBeGreaterThan(2 * radius);
+          const inWater = p.x - radius > inner.x0 && p.x + radius < inner.x1 && p.z - radius > inner.z0 && p.z + radius < inner.z1;
+          if (!inWater) problems.push(`seed ${seed} t=${t} ring ${i} out of the water`);
+          for (let j = i + 1; j < at.length; j++) {
+            if (Math.hypot(p.x - at[j].x, p.z - at[j].z) <= 2 * radius) problems.push(`seed ${seed} t=${t} rings ${i}/${j} touch`);
+          }
         });
       }
     }
+    expect(problems).toEqual([]);
   });
 });
 

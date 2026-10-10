@@ -34,6 +34,9 @@ const DOG_VISITORS = 2;
 const FETCH_EVERY = { min: 5, max: 8 };
 /** How many shots of a table-tennis rally reach the other bat before one is missed (#70). */
 const RALLY_HITS = { min: 1, max: 9 };
+/** Seconds between cheers on the sofa while anyone sits there (#61). */
+const CHEER_EVERY = { min: 20, max: 60 };
+const SOFA = ['lounge', 'couch-co-op'];
 
 const isIdle = (state: OfficeState) => state === 'done' || state === 'finished';
 
@@ -94,7 +97,9 @@ export type OfficeEvent =
   /** A table-tennis rally starts (#70) between `players` (at the -x end, then the +x end); null: play stopped. */
   | { type: 'pong'; rally: Rally | null; players: [string, string] }
   /** How agent `key`'s ring will drift once it's afloat in the pool dip it's walking to (#57). */
-  | { type: 'drift'; key: string; drift: Drift };
+  | { type: 'drift'; key: string; drift: Drift }
+  /** Everyone sitting on the sofa (`keys`) fist-pumps, all at once (#61). */
+  | { type: 'cheer'; keys: string[] };
 
 export interface DogState {
   spot: DogSpot;
@@ -137,6 +142,8 @@ export class OfficeController {
   private pool: { players: [string, string]; turn: number; nextAt: number } | null = null;
   /** The table-tennis game in play (#70): its players (-x end first), the rally and when it ends. */
   private pong: { players: [string, string]; rally: Rally; nextAt: number } | null = null;
+  /** When the sofa next cheers, if anyone's sitting there then (#61). */
+  private cheerAt: number | null = null;
 
   constructor(clock: Partial<Clock> = {}) {
     this.clock = { ...systemClock, ...clock };
@@ -180,7 +187,17 @@ export class OfficeController {
     this.moveDog(now, events);
     this.playPool(now, events);
     this.playPong(now, events);
+    this.cheerOn(now, events);
     return events;
+  }
+
+  /** Every so often, everyone sitting on the sofa cheers together; with nobody there, the moment passes (#61). */
+  private cheerOn(now: number, events: OfficeEvent[]) {
+    this.cheerAt ??= now + this.between(CHEER_EVERY);
+    if (now < this.cheerAt) return;
+    this.cheerAt = now + this.between(CHEER_EVERY);
+    const keys = [...this.agents].filter(([, a]) => SOFA.includes(a.place?.spot ?? '') && a.arrivesAt <= now).map(([k]) => k);
+    if (keys.length) events.push({ type: 'cheer', keys });
   }
 
   /** The two players at a game's spot once both have arrived, if they have. */

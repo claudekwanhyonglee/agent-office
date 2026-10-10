@@ -7,6 +7,7 @@ import { SCREEN_OFF } from './poses.ts';
 import { DeskScreen, screenContent } from './screen.ts';
 import { BigBoard } from './board.ts';
 import { addGameTables, addPetCorner, addPool, addSoloProps } from './break-room.ts';
+import { LoungeTv } from './tv.ts';
 import type { AgentRecord } from '../shared/agent.ts';
 
 export { SCREEN_OFF };
@@ -38,7 +39,7 @@ export function buildOffice(rows: number) {
   addFrontGlass(group);
   addMeetingRoom(group);
   addKitchen(group, layout);
-  addLounge(group, layout);
+  const tv = addLounge(group, layout);
   const board = addBackWallPieces(group, layout);
   addWallArt(group, layout);
   addPlants(group, layout);
@@ -57,7 +58,7 @@ export function buildOffice(rows: number) {
     row.add(screen.root);
     return { ...spot, screen };
   });
-  return { group, seats, layout, board, backWall };
+  return { group, seats, layout, board, backWall, tv };
 }
 
 const turned = <T extends THREE.Object3D>(obj: T, yaw: number) => {
@@ -211,7 +212,7 @@ function addKitchen(group: THREE.Group, layout: OfficeLayout) {
   group.add(kitchen);
 }
 
-/** The TV on the back wall with a sofa facing it. */
+/** The TV on the back wall (returned, for the scene to switch on and off, #61) with a sofa facing it. */
 function addLounge(group: THREE.Group, layout: OfficeLayout) {
   const { tv, sofa: sofaAt, rug } = layout.lounge;
   const lounge = tag(new THREE.Group(), 'lounge');
@@ -221,7 +222,8 @@ function addLounge(group: THREE.Group, layout: OfficeLayout) {
 
   const screen = tag(new THREE.Group(), 'tv');
   screen.add(at(box(tv.w, 1.3, 0.1, INK), 0, 1.6, 0));
-  screen.add(at(box(tv.w - 0.16, 1.14, 0.02, '#4D86FF', { outline: 0, shadow: false }), 0, 1.6, 0.06));
+  const picture = at(new THREE.Mesh(new THREE.PlaneGeometry(tv.w - 0.16, 1.14), new THREE.MeshBasicMaterial()), 0, 1.6, 0.06);
+  screen.add(picture);
   lounge.add(at(screen, tv.x, 0, tv.z));
 
   const w = sofaAt.w;
@@ -233,6 +235,7 @@ function addLounge(group: THREE.Group, layout: OfficeLayout) {
   for (const dx of [-0.75, 0, 0.75]) sofa.add(at(box(0.7, 0.12, 0.6, '#6E90C4'), dx, 0.5, 0.05));
   lounge.add(turned(at(sofa, sofaAt.x, 0, sofaAt.z), Math.PI)); // faces the TV
   group.add(lounge);
+  return new LoungeTv(picture);
 }
 
 /** The big board (returned, for the scene to keep up to date), water cooler and bookshelf. */

@@ -76,6 +76,8 @@ export function createOfficeScene(host: HTMLElement) {
       } else if (event.type === 'dog') {
         if (event.path.length === 1) dog.placeAt(event.path[0], event.lie);
         else dog.go(event.path, event.lie);
+      } else if (event.type === 'cheer') {
+        for (const key of event.keys) characters.get(key)?.cheer();
       } else if (event.type === 'drift') {
         characters.get(event.key)?.float(event.drift);
       } else if (event.type === 'pong') {
@@ -125,6 +127,7 @@ export function createOfficeScene(host: HTMLElement) {
     planes.update(dt);
     poolBalls.update(dt);
     pongBall.update(dt);
+    office.tv.update([...characters.values()].some((c) => c.onSofa()), t);
     const dip = office.layout.hangouts.find((s) => s.name === 'pool-dip')!.places;
     const riders = [...characters.values(), ...leaving];
     floatRings(office.group, dip.map((p) => riders.find((c) => c.place?.x === p.x && c.place.z === p.z)?.floatOffset() ?? null));
