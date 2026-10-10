@@ -66,14 +66,6 @@ export function renderCard(card: HTMLElement, record: AgentRecord, actions: Card
   if (ack) ack.onclick = () => { ack.disabled = true; actions.acknowledge(record); };
 }
 
-export function renderCounts(el: HTMLElement, records: AgentRecord[]) {
-  const count = (state: OfficeState) => records.filter((r) => r.state === state).length;
-  const needs = count('needs');
-  el.innerHTML = `<span class="count needs"><b>${needs}</b> ${needs === 1 ? 'needs' : 'need'} you</span> · `
-    + `<span class="count"><b>${count('working')}</b> working</span> · `
-    + `<span class="count"><b>${count('done')}</b> done</span>`;
-}
-
 export function showTooltip(el: HTMLElement, record: AgentRecord | undefined, x: number, y: number) {
   el.hidden = !record;
   if (!record) return;

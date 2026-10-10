@@ -1,6 +1,6 @@
 import './style.css';
 import { createOfficeScene } from './office-scene.ts';
-import { renderCard, renderCounts, showTooltip } from './card.ts';
+import { renderCard, showTooltip } from './card.ts';
 import { startUsagePanel } from './usage.ts';
 import type { AgentRecord, FeedPayload } from '../shared/agent.ts';
 
@@ -40,7 +40,6 @@ export function boot({ createOffice }: BootOptions = {}) {
   const office = (createOffice ?? createOfficeScene)(document.getElementById('scene')!);
   const card = document.getElementById('card')!;
   const tooltip = document.getElementById('tooltip')!;
-  const counts = document.getElementById('counts')!;
   let records = new Map<string, AgentRecord>();
   let selected: string | null = null;
   /** The open card's last message is shown in full; kept across live re-renders of the same agent. */
@@ -77,7 +76,6 @@ export function boot({ createOffice }: BootOptions = {}) {
     if (!Array.isArray(payload)) return showStatus(payload.error, true);
     records = new Map(payload.map((r) => [r.sessionId, r]));
     office.show(payload);
-    renderCounts(counts, payload);
     showStatus(null);
     if (selected) select(selected);
   }

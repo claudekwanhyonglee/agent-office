@@ -142,24 +142,14 @@ describe('#6 AC3 Got it button', () => {
   });
 });
 
-describe('#6 AC4 header counts', () => {
-  it('#6 AC4 shows live counts of needs you, working and done', () => {
-    const { app } = start([rec(1, 'needs'), rec(2, 'needs'), rec(3, 'working'), rec(4, 'done'), rec(5, 'finished')]);
-    const counts = () => document.getElementById('counts')!.textContent!.replace(/\s+/g, ' ').trim();
-    expect(counts()).toBe('2 need you · 1 working · 1 done');
-    app.applyFeed([rec(1, 'needs')]);
-    expect(counts()).toBe('1 needs you · 0 working · 0 done');
-  });
-});
-
 describe('#6 AC5 phone width', () => {
   it('#6 AC5 card and header fit the screen; long text wraps or scrolls inside', () => {
     const css = readFileSync('src/client/style.css', 'utf8');
     const rule = (selector: string, source = css) => source.match(new RegExp(`(^|\\n)\\s*${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`))?.[2] ?? '';
-    // The header sits in the left column (#47), which keeps it on screen.
+    // The header (just the logo since #52) is centred, narrower than the screen, and cuts its text short if it must.
     expect(rule('.left')).toMatch(/max-width:\s*calc\(100% - 32px\)/);
-    expect(rule('.brand')).toMatch(/max-width:\s*100%/);
-    expect(rule('.brand')).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule('.brand')).toMatch(/max-width:\s*calc\(100% - \d+px\)/);
+    expect(rule('.brand h1')).toMatch(/text-overflow:\s*ellipsis/);
     expect(rule('.card')).toMatch(/max-width:\s*calc\(100% - 32px\)/);
     expect(rule('.command code')).toMatch(/overflow-x:\s*auto/);
     const phone = css.match(/@media \(max-width: 700px\) \{([\s\S]*?)\n\}/)![1];

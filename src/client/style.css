@@ -31,18 +31,20 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
   max-width: calc(100% - 32px);
   max-height: calc(100% - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
-  /* The gaps around the logo and panel belong to the office: drags and clicks go through. */
+  /* The gaps around the panel belong to the office: drags and clicks go through. */
   pointer-events: none;
 }
 .left > * { pointer-events: auto; }
 .brand {
-  flex-shrink: 0; max-width: 100%; box-sizing: border-box;
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 16px;
+  /* Top centre, clear of the reset button at the top right. */
+  position: absolute; left: 50%; transform: translateX(-50%); top: calc(16px + env(safe-area-inset-top, 0px));
+  max-width: calc(100% - 152px); box-sizing: border-box; padding: 10px 16px;
   border-radius: 14px; background: var(--panel); border: 1px solid var(--line);
 }
-.brand h1 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: .2px; }
-.brand span { font-size: 13px; color: var(--muted); }
-.count { white-space: nowrap; }
+.brand h1 {
+  margin: 0; font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: .2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 .usage {
   width: 260px; max-width: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 10px 14px;
@@ -63,7 +65,6 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 .projects { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .projects li { display: flex; justify-content: space-between; gap: 12px; }
 .projects li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.count.needs b { color: var(--amber); }
 
 .card {
   /* Opens below the reset button (top right). */
@@ -125,15 +126,13 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 .tooltip .bright { color: var(--ink); }
 .tooltip .dim { color: var(--muted); }
 
-.hint {
-  position: absolute; left: 50%; transform: translateX(-50%);
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  padding: 8px 14px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line);
-  font-size: 13px; color: var(--muted); white-space: nowrap;
+/* Narrow enough for the centred logo to meet the usage panel: the panel starts below the logo. */
+@media (max-width: 760px) {
+  .left {
+    top: calc(76px + env(safe-area-inset-top, 0px));
+    max-height: calc(100% - 92px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
 }
-
-/* Too narrow for the hint beside the Home button. */
-@media (max-width: 860px) { .hint { display: none; } }
 
 .home {
   position: absolute; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
@@ -151,6 +150,5 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 @media (max-width: 700px) {
   .card { top: auto; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); right: 16px; left: 16px; width: auto; max-width: none; max-height: 52%; overflow-y: auto; }
   /* Ends above the highest the card can reach (52% + 12px from the bottom), with a gap. */
-  .left { max-height: calc(48% - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
-  .hint { display: none; }
+  .left { max-height: calc(48% - 100px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
 }
