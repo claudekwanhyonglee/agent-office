@@ -3,20 +3,24 @@ import { at, ball, box, cyl, tag, toonRamp } from './toon.ts';
 import {
   DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, MEETING_ROOM, MEETING_TABLE, officeLayout, type OfficeLayout, type SeatSpot,
 } from './layout.ts';
-import { SCREEN_OFF, screenColor } from './poses.ts';
-import type { OfficeState } from '../shared/agent.ts';
+import { SCREEN_OFF } from './poses.ts';
+import { DeskScreen, screenContent } from './screen.ts';
+import type { AgentRecord } from '../shared/agent.ts';
 
 export { SCREEN_OFF };
 
 export interface Seat extends SeatSpot {
-  screen: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  screen: DeskScreen;
 }
 
-/** Screens glow for their desk's occupant; empty desks stay dark. */
-export function updateScreens(seats: Seat[], occupants: Map<number, OfficeState>) {
+/**
+ * Each desk's screen shows its occupant (empty desks show nothing), turned towards `camera` when given.
+ * Call every frame: screens only redraw when their content changes.
+ */
+export function updateScreens(seats: Seat[], occupants: Map<number, AgentRecord>, now: number, camera?: THREE.Vector3) {
   for (const seat of seats) {
-    const state = occupants.get(seat.index);
-    seat.screen.material.color.set(state ? screenColor(state) : SCREEN_OFF);
+    seat.screen.show(screenContent(occupants.get(seat.index)), now);
+    if (camera) seat.screen.face(camera);
   }
 }
 
@@ -39,8 +43,8 @@ export function buildOffice(rows: number) {
     const row = deskRows[spot.row];
     row.add(turned(at(buildDesk(), spot.desk.x, 0, spot.desk.z), spot.yaw));
     row.add(turned(at(buildChair(), spot.chair.x, 0, spot.chair.z), spot.yaw));
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.55), new THREE.MeshBasicMaterial({ color: SCREEN_OFF, side: THREE.DoubleSide }));
-    row.add(tag(turned(at(screen, spot.screenAt.x, 1.25, spot.screenAt.z), spot.yaw), 'screen'));
+    const screen = new DeskScreen(spot.screenAt, spot.yaw, Math.hypot(spot.screenAt.x - spot.desk.x, spot.screenAt.z - spot.desk.z) - 0.22);
+    row.add(screen.root);
     return { ...spot, screen };
   });
   return { group, seats, layout };

@@ -161,10 +161,11 @@ describe('#5 AC6 monitors', () => {
     for (const s of ['done', 'stale', 'finished'] as const) expect(screenColor(s)).toBe(SCREEN_OFF);
   });
 
+  // #27: the glow is the projector under each see-through screen.
   it('#5 AC6 each desk shows its occupant, empty desks are dark', () => {
     const { seats } = buildOffice(2);
-    updateScreens(seats, new Map([[0, 'working'], [1, 'needs'], [2, 'done']]));
-    const hex = (i: number) => `#${seats[i].screen.material.color.getHexString().toUpperCase()}`;
+    updateScreens(seats, new Map([[0, rec(1, 'working')], [1, rec(2, 'needs')], [2, rec(3, 'done')]]), 0);
+    const hex = (i: number) => `#${seats[i].screen.glow.material.color.getHexString().toUpperCase()}`;
     expect([hex(0), hex(1), hex(2), hex(3)]).toEqual(['#7FB2FF', '#FFB648', SCREEN_OFF, SCREEN_OFF]);
   });
 });

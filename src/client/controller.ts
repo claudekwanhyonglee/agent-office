@@ -98,9 +98,9 @@ export class OfficeController {
     return events;
   }
 
-  /** Who sits at each desk, by seat index. */
+  /** Who sits at each desk (their latest record), by seat index. */
   occupants() {
-    return new Map([...this.agents.values()].map((o) => [o.seat.index, o.record.state]));
+    return new Map([...this.agents.values()].map((o) => [o.seat.index, o.record]));
   }
 
   private arrive(key: string, record: AgentRecord, now: number, events: OfficeEvent[]) {
