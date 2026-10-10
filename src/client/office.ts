@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { at, ball, box, cyl, tag, toonRamp } from './toon.ts';
+import { at, ball, box, cyl, mesh, tag, toonRamp } from './toon.ts';
 import {
-  DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, MEETING_ROOM, MEETING_TABLE, WALL_HEIGHT, officeLayout, type OfficeLayout, type SeatSpot,
+  BREAK_ROOM, DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, MEETING_ROOM, MEETING_TABLE, WALL_HEIGHT, officeLayout, type OfficeLayout, type SeatSpot,
 } from './layout.ts';
 import { SCREEN_OFF } from './poses.ts';
 import { DeskScreen, screenContent } from './screen.ts';
 import { BigBoard } from './board.ts';
-import { addGameTables, addPetCorner, addPool, addSoloProps } from './break-room.ts';
+import { POOL_RIM, addGameTables, addPetCorner, addPool, addSoloProps } from './break-room.ts';
 import { LoungeTv } from './tv.ts';
 import type { AgentRecord } from '../shared/agent.ts';
 
@@ -83,20 +83,27 @@ function addRoom(group: THREE.Group, layout: OfficeLayout) {
   floor.receiveShadow = true;
   group.add(tag(floor, 'floor'));
 
-  const deckDepth = front - GLASS_Z;
+  // The deck, and the base under the whole floor, have holes for the sunken pool and pond (#63).
   const deck = tag(new THREE.Group(), 'deck');
-  const boards = new THREE.Mesh(new THREE.PlaneGeometry(width, deckDepth), new THREE.MeshToonMaterial({ color: '#D9B48A', gradientMap: toonRamp }));
+  const boards = new THREE.Mesh(
+    new THREE.ShapeGeometry(withWaterHoles(rectangle(left, right, GLASS_Z, front))),
+    new THREE.MeshToonMaterial({ color: '#D9B48A', gradientMap: toonRamp }),
+  );
   boards.rotation.x = -Math.PI / 2;
-  boards.position.set(centerX, 0.001, GLASS_Z + deckDepth / 2);
+  boards.position.y = 0.001;
   boards.receiveShadow = true;
   deck.add(tag(boards, 'floor'));
   for (let z = GLASS_Z + 0.6; z < front; z += 0.6) {
-    deck.add(at(box(width, 0.004, 0.03, '#B98F63', { outline: 0, shadow: false }), centerX, 0.003, z));
+    for (const [x0, x1] of outsideWater(left, right, z)) {
+      deck.add(at(box(x1 - x0, 0.004, 0.03, '#B98F63', { outline: 0, shadow: false }), (x0 + x1) / 2, 0.003, z));
+    }
   }
   group.add(deck);
 
-  const depth = front - back, centerZ = (back + front) / 2;
-  group.add(at(box(width + 0.3, 0.3, depth + 0.3, '#4A4068', { outline: 0, shadow: false }), centerX, -0.16, centerZ));
+  const base = mesh(new THREE.ExtrudeGeometry(withWaterHoles(rectangle(left - 0.15, right + 0.15, back - 0.15, front + 0.15)), { depth: 0.3, bevelEnabled: false }), '#4A4068', { outline: 0, shadow: false });
+  base.rotation.x = -Math.PI / 2;
+  base.position.y = -0.31;
+  group.add(base);
 
   // The back wall is tall (the camera faces it, and the big board hangs on it); the left wall stays low.
   const backZ = back - 0.15;
@@ -314,6 +321,42 @@ function buildChair() {
   chair.add(at(cyl(0.04, 0.04, 0.38, INK, { outline: 0 }), 0, 0.2, 0));
   chair.add(at(cyl(0.26, 0.26, 0.04, INK, { outline: 0.02 }), 0, 0.03, 0));
   return chair;
+}
+
+/** A rectangle on the floor as a shape (shape y is -z: shapes are laid flat by turning them -90° about x). */
+function rectangle(x0: number, x1: number, z0: number, z1: number) {
+  const shape = new THREE.Shape();
+  shape.moveTo(x0, -z0).lineTo(x1, -z0).lineTo(x1, -z1).lineTo(x0, -z1).lineTo(x0, -z0);
+  return shape;
+}
+
+/** The pool's and pond's water areas, cut out of a floor shape. */
+function withWaterHoles(shape: THREE.Shape) {
+  const { pool, pond } = BREAK_ROOM;
+  const [hx, hz] = [pool.w / 2 - POOL_RIM, pool.d / 2 - POOL_RIM];
+  const hole = new THREE.Path();
+  hole.moveTo(pool.x - hx, -(pool.z - hz)).lineTo(pool.x - hx, -(pool.z + hz)).lineTo(pool.x + hx, -(pool.z + hz)).lineTo(pool.x + hx, -(pool.z - hz)).lineTo(pool.x - hx, -(pool.z - hz));
+  const hollow = new THREE.Path();
+  hollow.absellipse(pond.x, -pond.z, pond.rx, pond.rz, 0, Math.PI * 2, true, 0);
+  shape.holes.push(hole, hollow);
+  return shape;
+}
+
+/** The stretches of a line across the deck at `z` (from x0 to x1) that aren't over the pool or pond. */
+function outsideWater(x0: number, x1: number, z: number): [number, number][] {
+  const { pool, pond } = BREAK_ROOM;
+  const cuts: [number, number][] = [];
+  if (Math.abs(z - pool.z) < pool.d / 2 - POOL_RIM) cuts.push([pool.x - pool.w / 2 + POOL_RIM, pool.x + pool.w / 2 - POOL_RIM]);
+  const k = (z - pond.z) / pond.rz;
+  if (Math.abs(k) < 1) { const half = pond.rx * Math.sqrt(1 - k * k); cuts.push([pond.x - half, pond.x + half]); }
+  const spans: [number, number][] = [];
+  let from = x0;
+  for (const [a, b] of cuts.sort((p, q) => p[0] - q[0])) {
+    if (a > from) spans.push([from, a]);
+    from = Math.max(from, b);
+  }
+  if (from < x1) spans.push([from, x1]);
+  return spans;
 }
 
 /** Two-tone floor tiles with grout lines, generated as pixels (no canvas needed). */

@@ -5,6 +5,8 @@ import { BREAK_ROOM, type HangoutPlace, type SeatSpot } from './layout.ts';
 import { dartModel } from './character.ts';
 import { THROWS, dartFlight, dartsAt } from './darts.ts';
 import type { Afloat } from './float.ts';
+import { POND_DEPTH, POOL_DEPTH, waterSurface } from './water.ts';
+import { toonRamp } from './toon.ts';
 import { BALL_R, POCKETS, POCKET_R, SHOT_SECONDS, ballsAt } from './pool.ts';
 import { BALL_R as PONG_BALL_R, NET_TOP, pongBallAt, type Rally } from './pong.ts';
 
@@ -73,9 +75,7 @@ export function addSoloProps(group: THREE.Group) {
     group.add(at(chair, x, 0, z));
   }
 
-  const water = tag(at(cyl(1, 1, 0.04, WATER, { outline: 0.02, shadow: false }, 40), pond.x, 0.02, pond.z), 'pond');
-  water.scale.set(pond.rx, 1, pond.rz);
-  group.add(water);
+  group.add(at(buildPond(pond.rx, pond.rz), pond.x, 0, pond.z));
   for (const [dx, dz] of [[-0.8, -0.3], [0.4, 0.45]]) {
     const pad = at(cyl(0.16, 0.16, 0.02, '#5FA35A', { outline: 0, shadow: false }), pond.x + dx, 0.05, pond.z + dz);
     group.add(pad);
@@ -247,6 +247,43 @@ export function floatRings(group: THREE.Object3D, afloat: (Afloat | null)[]) {
   });
 }
 
+/** The pool's coping, around the hole in the deck (#63). */
+export const POOL_RIM = 0.125;
+const POOL_TILE = '#DDF3FA';
+
+/** Light pool tiles with grout lines, generated as pixels (no canvas needed). */
+function poolTiles(repeatX: number, repeatY: number) {
+  const size = 32, data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) data.set(x % 16 < 1 || y % 16 < 1 ? [0xa9, 0xd6, 0xe6, 255] : [0xdd, 0xf3, 0xfa, 255], (y * size + x) * 4);
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeatX, repeatY);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+/** The pond (#63): a sandy, stony bed in a sunken hollow, under see-through water; `rx`, `rz` its half-sizes. */
+function buildPond(rx: number, rz: number) {
+  const pond = tag(new THREE.Group(), 'pond');
+  const ellipse = <T extends THREE.Object3D>(o: T) => { o.scale.set(rx, o.scale.y, rz); return o; };
+  const bed = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshToonMaterial({ color: '#D9C08A', gradientMap: toonRamp }));
+  bed.rotation.x = -Math.PI / 2;
+  bed.scale.set(rx, rz, 1);
+  pond.add(part(at(bed, 0, -POND_DEPTH, 0), 'pond-bed'));
+  const bank = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, POND_DEPTH, 40, 1, true), new THREE.MeshToonMaterial({ color: '#B89A68', gradientMap: toonRamp, side: THREE.BackSide }));
+  pond.add(ellipse(at(bank, 0, -POND_DEPTH / 2, 0)));
+  for (const [x, z, r] of [[-0.5, 0.3, 0.12], [0.6, -0.4, 0.09], [0.1, 0.55, 0.1], [-0.2, -0.6, 0.08]]) {
+    const stone = ball(r, '#9C93B5', { outline: 0.05, shadow: false });
+    stone.scale.y = 0.5;
+    pond.add(at(stone, x * rx * 0.8, -POND_DEPTH + r * 0.3, z * rz * 0.8));
+  }
+  const surface = waterSurface(new THREE.CircleGeometry(1, 40), WATER);
+  surface.scale.set(rx, rz, 1);
+  pond.add(at(surface, 0, 0.03, 0));
+  return pond;
+}
+
 /** The dog's bed and bowl (#34). */
 export function addPetCorner(group: THREE.Group) {
   const { petBed, bowl } = BREAK_ROOM;
@@ -269,8 +306,18 @@ export function addPetCorner(group: THREE.Group) {
 export function addPool(group: THREE.Group) {
   const { pool } = BREAK_ROOM;
   const basin = tag(new THREE.Group(), 'pool');
-  basin.add(at(box(pool.w, 0.06, pool.d, '#F4EEE2', { outline: 0.01 }), 0, 0.03, 0));
-  basin.add(at(box(pool.w - 0.25, 0.02, pool.d - 0.25, '#5BC0EB', { outline: 0, shadow: false }), 0, 0.065, 0));
+  // A sunken, tiled basin under see-through water (#63), framed by a coping around the hole in the deck.
+  const [iw, id] = [pool.w - POOL_RIM * 2, pool.d - POOL_RIM * 2];
+  for (const side of [-1, 1]) {
+    basin.add(at(box(pool.w, 0.06, POOL_RIM, '#F4EEE2', { outline: 0.01 }), 0, 0.03, side * (pool.d - POOL_RIM) / 2));
+    basin.add(at(box(POOL_RIM, 0.06, id, '#F4EEE2', { outline: 0.01 }), side * (pool.w - POOL_RIM) / 2, 0.03, 0));
+    basin.add(part(at(box(iw, POOL_DEPTH, 0.02, POOL_TILE, { outline: 0, shadow: false }), 0, -POOL_DEPTH / 2, side * (id / 2 - 0.01)), 'pool-wall'));
+    basin.add(part(at(box(0.02, POOL_DEPTH, id, POOL_TILE, { outline: 0, shadow: false }), side * (iw / 2 - 0.01), -POOL_DEPTH / 2, 0), 'pool-wall'));
+  }
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(iw, 0.02, id), new THREE.MeshToonMaterial({ map: poolTiles(iw / 0.5, id / 0.5), gradientMap: toonRamp }));
+  basin.add(part(at(floor, 0, -POOL_DEPTH, 0), 'pool-floor'));
+  for (const dz of [-0.6, 0.6]) basin.add(part(at(box(iw - 0.6, 0.01, 0.08, '#3E6FD0', { outline: 0, shadow: false }), 0, -POOL_DEPTH + 0.015, dz), 'lane-line'));
+  basin.add(at(waterSurface(new THREE.PlaneGeometry(iw, id), '#5BC0EB'), 0, 0.065, 0));
   const ladder = at(box(0.05, 0.5, 0.05, '#C9C0E3', { outline: 0.02 }), pool.w / 2 - 0.3, 0.25, -pool.d / 2 - 0.02);
   basin.add(ladder);
   const colors = ['#F07A4A', '#E2B347', '#C25B7A', '#5BA37A'];

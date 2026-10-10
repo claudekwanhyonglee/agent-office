@@ -153,7 +153,9 @@ describe('#25 AC2 plan C zones', () => {
     const deck = boxOf(find(group, 'deck')[0]);
     about(deck.min.z, plan(0, 11.8).z);
     about(deck.max.z, plan(0, 18.4).z);
-    expect([deck.min.x, deck.max.x]).toEqual([plan(0, 0).x, plan(18, 0).x]);
+    // To float precision: since #63 the deck is a shape with holes for the pool and pond.
+    expect(deck.min.x).toBeCloseTo(plan(0, 0).x, 6);
+    expect(deck.max.x).toBeCloseTo(plan(18, 0).x, 6);
   });
 
   it('#25 AC2 entrance door in the back wall at x 17.0–17.9, and at least 8 plants', () => {

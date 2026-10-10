@@ -6,6 +6,7 @@ import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { PaperPlanes } from './paper-planes.ts';
 import { BoardDarts, DeskMugs, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
+import { PondFish, updateWater } from './water.ts';
 import { Dog } from './dog.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
@@ -31,6 +32,7 @@ export function createOfficeScene(host: HTMLElement) {
   const poolBalls = new PoolBalls(view.scene);
   const pongBall = new PongBallMesh(view.scene);
   const boardDarts = new BoardDarts(view.scene);
+  const pondFish = new PondFish(view.scene);
   const dog = new Dog();
   dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
   view.scene.add(dog.root);
@@ -127,6 +129,8 @@ export function createOfficeScene(host: HTMLElement) {
     planes.update(dt);
     poolBalls.update(dt);
     pongBall.update(dt);
+    updateWater(t);
+    pondFish.update(t);
     office.tv.update([...characters.values()].some((c) => c.onSofa()), t);
     const dip = office.layout.hangouts.find((s) => s.name === 'pool-dip')!.places;
     const riders = [...characters.values(), ...leaving];
