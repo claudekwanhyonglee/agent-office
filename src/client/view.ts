@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildOffice, type Seat } from './office.ts';
 import { FLOOR, floorFront } from './layout.ts';
+import { createGestures, frameFloor, initialOrbit, placeCamera, wheelRadius } from './camera.ts';
 
 /** Renderer, lights, orbit camera and the office. Agents are layered on by callers. */
 export function createView(host: HTMLElement) {
@@ -21,20 +22,10 @@ export function createView(host: HTMLElement) {
   scene.add(sun, sun.target);
 
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 150);
-  const orbit = { theta: 0.22, phi: 0.86, radius: 18, target: new THREE.Vector3(0, 0.5, 0) };
+  const orbit = initialOrbit();
 
   let office: { group: THREE.Group; seats: Seat[] } | undefined;
   let podCount = 0;
-
-  function placeCamera() {
-    const { theta, phi, radius, target } = orbit;
-    camera.position.set(
-      target.x + radius * Math.sin(phi) * Math.sin(theta),
-      target.y + radius * Math.cos(phi),
-      target.z + radius * Math.sin(phi) * Math.cos(theta),
-    );
-    camera.lookAt(target);
-  }
 
   function setPodCount(count: number) {
     if (count === podCount) return office!.seats;
@@ -45,8 +36,6 @@ export function createView(host: HTMLElement) {
     // Frame the whole floor and stretch the sun's shadow box over it.
     const front = floorFront(count), depth = front - FLOOR.back, centerZ = (FLOOR.back + front) / 2;
     const width = FLOOR.right - FLOOR.left;
-    orbit.target.z = centerZ + 1.5;
-    orbit.radius = Math.max(orbit.radius, 4 + Math.max(width, depth) * 0.9);
     const half = Math.max(width, depth) / 2 + 2;
     Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 40 });
     sun.shadow.camera.updateProjectionMatrix();
@@ -60,36 +49,34 @@ export function createView(host: HTMLElement) {
     const w = host.clientWidth || innerWidth, h = host.clientHeight || innerHeight;
     renderer.setSize(w, h);
     camera.aspect = w / h;
-    if (w < 700) orbit.radius = Math.max(orbit.radius, 30);
-    camera.updateProjectionMatrix();
-    placeCamera();
+    frameFloor(camera, orbit, podCount);
   }
 
-  // Drag to orbit, scroll to zoom. A press that doesn't move counts as a click.
+  // Drag to orbit, pinch or scroll to zoom. A press that doesn't move counts as a click.
   const canvas = renderer.domElement;
   const clickHandlers: ((e: PointerEvent) => void)[] = [];
-  let drag: { x: number; y: number; theta: number; phi: number; moved: boolean } | null = null;
+  const gestures = createGestures(orbit);
   canvas.addEventListener('pointerdown', (e) => {
-    drag = { x: e.clientX, y: e.clientY, theta: orbit.theta, phi: orbit.phi, moved: false };
+    gestures.down(e.pointerId, e.clientX, e.clientY);
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (Math.hypot(dx, dy) > 4) { drag.moved = true; canvas.classList.add('dragging'); }
-    orbit.theta = THREE.MathUtils.clamp(drag.theta - dx * 0.005, -0.9, 0.9);
-    orbit.phi = THREE.MathUtils.clamp(drag.phi - dy * 0.004, 0.5, 1.15);
-    placeCamera();
+    if (!gestures.move(e.pointerId, e.clientX, e.clientY)) return;
+    canvas.classList.toggle('dragging', gestures.dragging);
+    placeCamera(camera, orbit);
   });
   canvas.addEventListener('pointerup', (e) => {
     canvas.classList.remove('dragging');
-    if (drag && !drag.moved) clickHandlers.forEach((handle) => handle(e));
-    drag = null;
+    if (gestures.up(e.pointerId)) clickHandlers.forEach((handle) => handle(e));
+  });
+  canvas.addEventListener('pointercancel', (e) => {
+    canvas.classList.remove('dragging');
+    gestures.up(e.pointerId);
   });
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    orbit.radius = THREE.MathUtils.clamp(orbit.radius * (e.deltaY > 0 ? 1.08 : 0.92), 6, 45);
-    placeCamera();
+    orbit.radius = wheelRadius(orbit.radius, e.deltaY, orbit.maxRadius);
+    placeCamera(camera, orbit);
   }, { passive: false });
 
   const frameHandlers: ((t: number, dt: number) => void)[] = [];

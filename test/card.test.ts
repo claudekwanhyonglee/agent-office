@@ -82,6 +82,23 @@ describe('#6 AC2 hover label', () => {
   });
 });
 
+describe('#21 AC4 tooltip near the screen edge', () => {
+  it('#21 AC4 the hover tooltip is moved inside the screen with an 8px margin', () => {
+    const { hover } = start([rec(1, 'working')]);
+    const tooltip = document.getElementById('tooltip')!;
+    const stage = tooltip.parentElement!;
+    for (const [el, w, h] of [[stage, 390, 844], [tooltip, 200, 30]] as const) {
+      Object.defineProperty(el, el === stage ? 'clientWidth' : 'offsetWidth', { value: w, configurable: true });
+      Object.defineProperty(el, el === stage ? 'clientHeight' : 'offsetHeight', { value: h, configurable: true });
+    }
+    hover('session-1', 5, 4);
+    expect(tooltip.style.left).toBe(`${8 + 100}px`);
+    expect(tooltip.style.top).toBe(`${8 + 30 + 12}px`);
+    hover('session-1', 200, 400);
+    expect([tooltip.style.left, tooltip.style.top]).toEqual(['200px', '400px']);
+  });
+});
+
 describe('#6 AC3 Got it button', () => {
   it('#6 AC3 finished and stale agents have Got it; it posts the session id', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
@@ -126,40 +143,73 @@ describe('#6 AC5 phone width', () => {
   });
 });
 
-describe('#11 expandable last message', () => {
-  const withMessage = (lastMessage: string) => ({ ...rec(1, 'done'), lastMessage });
-  const desc = () => card().querySelector('.desc')!.textContent!;
-  const longText = 'A'.repeat(200) + ' ' + 'B'.repeat(200);
-  const manyLines = ['one', 'two', 'three', 'four', 'five'].join('\n');
+describe('#17 AC1 the card shows the last message as Markdown', () => {
+  it('#17 AC1 the card renders **hi** as <strong>hi</strong>', () => {
+    const { pick } = start([{ ...rec(1, 'done'), lastMessage: '**hi** <b>no</b>' }]);
+    pick('session-1');
+    expect(card().querySelector('.desc strong')!.textContent).toBe('hi');
+    expect(card().querySelector('.desc b')).toBeNull();
+  });
+});
 
-  it('#11 AC2 a message over 280 characters shows a preview and Show more / Show less', () => {
+describe('#11 / #18 expandable last message', () => {
+  const withMessage = (lastMessage: string) => ({ ...rec(1, 'done'), lastMessage });
+  const descEl = () => card().querySelector<HTMLElement>('.desc')!;
+  const desc = () => descEl().textContent!.trim();
+  const collapsed = () => descEl().classList.contains('collapsed');
+  const longText = 'A'.repeat(200) + ' ' + 'B'.repeat(200);
+  const manyLines = ['one', 'two', 'three', 'four', 'five'].join('\n\n');
+  const table = ['| a | b |', '|---|---|', ...Array.from({ length: 6 }, (_, i) => `| ${i} | x${i} |`), '', 'after the table'].join('\n');
+
+  it('#18 AC1 a message over 280 characters starts collapsed with Show more, but the whole message is rendered', () => {
     const { pick } = start([withMessage(longText)]);
     pick('session-1');
-    expect(desc().length).toBeLessThan(longText.length);
-    expect(longText.startsWith(desc().replace(/…$/, ''))).toBe(true);
-    button(/show more/i)!.click();
+    expect(collapsed()).toBe(true);
     expect(desc()).toBe(longText);
-    expect(button(/show more/i)).toBeUndefined();
-    button(/show less/i)!.click();
-    expect(desc().length).toBeLessThan(longText.length);
     expect(button(/show more/i)).toBeDefined();
   });
 
-  it('#11 AC2 a message over 4 lines shows a preview of the first 4 lines', () => {
+  it('#18 AC1 a message over 4 lines starts collapsed; a table is rendered whole, not cut in half', () => {
     const { pick } = start([withMessage(manyLines)]);
     pick('session-1');
-    expect(desc()).not.toContain('five');
-    expect(desc()).toContain('four');
-    button(/show more/i)!.click();
-    expect(desc()).toBe(manyLines);
+    expect(collapsed()).toBe(true);
+    expect(desc()).toContain('five');
+
+    pick(null);
+    const { pick: pickTable } = start([withMessage(table)]);
+    pickTable('session-1');
+    expect(collapsed()).toBe(true);
+    expect(descEl().querySelectorAll('tbody tr')).toHaveLength(6);
+    expect(desc()).toContain('after the table');
   });
 
-  it('#11 AC3 a message within the limits shows in full with no button', () => {
+  it('#18 AC1 the collapsed message is clamped by CSS height', () => {
+    const css = readFileSync('src/client/style.css', 'utf8');
+    const rule = css.match(/(^|\n)\s*\.desc\.collapsed\s*\{([^}]*)\}/)?.[2] ?? '';
+    expect(rule).toMatch(/max-height:/);
+    expect(rule).toMatch(/overflow:\s*hidden/);
+  });
+
+  it('#18 AC2 Show more expands, the button becomes Show less, and Show less collapses again', () => {
+    const { pick } = start([withMessage(longText)]);
+    pick('session-1');
+    button(/show more/i)!.click();
+    expect(collapsed()).toBe(false);
+    expect(desc()).toBe(longText);
+    expect(button(/show more/i)).toBeUndefined();
+    expect(button(/show less/i)!.getAttribute('aria-expanded')).toBe('true');
+    button(/show less/i)!.click();
+    expect(collapsed()).toBe(true);
+    expect(button(/show more/i)!.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('#18 AC3 / #11 AC3 a message within the limits shows in full with no button', () => {
     const fits = ['one', 'two', 'three', 'four'].join('\n') + ' ' + 'x'.repeat(250);
     expect(fits.length).toBeLessThanOrEqual(280);
     const { pick } = start([withMessage(fits)]);
     pick('session-1');
     expect(desc()).toBe(fits);
+    expect(collapsed()).toBe(false);
     expect(button(/show (more|less)/i)).toBeUndefined();
   });
 
@@ -168,7 +218,7 @@ describe('#11 expandable last message', () => {
     pick('session-1');
     button(/show more/i)!.click();
     app.applyFeed([{ ...withMessage(longText), state: 'finished' }, { ...rec(2, 'done'), lastMessage: longText }]);
-    expect(desc()).toBe(longText);
+    expect(collapsed()).toBe(false);
     expect(button(/show less/i)).toBeDefined();
     pick('session-2');
     expect(button(/show more/i)).toBeDefined();

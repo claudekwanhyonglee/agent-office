@@ -3,7 +3,7 @@ import path from 'node:path';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readDetails, parseDetails, transcriptPath } from '../src/server/transcript.ts';
+import { readDetails, parseDetails, transcriptPath, transcriptFinder } from '../src/server/transcript.ts';
 import { loadAgents } from '../src/server/load.ts';
 import type { AgentEntry } from '../src/server/agents.ts';
 
@@ -115,5 +115,52 @@ describe('#4 AC5 API records', () => {
     ];
     const agents = await loadAgents({ list: async () => entries, paths: { env: { CLAUDE_CONFIG_DIR: config } }, now: Date.now() });
     expect(agents.map((a) => [a.id, a.lastMessage, a.branch])).toEqual([['a1', 'Working on it', 'main'], ['a2', null, null]]);
+  });
+});
+
+describe('#19 transcripts that moved into a worktree', () => {
+  const cwd = '/home/alex/projects/demo-app';
+  const worktreeFolder = '-home-alex-projects-demo-app--claude-worktrees-tk-epic-9';
+  function configWith(folder: string, sessionId: string, content: string) {
+    const config = mkdtempSync(join(tmpdir(), 'office-config-'));
+    mkdirSync(join(config, 'projects', folder), { recursive: true });
+    mkdirSync(join(config, 'projects', 'some-other-project'), { recursive: true });
+    writeFileSync(join(config, 'projects', folder, `${sessionId}.jsonl`), content);
+    return config;
+  }
+
+  it('#19 AC1 finds <sessionId>.jsonl in any folder under $CLAUDE_CONFIG_DIR/projects when it is not under the start cwd', () => {
+    const config = configWith(worktreeFolder, SESSION, 'x');
+    const find = transcriptFinder({ env: { CLAUDE_CONFIG_DIR: config } });
+    expect(find(cwd, SESSION)).toBe(join(config, 'projects', worktreeFolder, `${SESSION}.jsonl`));
+    expect(find(cwd, 'session-missing')).toBeNull();
+  });
+
+  it('#19 AC1 the start cwd folder still wins when the transcript is there', () => {
+    const config = configWith('-home-alex-projects-demo-app', SESSION, 'x');
+    const find = transcriptFinder({ env: { CLAUDE_CONFIG_DIR: config } });
+    expect(find(cwd, SESSION)).toBe(transcriptPath(cwd, SESSION, { env: { CLAUDE_CONFIG_DIR: config } }));
+  });
+
+  it('#19 AC1 a missing projects folder means no transcript', () => {
+    const find = transcriptFinder({ env: { CLAUDE_CONFIG_DIR: join(tmpdir(), 'office-no-such-config') } });
+    expect(find(cwd, SESSION)).toBeNull();
+  });
+
+  it('#19 AC2 an ended session whose transcript is under a worktree folder stays, with its last message and branch', async () => {
+    const config = configWith(worktreeFolder, SESSION, assistant([text('Built it')], { gitBranch: 'tk/epic-9' }));
+    const entries: AgentEntry[] = [{ id: 'a1', cwd, sessionId: SESSION, name: 'one', state: 'done' }];
+    const agents = await loadAgents({ list: async () => entries, paths: { env: { CLAUDE_CONFIG_DIR: config } }, now: Date.now() });
+    expect(agents.map((a) => [a.id, a.state, a.lastMessage, a.branch])).toEqual([['a1', 'finished', 'Built it', 'tk/epic-9']]);
+  });
+
+  it('#19 AC3 an ended session with no transcript anywhere is left out', async () => {
+    const config = configWith(worktreeFolder, SESSION, assistant([text('Built it')]));
+    const entries: AgentEntry[] = [
+      { id: 'a1', cwd, sessionId: 'session-gone', name: 'gone', state: 'done' },
+      { id: 'a2', cwd, sessionId: 'session-gone-2', name: 'gone too', state: 'stopped' },
+    ];
+    const agents = await loadAgents({ list: async () => entries, paths: { env: { CLAUDE_CONFIG_DIR: config } }, now: Date.now() });
+    expect(agents).toEqual([]);
   });
 });

@@ -1,4 +1,6 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
+import { escapeHtml, renderMarkdown } from './markdown.ts';
+import { clampTooltip } from './camera.ts';
 
 export const STATE_LABEL: Record<OfficeState, string> = {
   working: 'Working',
@@ -8,8 +10,6 @@ export const STATE_LABEL: Record<OfficeState, string> = {
   finished: 'Finished',
 };
 
-const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 interface CardActions {
   close(): void;
@@ -22,14 +22,13 @@ interface CardActions {
 const PREVIEW_LINES = 4;
 const PREVIEW_CHARS = 280;
 const isLong = (text: string) => text.split('\n').length > PREVIEW_LINES || text.length > PREVIEW_CHARS;
-const preview = (text: string) => `${text.split('\n').slice(0, PREVIEW_LINES).join('\n').slice(0, PREVIEW_CHARS).trimEnd()}…`;
 
 function messageSection(text: string | null, expanded: boolean) {
   if (!text) return '';
   const long = isLong(text);
-  const shown = long && !expanded ? preview(text) : text;
+  const collapsed = long && !expanded ? ' collapsed' : '';
   const toggle = long ? `<button class="btn link" data-more aria-expanded="${expanded}">${expanded ? 'Show less' : 'Show more'}</button>` : '';
-  return `<div class="section"><span class="label">Last message</span><p class="desc">${escapeHtml(shown)}</p>${toggle}</div>`;
+  return `<div class="section"><span class="label">Last message</span><div class="desc${collapsed}">${renderMarkdown(text)}</div>${toggle}</div>`;
 }
 
 export const attachCommand = (record: AgentRecord) => `claude attach ${record.id}`;
@@ -79,6 +78,8 @@ export function showTooltip(el: HTMLElement, record: AgentRecord | undefined, x:
   el.hidden = !record;
   if (!record) return;
   el.innerHTML = `${escapeHtml(record.name)} <span>· ${escapeHtml(record.project)}</span>`;
-  el.style.left = `${x}px`;
-  el.style.top = `${y}px`;
+  const stage = el.parentElement!;
+  const at = clampTooltip(x, y, { width: el.offsetWidth, height: el.offsetHeight }, { width: stage.clientWidth, height: stage.clientHeight });
+  el.style.left = `${at.x}px`;
+  el.style.top = `${at.y}px`;
 }

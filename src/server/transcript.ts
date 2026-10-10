@@ -1,6 +1,6 @@
 import path from 'node:path';
 import os from 'node:os';
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 
 type PathApi = Pick<typeof path, 'join'>;
 
@@ -22,7 +22,34 @@ export function transcriptPath(cwd: string, sessionId: string, paths: Paths = {}
   return pathApi.join(claudeConfigDir(paths), 'projects', encodeCwd(cwd), `${sessionId}.jsonl`);
 }
 
-export function modifiedTime(file: string): number | null {
+/**
+ * Finds a session's transcript. `claude agents` reports the cwd a session started in, but a session
+ * that moved into a worktree writes under the worktree's folder, so fall back to any project folder.
+ * Session ids are UUIDs, so a match elsewhere is unambiguous.
+ */
+export function transcriptFinder(paths: Paths = {}) {
+  const pathApi = paths.pathApi ?? path;
+  const projects = pathApi.join(claudeConfigDir(paths), 'projects');
+  let folders: string[] | undefined;
+  return (cwd: string, sessionId: string): string | null => {
+    const direct = transcriptPath(cwd, sessionId, paths);
+    if (existsSync(direct)) return direct;
+    // ponytail: one stat per project folder per missing transcript; index folder listings if that gets slow.
+    folders ??= listFolders(projects);
+    return folders.map((folder) => pathApi.join(projects, folder, `${sessionId}.jsonl`)).find((file) => existsSync(file)) ?? null;
+  };
+}
+
+function listFolders(dir: string) {
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  } catch {
+    return [];
+  }
+}
+
+export function modifiedTime(file: string | null): number | null {
+  if (!file) return null;
   try {
     return statSync(file).mtimeMs;
   } catch {
@@ -82,7 +109,8 @@ export function parseDetails(transcript: string): TranscriptDetails {
 const cache = new Map<string, { stamp: string; details: TranscriptDetails }>();
 
 /** Details from a transcript file; re-reads only when the file changed. Never throws. */
-export function readDetails(file: string): TranscriptDetails {
+export function readDetails(file: string | null): TranscriptDetails {
+  if (!file) return NONE;
   try {
     const { mtimeMs, size } = statSync(file);
     const stamp = `${mtimeMs}:${size}`;

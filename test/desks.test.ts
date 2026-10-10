@@ -102,6 +102,17 @@ describe('#5 AC4 walking in and out', () => {
     expect(c.agents.has('session-1')).toBe(false);
   });
 
+  it('#20 AC4 an agent that reappears after being dismissed walks in from the door like a new arrival', () => {
+    const c = new OfficeController();
+    c.update([rec(1, 'finished')]);
+    expect(ofType(c.update([]), 'leave')).toHaveLength(1); // Got it
+    const [arrive] = ofType(c.update([rec(1, 'working')]), 'arrive');
+    expect(arrive.key).toBe('session-1');
+    expect(arrive.walk).toBe(true);
+    expect(arrive.path[0]).toEqual(DOOR);
+    expect(arrive.path.at(-1)).toEqual(arrive.seat.sit);
+  });
+
   it('#5 AC4 the walked character ends at its seat, and leaves through the door', () => {
     const clock = { t: 0 };
     const c = new OfficeController({ now: () => clock.t });
