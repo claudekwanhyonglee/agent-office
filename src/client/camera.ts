@@ -74,7 +74,9 @@ export function fitRadius(camera: THREE.PerspectiveCamera, orbit: Orbit, points:
 export function frameFloor(camera: THREE.PerspectiveCamera, orbit: Orbit, podCount: number) {
   camera.fov = fovFor(camera.aspect);
   orbit.target.z = (FLOOR.back + floorFront(podCount)) / 2 + 1.5;
-  orbit.radius = fitRadius(camera, orbit, floorCorners(podCount));
+  // Never closer than the hand-tuned desktop framing, so walls and furniture above the floor stay in view.
+  const handTuned = 4 + Math.max(FLOOR.right - FLOOR.left, floorFront(podCount) - FLOOR.back) * 0.9;
+  orbit.radius = Math.max(fitRadius(camera, orbit, floorCorners(podCount)), handTuned);
   orbit.maxRadius = Math.max(ZOOM.max, orbit.radius);
   placeCamera(camera, orbit);
 }
