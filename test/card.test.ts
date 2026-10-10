@@ -125,3 +125,52 @@ describe('#6 AC5 phone width', () => {
     expect(rule('.card', phone)).toMatch(/width:\s*auto/);
   });
 });
+
+describe('#11 expandable last message', () => {
+  const withMessage = (lastMessage: string) => ({ ...rec(1, 'done'), lastMessage });
+  const desc = () => card().querySelector('.desc')!.textContent!;
+  const longText = 'A'.repeat(200) + ' ' + 'B'.repeat(200);
+  const manyLines = ['one', 'two', 'three', 'four', 'five'].join('\n');
+
+  it('#11 AC2 a message over 280 characters shows a preview and Show more / Show less', () => {
+    const { pick } = start([withMessage(longText)]);
+    pick('session-1');
+    expect(desc().length).toBeLessThan(longText.length);
+    expect(longText.startsWith(desc().replace(/…$/, ''))).toBe(true);
+    button(/show more/i)!.click();
+    expect(desc()).toBe(longText);
+    expect(button(/show more/i)).toBeUndefined();
+    button(/show less/i)!.click();
+    expect(desc().length).toBeLessThan(longText.length);
+    expect(button(/show more/i)).toBeDefined();
+  });
+
+  it('#11 AC2 a message over 4 lines shows a preview of the first 4 lines', () => {
+    const { pick } = start([withMessage(manyLines)]);
+    pick('session-1');
+    expect(desc()).not.toContain('five');
+    expect(desc()).toContain('four');
+    button(/show more/i)!.click();
+    expect(desc()).toBe(manyLines);
+  });
+
+  it('#11 AC3 a message within the limits shows in full with no button', () => {
+    const fits = ['one', 'two', 'three', 'four'].join('\n') + ' ' + 'x'.repeat(250);
+    expect(fits.length).toBeLessThanOrEqual(280);
+    const { pick } = start([withMessage(fits)]);
+    pick('session-1');
+    expect(desc()).toBe(fits);
+    expect(button(/show (more|less)/i)).toBeUndefined();
+  });
+
+  it('#11 AC4 the expanded state survives live updates for the same agent, not a different one', () => {
+    const { app, pick } = start([withMessage(longText), { ...rec(2, 'done'), lastMessage: longText }]);
+    pick('session-1');
+    button(/show more/i)!.click();
+    app.applyFeed([{ ...withMessage(longText), state: 'finished' }, { ...rec(2, 'done'), lastMessage: longText }]);
+    expect(desc()).toBe(longText);
+    expect(button(/show less/i)).toBeDefined();
+    pick('session-2');
+    expect(button(/show more/i)).toBeDefined();
+  });
+});

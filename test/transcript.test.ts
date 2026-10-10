@@ -46,9 +46,10 @@ describe('#4 AC2 lastMessage', () => {
     expect(details.lastMessage).toBe('latest words');
   });
 
-  it('#4 AC2 is cut to 300 characters', () => {
-    const details = parseDetails(assistant([text('x'.repeat(500))]));
-    expect(details.lastMessage).toHaveLength(300);
+  it('#11 AC1 is the full message, up to a 20,000 character safety cap', () => {
+    const long = 'word '.repeat(2000); // 10,000 characters
+    expect(parseDetails(assistant([text(long)])).lastMessage).toBe(long);
+    expect(parseDetails(assistant([text('x'.repeat(25_000))])).lastMessage).toHaveLength(20_000);
   });
 
   it('#4 AC2 is the first question when the latest assistant entry asks one', () => {

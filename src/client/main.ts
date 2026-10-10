@@ -42,13 +42,22 @@ export function boot({ createOffice }: BootOptions = {}) {
   const counts = document.getElementById('counts')!;
   let records = new Map<string, AgentRecord>();
   let selected: string | null = null;
+  /** The open card's last message is shown in full; kept across live re-renders of the same agent. */
+  let expanded = false;
   showStatus(null);
 
   function select(key: string | null) {
-    selected = key && records.has(key) ? key : null;
+    const next = key && records.has(key) ? key : null;
+    if (next !== selected) expanded = false;
+    selected = next;
     office.select?.(selected);
     if (!selected) { card.hidden = true; return; }
-    renderCard(card, records.get(selected)!, { close: () => select(null), acknowledge });
+    renderCard(card, records.get(selected)!, {
+      close: () => select(null),
+      acknowledge,
+      expanded,
+      toggleMessage: () => { expanded = !expanded; select(selected); },
+    });
   }
 
   function acknowledge(record: AgentRecord) {
