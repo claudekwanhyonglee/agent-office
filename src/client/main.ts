@@ -42,7 +42,7 @@ export function boot({ createOffice }: BootOptions = {}) {
   const counts = document.getElementById('counts')!;
   let records = new Map<string, AgentRecord>();
   let selected: string | null = null;
-  showStatus('No Claude Code sessions running');
+  showStatus(null);
 
   function select(key: string | null) {
     selected = key && records.has(key) ? key : null;
@@ -68,7 +68,7 @@ export function boot({ createOffice }: BootOptions = {}) {
     records = new Map(payload.map((r) => [r.sessionId, r]));
     office.show(payload);
     renderCounts(counts, payload);
-    showStatus(payload.length ? null : 'No Claude Code sessions running');
+    showStatus(null);
     if (selected) select(selected);
   }
 
