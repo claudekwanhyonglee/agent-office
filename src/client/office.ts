@@ -5,6 +5,7 @@ import {
 } from './layout.ts';
 import { SCREEN_OFF } from './poses.ts';
 import { DeskScreen, screenContent } from './screen.ts';
+import { BigBoard } from './board.ts';
 import type { AgentRecord } from '../shared/agent.ts';
 
 export { SCREEN_OFF };
@@ -33,7 +34,7 @@ export function buildOffice(rows: number) {
   addMeetingRoom(group);
   addKitchen(group, layout);
   addLounge(group, layout);
-  addBackWallPieces(group, layout);
+  const board = addBackWallPieces(group, layout);
   addWallArt(group, layout);
   addPlants(group, layout);
 
@@ -47,7 +48,7 @@ export function buildOffice(rows: number) {
     row.add(screen.root);
     return { ...spot, screen };
   });
-  return { group, seats, layout };
+  return { group, seats, layout, board };
 }
 
 const turned = <T extends THREE.Object3D>(obj: T, yaw: number) => {
@@ -222,12 +223,14 @@ function addLounge(group: THREE.Group, layout: OfficeLayout) {
   group.add(lounge);
 }
 
+/** The big board (returned, for the scene to keep up to date), water cooler and bookshelf. */
 function addBackWallPieces(group: THREE.Group, layout: OfficeLayout) {
   const { back } = layout.bounds;
-  const board = tag(new THREE.Group(), 'big-board');
-  board.add(at(box(layout.board.w, 2.3, 0.1, INK, { outline: 0.01 }), 0, 2.05, 0));
-  board.add(at(box(layout.board.w - 0.2, 2.1, 0.02, '#1E2440', { outline: 0, shadow: false }), 0, 2.05, 0.06));
-  group.add(at(board, layout.board.x, 0, back + 0.05));
+  const frame = tag(new THREE.Group(), 'big-board');
+  frame.add(at(box(layout.board.w, 2.4, 0.1, INK, { outline: 0.01 }), 0, 2.05, 0));
+  const board = new BigBoard(layout.board.w - 0.2);
+  frame.add(at(board.mesh, 0, 2.05, 0.06));
+  group.add(at(frame, layout.board.x, 0, back + 0.05));
 
   const cooler = tag(new THREE.Group(), 'water-cooler');
   cooler.add(at(box(0.4, 0.75, 0.4, '#E9E3F5'), 0, 0.38, 0));
@@ -246,6 +249,7 @@ function addBackWallPieces(group: THREE.Group, layout: OfficeLayout) {
     }
   });
   group.add(turned(at(shelf, x, 0, z), Math.PI / 2)); // against the left wall
+  return board;
 }
 
 const ART = [['#F07A4A', '#E2B347'], ['#4D86FF', '#8FD3F2'], ['#5BA37A', '#F0A3B5']];

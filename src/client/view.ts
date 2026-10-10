@@ -27,7 +27,7 @@ export function createView(host: HTMLElement) {
   let rows = 0;
 
   function setRows(count: number) {
-    if (count === rows) return office!.seats;
+    if (count === rows) return office!;
     if (office) scene.remove(office.group);
     rows = count;
     office = buildOffice(count);
@@ -41,7 +41,7 @@ export function createView(host: HTMLElement) {
     sun.position.set(5, 14, 8 + centerZ);
     sun.target.position.set(0, 0, centerZ);
     resize();
-    return office.seats;
+    return office;
   }
 
   function resize() {

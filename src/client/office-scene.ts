@@ -5,7 +5,7 @@ import { OfficeController, type OfficeEvent } from './controller.ts';
 import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { lookFor } from './look.ts';
-import { updateScreens, type Seat } from './office.ts';
+import { updateScreens } from './office.ts';
 
 /** The agent a picked mesh belongs to, if any. */
 export function agentKeyOf(object: THREE.Object3D | null | undefined): string | null {
@@ -21,7 +21,7 @@ export function createOfficeScene(host: HTMLElement) {
   const characters = new Map<string, Character>();
   /** Walking out; kept until they're through the door. */
   const leaving = new Set<Character>();
-  let seats: Seat[] = view.setRows(INITIAL_ROWS);
+  let office = view.setRows(INITIAL_ROWS);
   let selected: string | null = null;
 
   const ring = new THREE.Mesh(
@@ -39,7 +39,7 @@ export function createOfficeScene(host: HTMLElement) {
   function apply(events: OfficeEvent[]) {
     for (const event of events) {
       if (event.type === 'rows') {
-        seats = view.setRows(event.count);
+        office = view.setRows(event.count);
       } else if (event.type === 'place') {
         const character = characters.get(event.key)!;
         if (event.place) character.placeAt(event.seat, event.state, event.place);
@@ -97,7 +97,9 @@ export function createOfficeScene(host: HTMLElement) {
       c.update(t, dt);
       if (c.mode === 'gone') { view.scene.remove(c.root); leaving.delete(c); }
     }
-    updateScreens(seats, controller.occupants(), t, view.camera.position);
+    const occupants = controller.occupants();
+    updateScreens(office.seats, occupants, t, view.camera.position);
+    office.board.update(occupants);
     const target = selected ? characters.get(selected) : undefined;
     ring.visible = !!target;
     if (target) {
