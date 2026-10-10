@@ -20,13 +20,13 @@ describe('#2 page', () => {
   });
 
   it('#2 AC3 shows "No Claude Code sessions running" with no agents', () => {
-    boot({ createOffice: () => ({ show() {} }) });
+    boot({ createOffice: () => ({ show() {}, onPick() {}, onHover() {} }) });
     expect(status().hidden).toBe(false);
     expect(status().textContent).toBe('No Claude Code sessions running');
   });
 
   it('#3 AC5 shows a feed error in place of the empty-state text', () => {
-    const app = boot({ createOffice: () => ({ show() {} }) })!;
+    const app = boot({ createOffice: () => ({ show() {}, onPick() {}, onHover() {} }) })!;
     app.applyFeed({ error: 'claude agents failed: boom' });
     expect(status().hidden).toBe(false);
     expect(status().textContent).toContain('claude agents failed: boom');
