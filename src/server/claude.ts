@@ -5,7 +5,7 @@ interface Command { command: string; args: string[] }
 
 export const CLAUDE_AGENTS: Command = { command: 'claude', args: ['agents', '--json', '--all'] };
 
-const NOT_INSTALLED = "Claude Code isn't installed or isn't on your PATH: install it (https://docs.claude.com/en/docs/claude-code/setup), then restart Agent Office.";
+const NOT_INSTALLED = "Claude Code isn't installed or isn't on your PATH: install it (https://code.claude.com/docs/en/setup), then restart Agent Office.";
 const TOO_OLD = "This version of Claude Code doesn't support `claude agents --json`: run `claude update`, then restart Agent Office.";
 
 type ExecError = Error & { code?: string | number | null; stderr?: string };
