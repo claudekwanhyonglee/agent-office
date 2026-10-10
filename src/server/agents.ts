@@ -1,4 +1,4 @@
-import type { AgentRecord, OfficeState } from '../shared/agent.ts';
+import type { SessionRecord, OfficeState } from '../shared/agent.ts';
 
 /** One entry of `claude agents --json --all`. Ended sessions have no pid. */
 export interface AgentEntry {
@@ -30,7 +30,7 @@ export function projectName(cwd: string) {
   return (inWorktree ? parts[claude - 1] : parts.at(-1)) ?? cwd;
 }
 
-export function toRecord(entry: AgentEntry): AgentRecord {
+export function toRecord(entry: AgentEntry): SessionRecord {
   return {
     id: entry.id,
     sessionId: entry.sessionId,
