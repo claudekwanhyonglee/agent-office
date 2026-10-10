@@ -21,6 +21,19 @@ Then open the URL it prints: http://127.0.0.1:4321. To use another port, set `PO
 
 The first run downloads and builds the app, so it takes a minute.
 
+### On your phone or another computer
+
+To open the office from other devices on your home network, start it with `--lan`:
+
+```sh
+npx github:claudekwanhyonglee/agent-office --lan
+```
+
+Or set `LAN=1`, e.g. `LAN=1 npx github:claudekwanhyonglee/agent-office`. It then also prints an
+`On your network: http://<ip>:4321` line for each of this machine's network addresses; open one of those.
+
+There is no login: anyone on your network can see the office and press **Got it**. Only use it on a network you trust.
+
 ## Requirements
 
 - Node.js 20 or newer
@@ -37,7 +50,10 @@ Agent Office only reads local Claude Code data, and never sends anything anywher
   (`$CLAUDE_CONFIG_DIR`, or `.claude` in your home folder).
 - The only thing it writes is the list of agents you dismissed with Got it, in `.agent-office/acknowledged.json`
   in your home folder.
-- The server listens on 127.0.0.1 only, so other machines can't reach it. The page loads nothing from the internet.
+- By default the server listens on 127.0.0.1 only, so other machines can't reach it.
+  With `--lan` (or `LAN=1`) it listens on your network too, and anyone on that network can see the office
+  and press Got it; it still refuses requests addressed to any other host name.
+- The page loads nothing from the internet.
 - It shows sessions; it never controls them.
 
 ## Develop
