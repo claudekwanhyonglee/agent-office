@@ -44,7 +44,13 @@ const THEME: Record<OfficeState, { bg: string; edge: string }> = {
 };
 const TOOL_COLOR: [string, string][] = [['Bash', '#FFCF7A'], ['Edit', '#8FB8FF'], ['Write', '#8FB8FF'], ['Read', '#CDB8FF'], ['Grep', '#CDB8FF']];
 const toolColor = (line: string) => TOOL_COLOR.find(([tool]) => line.startsWith(tool))?.[1] ?? '#C9C0E3';
-const clip = (text: string, chars: number) => (text.length > chars ? `${text.slice(0, chars - 1)}…` : text);
+/** `text`, cut and ended with … if it's wider than `maxWidth` in the current font. */
+function fit(g: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  if (g.measureText(text).width <= maxWidth) return text;
+  let chars = text.length;
+  while (chars > 0 && g.measureText(`${text.slice(0, chars)}…`).width > maxWidth) chars--;
+  return `${text.slice(0, chars)}…`;
+}
 
 /** Draws `content` as a see-through holo screen. `typed` is how much of the newest working line has typed in (0–1). */
 export function paintScreen(g: CanvasRenderingContext2D, content: ScreenContent, typed = 1) {
@@ -66,7 +72,7 @@ export function paintScreen(g: CanvasRenderingContext2D, content: ScreenContent,
   g.font = `700 15px ${MONO}`;
   g.textBaseline = 'middle';
   g.fillStyle = '#FFF8EC';
-  g.fillText(clip(content.name, 30), 14, 20);
+  g.fillText(fit(g, content.name, w - 50), 14, 20);
   g.fillStyle = theme.edge;
   g.beginPath();
   g.arc(w - 18, 19, 6, 0, Math.PI * 2);
@@ -100,8 +106,13 @@ export function paintScreen(g: CanvasRenderingContext2D, content: ScreenContent,
   }
 }
 
-function paintActivity(g: CanvasRenderingContext2D, lines: string[], typed: number) {
+/** Working lines that fit below the title bar; the newest are kept. */
+const MAX_LINES = 7;
+
+function paintActivity(g: CanvasRenderingContext2D, allLines: string[], typed: number) {
   g.font = `500 14px ${MONO}`;
+  // Room for the typing cursor after the longest line.
+  const lines = allLines.slice(-MAX_LINES).map((line) => fit(g, line, SCREEN_SIZE.width - 40));
   lines.forEach((line, i) => {
     const newest = i === lines.length - 1;
     const shown = newest ? line.slice(0, Math.ceil(line.length * typed)) : line;
@@ -126,7 +137,7 @@ function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, m
   }
   if (row) rows.push(row);
   if (rows.length > maxLines) rows.splice(maxLines - 1, Infinity, `${rows[maxLines - 1]}…`);
-  rows.forEach((r, i) => g.fillText(r, x, y + i * lineHeight));
+  rows.forEach((r, i) => g.fillText(fit(g, r, maxWidth), x, y + i * lineHeight));
 }
 
 function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
