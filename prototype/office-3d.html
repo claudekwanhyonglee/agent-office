@@ -1,0 +1,821 @@
+<title>Agent Office 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap">
+<style>
+/* Layout: full-bleed 3D scene, a floating brand chip top-left, an agent card top-right (bottom sheet on phones). Single committed dark look. */
+:root {
+  --bg: #241F38;
+  --panel: rgba(36, 31, 56, 0.92);
+  --ink: #FFF8EC;
+  --muted: #C9C0E3;
+  --line: rgba(255, 248, 236, 0.14);
+  --chip: #352F52;
+  --amber: #FFB648;
+  --amber-ink: #3A2400;
+  --blue: #4D86FF;
+  --display: 'Fredoka', 'Nunito', system-ui, sans-serif;
+  --body: 'Nunito', system-ui, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); overflow: hidden; }
+.stage { position: relative; width: 100%; height: max(100dvh, 640px); overflow: hidden; }
+#scene { position: absolute; inset: 0; }
+#scene canvas { display: block; touch-action: none; cursor: grab; }
+#scene canvas.dragging { cursor: grabbing; }
+
+.brand {
+  position: absolute; left: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
+  display: flex; align-items: baseline; gap: 10px; padding: 10px 16px;
+  border-radius: 14px; background: var(--panel); border: 1px solid var(--line);
+}
+.brand h1 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: .2px; }
+.brand span { font-size: 13px; color: var(--muted); }
+
+.card {
+  position: absolute; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
+  width: 320px; max-width: calc(100% - 32px); box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 14px; padding: 18px;
+  border-radius: 18px; background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .35);
+}
+.card h2 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 20px; line-height: 1.2; text-wrap: balance; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.pill { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: .3px; }
+.pill.working { background: rgba(77, 134, 255, .2); color: #A9C4FF; }
+.pill.needs { background: var(--amber); color: var(--amber-ink); }
+.pill.done { background: #FFF8EC; color: #3A3352; }
+.pill.stale { background: #4A4466; color: #D9D3E6; }
+.pill.finished { background: var(--blue); color: #FFFFFF; }
+.pill.wander { background: rgba(255, 248, 236, .12); color: var(--ink); }
+.desc { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
+
+.label { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn {
+  min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--chip); color: var(--ink); font: 700 13px var(--body); cursor: pointer;
+}
+.btn:hover { background: #423B63; }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--blue); border-color: var(--blue); color: #FFFFFF; }
+.btn.primary:hover { background: #3B74F0; }
+.btn:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+.section { display: flex; flex-direction: column; gap: 8px; }
+.divider { height: 1px; background: var(--line); }
+
+.hint {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 14px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line);
+  font-size: 13px; color: var(--muted); white-space: nowrap;
+}
+
+
+.status {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  max-width: min(560px, calc(100% - 32px)); padding: 16px 20px; border-radius: 14px;
+  background: var(--panel); border: 1px solid var(--line); font-size: 15px; line-height: 1.5; text-align: center;
+}
+.status.problem { border-color: var(--amber); }
+.status code { font-size: 12px; color: var(--amber); word-break: break-word; }
+.still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .55; }
+
+@media (max-width: 700px) {
+  .card { top: auto; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); right: 16px; left: 16px; width: auto; max-width: none; max-height: 46%; overflow-y: auto; }
+  .hint { display: none; }
+}
+</style>
+
+<main class="stage">
+<div id="scene" aria-label="3D office with agent characters"></div>
+<img id="still" class="still" src="office-still.png" alt="Still image of the 3D office" hidden>
+<div id="status" class="status" role="status">Loading the 3D office…</div>
+
+<header class="brand">
+  <h1>Agent Office</h1>
+  <span>3D prototype · sample agents</span>
+</header>
+
+<aside class="card" id="card" aria-live="polite"></aside>
+<div class="hint">Drag to orbit · scroll to zoom · click an agent</div>
+</main>
+
+<script>
+  function showProblem(message) {
+    const box = document.getElementById('status');
+    box.hidden = false;
+    box.className = 'status problem';
+    box.innerHTML = 'The 3D view could not start in this viewer. Showing a still image instead.<br><code></code>';
+    box.querySelector('code').textContent = message;
+    document.getElementById('still').hidden = false;
+  }
+  addEventListener('error', (e) => showProblem(e.message || 'A script failed to load.'));
+</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script>
+  if (!window.THREE) showProblem('The three.js library did not load from cdn.jsdelivr.net.');
+  else {
+    const probe = document.createElement('canvas');
+    if (!(probe.getContext('webgl2') || probe.getContext('webgl'))) showProblem('WebGL is not available in this viewer.');
+  }
+</script>
+<script>
+if (window.THREE && !document.querySelector('.status.problem')) (() => {
+  const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motion = REDUCED ? 0.35 : 1;
+
+  // ---------- renderer, scene, camera ----------
+  const host = document.getElementById('scene');
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  host.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#2B2545');
+  const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
+  const orbit = { theta: 0.28, phi: 0.86, radius: 13, target: new THREE.Vector3(1.1, 0.5, 0.3) };
+
+  function placeCamera() {
+    const { theta, phi, radius, target } = orbit;
+    camera.position.set(
+      target.x + radius * Math.sin(phi) * Math.sin(theta),
+      target.y + radius * Math.cos(phi),
+      target.z + radius * Math.sin(phi) * Math.cos(theta)
+    );
+    camera.lookAt(target);
+  }
+
+  function resize() {
+    const w = host.clientWidth || innerWidth, h = host.clientHeight || innerHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    if (w < 700) { orbit.radius = Math.max(orbit.radius, 18); orbit.target.x = 0; }
+    camera.updateProjectionMatrix();
+    placeCamera();
+  }
+
+  scene.add(new THREE.HemisphereLight('#FFF1DC', '#5A4E7A', 0.55));
+  const sun = new THREE.DirectionalLight('#FFF4E2', 0.6);
+  sun.position.set(4, 9, 6);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: 1, far: 30 });
+  sun.shadow.bias = -0.0008;
+  sun.shadow.radius = 4;
+  scene.add(sun);
+
+  // ---------- materials ----------
+  const gradient = new THREE.DataTexture(new Uint8Array([110, 110, 110, 255, 185, 185, 185, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);
+  gradient.minFilter = gradient.magFilter = THREE.NearestFilter;
+  gradient.needsUpdate = true;
+  const toonCache = {};
+  const toon = (color) => toonCache[color] || (toonCache[color] = new THREE.MeshToonMaterial({ color, gradientMap: gradient }));
+  const outlineMat = new THREE.MeshBasicMaterial({ color: '#2A2238', side: THREE.BackSide });
+
+  function mesh(geo, color, { outline = 0.05, shadow = true } = {}) {
+    const m = new THREE.Mesh(geo, toon(color));
+    m.castShadow = shadow;
+    m.receiveShadow = true;
+    if (outline) {
+      const o = new THREE.Mesh(geo, outlineMat);
+      o.scale.setScalar(1 + outline);
+      m.add(o);
+    }
+    return m;
+  }
+  const at = (obj, x, y, z) => { obj.position.set(x, y, z); return obj; };
+  const box = (w, h, d, color, opts) => mesh(new THREE.BoxGeometry(w, h, d), color, opts);
+  const cyl = (rt, rb, h, color, opts, seg = 24) => mesh(new THREE.CylinderGeometry(rt, rb, h, seg), color, opts);
+  const ball = (r, color, opts) => mesh(new THREE.SphereGeometry(r, 24, 16), color, opts);
+
+  // ---------- the office ----------
+  const office = new THREE.Group();
+  scene.add(office);
+
+  function tileTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = '#E2D3B8'; g.fillRect(0, 0, 128, 128);
+    g.fillStyle = '#D2C09F'; g.fillRect(0, 0, 64, 64); g.fillRect(64, 64, 64, 64);
+    g.strokeStyle = 'rgba(120, 95, 60, .25)'; g.lineWidth = 3; g.strokeRect(0, 0, 128, 128); g.strokeRect(0, 0, 64, 64); g.strokeRect(64, 64, 64, 64);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(5.5, 3.9);
+    return t;
+  }
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(11, 7.8), new THREE.MeshToonMaterial({ map: tileTexture(), gradientMap: gradient }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  office.add(floor);
+  office.add(at(box(11.3, 0.3, 8.1, '#4A4068', { outline: 0, shadow: false }), 0, -0.16, 0));
+
+  // walls: back and left, kept low so the camera sees over them
+  office.add(at(box(11.3, 1.3, 0.25, '#B9A6E0', { outline: 0.01 }), 0, 0.65, -4.02));
+  office.add(at(box(0.25, 1.3, 8.05, '#B9A6E0', { outline: 0.01 }), -5.65, 0.65, 0));
+  [-4, -2.2, -0.4, 1.4].forEach((x) => {
+    office.add(at(box(1.3, 0.55, 0.05, '#BFE6F5', { outline: 0.03, shadow: false }), x, 0.82, -3.88));
+  });
+  // door in the back wall
+  office.add(at(box(1.0, 1.3, 0.06, '#3A3150', { outline: 0, shadow: false }), 4.6, 0.65, -3.87));
+  office.add(at(box(0.12, 1.4, 0.3, '#C98A55'), 4.04, 0.7, -3.86));
+  office.add(at(box(0.12, 1.4, 0.3, '#C98A55'), 5.16, 0.7, -3.86));
+  office.add(at(box(1.24, 0.12, 0.3, '#C98A55'), 4.6, 1.36, -3.86));
+  const mat = at(box(1.0, 0.03, 0.6, '#7FB069', { outline: 0.02, shadow: false }), 4.6, 0.015, -3.3);
+  office.add(mat);
+
+  function plant(x, z, s = 1) {
+    const g = new THREE.Group();
+    g.add(at(cyl(0.22, 0.17, 0.36, '#D9774B'), 0, 0.18, 0));
+    [[0, 0.62, 0, 0.26], [0.14, 0.5, 0.08, 0.2], [-0.13, 0.52, -0.06, 0.2], [0.02, 0.82, -0.04, 0.17]].forEach(([px, py, pz, r]) => g.add(at(ball(r, '#5FA35A'), px, py, pz)));
+    g.scale.setScalar(s);
+    office.add(at(g, x, 0, z));
+  }
+  plant(-5.05, -3.4); plant(0.75, -3.45, 0.9); plant(5.0, 3.3, 1.1); plant(-5.05, 3.3, 1.2); plant(2.2, 1.0, 0.8);
+
+  // lounge: rug, sofa, side table
+  const rug = cyl(1.55, 1.55, 0.03, '#F0A3B5', { outline: 0.02, shadow: false }, 48);
+  office.add(at(rug, 4.2, 0.015, -0.7));
+  const sofa = new THREE.Group();
+  sofa.add(at(box(1.9, 0.38, 0.85, '#5B7DB1'), 0, 0.27, 0));
+  sofa.add(at(box(1.9, 0.55, 0.25, '#4C6B9C'), 0, 0.6, -0.33));
+  sofa.add(at(box(0.25, 0.5, 0.85, '#4C6B9C'), -0.95, 0.4, 0));
+  sofa.add(at(box(0.25, 0.5, 0.85, '#4C6B9C'), 0.95, 0.4, 0));
+  sofa.add(at(box(0.8, 0.12, 0.6, '#6E90C4'), -0.42, 0.5, 0.05));
+  sofa.add(at(box(0.8, 0.12, 0.6, '#6E90C4'), 0.42, 0.5, 0.05));
+  office.add(at(sofa, 4.2, 0, -1.2));
+  office.add(at(cyl(0.3, 0.3, 0.45, '#C98A55'), 4.2, 0.22, 0.05));
+
+  // kitchen corner: coffee machine and water cooler
+  office.add(at(box(1.4, 0.8, 0.6, '#9C8FB8'), 2.6, 0.4, -3.55));
+  office.add(at(box(0.45, 0.55, 0.4, '#3A3150'), 2.35, 1.08, -3.55));
+  office.add(at(ball(0.05, '#FF5A5A', { outline: 0, shadow: false }), 2.35, 1.2, -3.34));
+  office.add(at(cyl(0.08, 0.07, 0.14, '#FFFFFF', { outline: 0.08 }), 2.95, 0.87, -3.45));
+  office.add(at(box(0.4, 0.75, 0.4, '#E9E3F5'), 1.55, 0.38, -3.6));
+  office.add(at(cyl(0.18, 0.18, 0.45, '#8FD3F2', { outline: 0.04 }), 1.55, 0.98, -3.6));
+
+  // desk pod
+  const SEATS = [
+    { x: -3.4, deskZ: 0.0, chairZ: -0.85, yaw: 0 },
+    { x: -1.8, deskZ: 0.0, chairZ: -0.85, yaw: 0 },
+    { x: -0.2, deskZ: 0.0, chairZ: -0.85, yaw: 0 },
+    { x: -2.6, deskZ: 1.75, chairZ: 2.6, yaw: Math.PI },
+    { x: -1.0, deskZ: 1.75, chairZ: 2.6, yaw: Math.PI }
+  ];
+  SEATS.forEach((seat) => {
+    const facing = seat.yaw === 0 ? 1 : -1;
+    const desk = new THREE.Group();
+    desk.add(at(box(1.5, 0.08, 0.82, '#E9B872'), 0, 0.75, 0));
+    [[-0.68, -0.34], [0.68, -0.34], [-0.68, 0.34], [0.68, 0.34]].forEach(([lx, lz]) => desk.add(at(box(0.07, 0.72, 0.07, '#8C6A4A', { outline: 0.02 }), lx, 0.36, lz)));
+    desk.add(at(box(0.1, 0.25, 0.08, '#4A4068'), 0, 0.92, 0.22 * facing));
+    const monitor = at(box(0.82, 0.5, 0.06, '#3A3150'), 0, 1.22, 0.24 * facing);
+    desk.add(monitor);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.4), new THREE.MeshBasicMaterial({ color: '#2C3350' }));
+    screen.position.set(0, 1.22, (0.24 - 0.035) * facing);
+    if (facing === 1) screen.rotation.y = Math.PI;
+    desk.add(screen);
+    desk.add(at(box(0.5, 0.03, 0.16, '#F4EEE2', { outline: 0.03 }), 0, 0.805, -0.12 * facing));
+    desk.add(at(box(0.14, 0.03, 0.18, '#F4EEE2', { outline: 0.04 }), 0.42, 0.805, -0.1 * facing));
+    office.add(at(desk, seat.x, 0, seat.deskZ));
+
+    const chair = new THREE.Group();
+    chair.add(at(cyl(0.3, 0.3, 0.09, '#6B5B95'), 0, 0.42, 0));
+    chair.add(at(box(0.55, 0.5, 0.09, '#6B5B95'), 0, 0.72, -0.3 * facing));
+    chair.add(at(cyl(0.04, 0.04, 0.38, '#3A3150', { outline: 0 }), 0, 0.2, 0));
+    chair.add(at(cyl(0.26, 0.26, 0.04, '#3A3150', { outline: 0.02 }), 0, 0.03, 0));
+    office.add(at(chair, seat.x, 0, seat.chairZ));
+
+    Object.assign(seat, {
+      screen,
+      facing,
+      sitPos: new THREE.Vector3(seat.x, 0.38, seat.chairZ + 0.04 * facing),
+      approach: new THREE.Vector3(seat.x, 0, facing === 1 ? -1.45 : 3.2),
+      standSpot: new THREE.Vector3(seat.x + 0.8, 0, seat.chairZ),
+      agent: null
+    });
+  });
+
+  // ---------- speech bubbles ----------
+  function bubbleTexture(kind) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const g = c.getContext('2d');
+    const fills = { needs: '#FFB648', finished: '#4D86FF', done: '#FFF8EC', stale: '#D9D3E6' };
+    const ink = { needs: '#3A2400', finished: '#FFFFFF', done: '#5B5275', stale: '#5B5275' };
+    g.lineJoin = 'round';
+    g.beginPath();
+    g.moveTo(78, 24); g.lineTo(178, 24); g.quadraticCurveTo(232, 24, 232, 92);
+    g.quadraticCurveTo(232, 168, 178, 168); g.lineTo(150, 168); g.lineTo(128, 214); g.lineTo(112, 168);
+    g.lineTo(78, 168); g.quadraticCurveTo(24, 168, 24, 92); g.quadraticCurveTo(24, 24, 78, 24); g.closePath();
+    g.fillStyle = fills[kind]; g.fill();
+    g.lineWidth = 12; g.strokeStyle = '#2A2238'; g.stroke();
+    g.fillStyle = ink[kind]; g.strokeStyle = ink[kind];
+    if (kind === 'needs') {
+      g.beginPath(); g.roundRect ? g.roundRect(114, 46, 28, 70, 14) : g.rect(114, 46, 28, 70); g.fill();
+      g.beginPath(); g.arc(128, 140, 15, 0, Math.PI * 2); g.fill();
+    } else if (kind === 'finished') {
+      g.lineWidth = 22; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(84, 98); g.lineTo(114, 128); g.lineTo(172, 66); g.stroke();
+    } else if (kind === 'done') {
+      [88, 128, 168].forEach((x) => { g.beginPath(); g.arc(x, 96, 14, 0, Math.PI * 2); g.fill(); });
+    } else {
+      g.font = '800 72px Nunito, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('z', 102, 108); g.font = '800 54px Nunito, Arial, sans-serif'; g.fillText('z', 156, 78);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.anisotropy = 4;
+    return t;
+  }
+  const BUBBLES = {};
+  ['needs', 'finished', 'done', 'stale'].forEach((k) => { BUBBLES[k] = bubbleTexture(k); });
+
+  // ---------- characters ----------
+  const SKIN = ['#F6CFA8', '#E8B48A', '#C98E62', '#9C6644', '#FFE0C4'];
+
+  function hat(kind, color) {
+    const g = new THREE.Group();
+    const dome = (r, frac, c) => mesh(new THREE.SphereGeometry(r, 24, 12, 0, Math.PI * 2, 0, Math.PI * frac), c, { outline: 0.04 });
+    if (kind === 'headphones') {
+      g.add(at(dome(0.395, 0.42, '#4A3A2E'), 0, 0.01, 0));
+      g.add(mesh(new THREE.TorusGeometry(0.41, 0.045, 8, 32, Math.PI), color, { outline: 0.06 }));
+      const cupL = at(cyl(0.12, 0.12, 0.1, color, { outline: 0.06 }), -0.41, 0, 0); cupL.rotation.z = Math.PI / 2; g.add(cupL);
+      const cupR = at(cyl(0.12, 0.12, 0.1, color, { outline: 0.06 }), 0.41, 0, 0); cupR.rotation.z = Math.PI / 2; g.add(cupR);
+    } else if (kind === 'cap') {
+      g.add(at(dome(0.405, 0.5, color), 0, 0.03, 0));
+      const brim = at(cyl(0.26, 0.26, 0.04, color, { outline: 0.06 }), 0, 0.08, 0.34); brim.scale.set(1, 1, 0.8); g.add(brim);
+      g.add(at(ball(0.05, '#FFFFFF', { outline: 0.1 }), 0, 0.43, 0));
+    } else if (kind === 'beanie') {
+      g.add(at(dome(0.415, 0.5, color), 0, 0.02, 0));
+      const rim = mesh(new THREE.TorusGeometry(0.39, 0.07, 10, 32), '#FFF8EC', { outline: 0.05 }); rim.rotation.x = Math.PI / 2; rim.position.y = 0.06; g.add(rim);
+      g.add(at(ball(0.1, '#FFF8EC'), 0, 0.46, 0));
+    } else if (kind === 'chef') {
+      g.add(at(cyl(0.3, 0.27, 0.32, '#FFFFFF'), 0, 0.42, 0));
+      [[0, 0.66, 0, 0.2], [0.17, 0.62, 0.05, 0.16], [-0.17, 0.62, 0.05, 0.16], [0, 0.62, -0.16, 0.16]].forEach(([x, y, z, r]) => g.add(at(ball(r, '#FFFFFF'), x, y, z)));
+    } else if (kind === 'tuft') {
+      g.add(at(dome(0.395, 0.45, color), 0, 0.01, 0));
+      [[0, 0.4, 0.12, 0.09], [0.08, 0.43, 0.05, 0.08], [-0.07, 0.42, 0.02, 0.07]].forEach(([x, y, z, r]) => g.add(at(ball(r, color), x, y, z)));
+    } else if (kind === 'bun') {
+      g.add(at(dome(0.4, 0.5, color), 0, 0.01, 0));
+      g.add(at(ball(0.16, color), 0, 0.46, -0.12));
+    }
+    return g;
+  }
+
+  class Agent {
+    constructor(spec) {
+      Object.assign(this, spec);
+      this.root = new THREE.Group();
+      this.pivot = new THREE.Group();
+      this.root.add(this.pivot);
+
+      const body = mesh(new THREE.CapsuleGeometry(0.36, 0.3, 8, 20), spec.shirt);
+      body.position.y = 0.53; body.scale.set(1, 1, 0.92);
+      this.pivot.add(body);
+      const apron = mesh(new THREE.CapsuleGeometry(0.3, 0.12, 6, 16, ), spec.apron || '#FFF8EC', { outline: 0.03 });
+      apron.position.set(0, 0.42, 0.12); apron.scale.set(0.95, 0.9, 0.7);
+      this.pivot.add(apron);
+
+      this.head = new THREE.Group();
+      this.head.position.y = 1.27;
+      this.pivot.add(this.head);
+      this.head.add(ball(0.38, spec.skin));
+      this.eyes = [-1, 1].map((s) => {
+        const eye = at(new THREE.Mesh(new THREE.SphereGeometry(0.055, 16, 12), new THREE.MeshBasicMaterial({ color: '#241C2F' })), 0.13 * s, 0.04, 0.345);
+        eye.scale.set(0.85, 1.25, 0.5);
+        eye.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), new THREE.MeshBasicMaterial({ color: '#FFFFFF' })), 0.015, 0.02, 0.04));
+        this.head.add(eye);
+        return eye;
+      });
+      [-1, 1].forEach((s) => {
+        const cheek = at(new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshBasicMaterial({ color: '#F49AA0' })), 0.23 * s, -0.08, 0.3);
+        cheek.scale.set(1.3, 0.75, 0.4);
+        this.head.add(cheek);
+      });
+      const mouth = at(new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.014, 6, 12, Math.PI), new THREE.MeshBasicMaterial({ color: '#241C2F' })), 0, -0.1, 0.365);
+      mouth.rotation.z = Math.PI;
+      this.head.add(mouth);
+      this.head.add(hat(spec.hat, spec.hatColor));
+
+      this.hands = [-1, 1].map(() => { const h = ball(0.12, spec.skin, { outline: 0.08 }); this.root.add(h); return h; });
+      this.feet = [-1, 1].map(() => { const f = ball(0.12, '#3A3150', { outline: 0.08 }); f.scale.set(1, 0.6, 1.35); this.root.add(f); return f; });
+
+      this.mug = new THREE.Group();
+      this.mug.add(cyl(0.08, 0.07, 0.15, '#FFFFFF', { outline: 0.08 }));
+      const handle = mesh(new THREE.TorusGeometry(0.045, 0.015, 6, 12), '#FFFFFF', { outline: 0.1 }); handle.position.x = 0.09; this.mug.add(handle);
+      this.mug.position.set(0.04, 0.1, 0.06);
+      this.mug.visible = false;
+      this.hands[1].add(this.mug);
+
+      this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: BUBBLES.done, depthTest: false, transparent: true }));
+      this.bubble.center.set(0.5, 0);
+      this.bubble.scale.set(0.72, 0.72, 1);
+      this.bubble.renderOrder = 10;
+      this.root.add(this.bubble);
+
+      this.root.traverse((o) => { o.userData.agent = this; });
+      scene.add(this.root);
+
+      this.mode = 'seated';
+      this.path = [];
+      this.blinkAt = 1 + Math.random() * 3;
+      this.seed = Math.random() * 10;
+      this.scale = 1;
+    }
+
+    seatAt(seat) {
+      this.seat = seat;
+      seat.agent = this;
+      this.mode = 'seated';
+      this.root.position.copy(seat.sitPos);
+      this.root.rotation.y = seat.yaw;
+    }
+
+    hop(to, yaw, then) {
+      this.mode = 'hopping';
+      this.tween = { from: this.root.position.clone(), to, fromYaw: this.root.rotation.y, yaw, k: 0, then };
+    }
+
+    walk(points, then) {
+      this.mode = 'walking';
+      this.path = points.map((p) => p.clone());
+      this.onArrive = then;
+    }
+
+    setState(state) {
+      const wasStanding = this.mode === 'standing';
+      this.state = state;
+      if (state === 'finished' && this.mode === 'seated') {
+        this.hop(this.seat.standSpot.clone(), 0, () => { this.mode = 'standing'; });
+      } else if (state !== 'finished' && wasStanding) {
+        this.hop(this.seat.sitPos.clone(), this.seat.yaw, () => { this.mode = 'seated'; });
+      }
+    }
+
+    leave() {
+      const s = this.seat, spot = s.standSpot;
+      const route = s.facing === 1
+        ? [new THREE.Vector3(spot.x, 0, -2.3), new THREE.Vector3(4.6, 0, -2.3), DOOR]
+        : [new THREE.Vector3(spot.x, 0, 3.2), new THREE.Vector3(1.4, 0, 3.2), new THREE.Vector3(1.4, 0, -2.3), new THREE.Vector3(4.6, 0, -2.3), DOOR];
+      this.state = 'leaving';
+      this.walk(route, () => { this.mode = 'exiting'; this.exitK = 0; });
+    }
+
+    update(t, dt) {
+      const p = this.pivot, [hl, hr] = this.hands, [fl, fr] = this.feet;
+      const tt = t + this.seed;
+      p.position.set(0, 0, 0); p.rotation.set(0, 0, 0); p.scale.set(1, 1, 1);
+      this.head.rotation.set(0, 0, 0);
+      this.mug.visible = false;
+      let bubble = null, bubbleY = 2.2;
+
+      // blink
+      this.blinkAt -= dt;
+      const blinking = this.blinkAt < 0;
+      if (this.blinkAt < -0.12) this.blinkAt = 2 + Math.random() * 4;
+      this.eyes.forEach((e) => { e.scale.y = blinking ? 0.15 : 1.25; });
+
+      if (this.mode === 'walking' || this.mode === 'hopping' || this.mode === 'exiting') {
+        this.locomote(t, dt);
+      }
+
+      if (this.mode === 'seated') {
+        fl.position.set(-0.16, -0.24, 0.34); fr.position.set(0.16, -0.24, 0.34);
+        if (this.state === 'working') {
+          p.position.y = Math.sin(tt * 9) * 0.012 * motion;
+          this.head.rotation.x = 0.14 + Math.sin(tt * 1.3) * 0.04 * motion;
+          this.head.rotation.y = Math.sin(tt * 0.7) * 0.08 * motion;
+          hl.position.set(-0.2, 0.5 + Math.max(0, Math.sin(tt * 15)) * 0.07 * motion, 0.62);
+          hr.position.set(0.2, 0.5 + Math.max(0, Math.sin(tt * 15 + Math.PI)) * 0.07 * motion, 0.62);
+        } else if (this.state === 'needs') {
+          p.rotation.z = Math.sin(tt * 3) * 0.07 * motion;
+          this.head.rotation.z = Math.sin(tt * 3) * 0.08 * motion;
+          this.head.rotation.x = -0.12;
+          hl.position.set(-0.22, 0.5, 0.58);
+          hr.position.set(0.44 + Math.sin(tt * 10) * 0.09 * motion, 1.62 + Math.abs(Math.sin(tt * 10)) * 0.04, 0.12);
+          bubble = 'needs';
+          bubbleY = 2.3 + Math.abs(Math.sin(tt * 3.2)) * 0.12 * motion;
+        } else if (this.state === 'done') {
+          p.rotation.x = -0.2;
+          const cycle = (tt % 6) / 6;
+          const sipping = cycle < 0.22;
+          this.head.rotation.x = sipping ? -0.28 : -0.05;
+          hl.position.set(-0.32, 0.45, 0.28);
+          hr.position.lerp(sipping ? new THREE.Vector3(0.1, 1.08, 0.42) : new THREE.Vector3(0.34, 0.62, 0.36), Math.min(1, dt * 8));
+          this.mug.visible = true;
+          bubble = 'done';
+          bubbleY = 2.2 + Math.sin(tt * 1.6) * 0.04 * motion;
+        } else if (this.state === 'stale') {
+          p.rotation.x = 0.42;
+          p.scale.y = 1 + Math.sin(tt * 1.4) * 0.025 * motion;
+          this.head.rotation.x = 0.4;
+          this.head.rotation.z = 0.25;
+          hl.position.set(-0.38, 0.48, 0.6); hr.position.set(0.38, 0.48, 0.6);
+          bubble = 'stale';
+          bubbleY = 2.0 + ((tt * 0.25) % 1) * 0.25 * motion;
+        }
+      } else if (this.mode === 'standing') {
+        const hopT = (tt % 3.2) / 3.2;
+        const hopY = hopT < 0.16 ? Math.sin(hopT / 0.16 * Math.PI) * 0.22 * motion : 0;
+        this.root.position.y = hopY;
+        p.scale.y = hopT > 0.16 && hopT < 0.22 ? 0.92 : 1;
+        hl.position.set(-0.47, 0.6 + hopY * 0.6, 0.06);
+        hr.position.set(0.47, 0.6 + hopY * 0.6 + (hopY > 0 ? 0.25 : 0), 0.06);
+        fl.position.set(-0.17, 0.06, 0.04); fr.position.set(0.17, 0.06, 0.04);
+        this.head.rotation.x = -0.1;
+        bubble = 'finished';
+        bubbleY = 2.15 + hopY;
+      } else if (this.mode === 'idle') {
+        hl.position.set(-0.46, 0.58 + Math.sin(tt * 2) * 0.02, 0.06);
+        hr.position.set(0.3, 0.95, 0.32);
+        this.mug.visible = this.hasCoffee;
+        fl.position.set(-0.17, 0.06, 0.04); fr.position.set(0.17, 0.06, 0.04);
+        p.position.y = Math.sin(tt * 2) * 0.01;
+      }
+
+      this.bubble.visible = !!bubble;
+      if (bubble) {
+        this.bubble.material.map = BUBBLES[bubble];
+        this.bubble.position.set(0.32, bubbleY, 0);
+      }
+      if (this.seat && this.seat.agent === this) {
+        const glow = { working: '#7FB2FF', needs: '#FFB648', done: '#2C3350', stale: '#2C3350', finished: '#2C3350' }[this.state] || '#2C3350';
+        this.seat.screen.material.color.set(glow);
+      }
+      this.root.scale.setScalar(this.scale);
+    }
+
+    locomote(t, dt) {
+      const [hl, hr] = this.hands, [fl, fr] = this.feet, p = this.pivot;
+      if (this.mode === 'hopping') {
+        const w = this.tween;
+        w.k = Math.min(1, w.k + dt / 0.45);
+        const e = w.k < 0.5 ? 2 * w.k * w.k : 1 - Math.pow(-2 * w.k + 2, 2) / 2;
+        this.root.position.lerpVectors(w.from, w.to, e);
+        this.root.position.y += Math.sin(w.k * Math.PI) * 0.45;
+        this.root.rotation.y = lerpAngle(w.fromYaw, w.yaw, e);
+        p.scale.set(1 - Math.sin(w.k * Math.PI) * 0.06, 1 + Math.sin(w.k * Math.PI) * 0.1, 1);
+        hl.position.set(-0.5, 0.95, 0.05); hr.position.set(0.5, 0.95, 0.05);
+        fl.position.set(-0.17, 0.04, 0.04); fr.position.set(0.17, 0.04, 0.04);
+        if (w.k >= 1) w.then();
+        return;
+      }
+      if (this.mode === 'exiting') {
+        this.exitK += dt / 0.5;
+        this.scale = Math.max(0, 1 - this.exitK);
+        this.root.position.z -= dt * 0.8;
+        if (this.exitK >= 1) { this.mode = 'gone'; this.root.visible = false; if (this.seat) { this.seat.agent = null; this.seat.screen.material.color.set('#2C3350'); this.seat = null; } onAgentsChanged(); }
+        return;
+      }
+      if (this.wait > 0) {
+        this.wait -= dt;
+        this.mode = 'idle';
+        this.update(t, 0);
+        this.mode = 'walking';
+        return;
+      }
+      const target = this.path[0];
+      const pos = this.root.position;
+      const dx = target.x - pos.x, dz = target.z - pos.z;
+      const dist = Math.hypot(dx, dz);
+      const speed = 1.7;
+      if (dist < 0.05) {
+        this.path.shift();
+        if (!this.path.length) { const cb = this.onArrive; this.onArrive = null; cb && cb(); }
+        return;
+      }
+      const step = Math.min(dist, speed * dt);
+      pos.x += dx / dist * step; pos.z += dz / dist * step;
+      this.root.rotation.y = lerpAngle(this.root.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 10));
+      this.phase = (this.phase || 0) + dt * 11;
+      const s = Math.sin(this.phase);
+      pos.y = Math.abs(s) * 0.09 * motion;
+      p.rotation.z = s * 0.09 * motion;
+      p.rotation.x = 0.08;
+      fl.position.set(-0.17, 0.06 + Math.max(0, s) * 0.1, 0.04 + s * 0.16);
+      fr.position.set(0.17, 0.06 + Math.max(0, -s) * 0.1, 0.04 - s * 0.16);
+      hl.position.set(-0.47, 0.6, 0.06 - s * 0.2);
+      hr.position.set(0.47, 0.6, 0.06 + s * 0.2);
+      this.mug.visible = this.hasCoffee;
+      if (this.hasCoffee) hr.position.set(0.32, 0.85, 0.3);
+    }
+  }
+
+  function lerpAngle(a, b, k) {
+    let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
+    if (d < -Math.PI) d += Math.PI * 2;
+    return a + d * k;
+  }
+
+  const DOOR = new THREE.Vector3(4.6, 0, -3.45);
+  const STATE_INFO = {
+    working: { label: 'Working', text: 'Typing away. No bubble until something changes.' },
+    needs: { label: 'Needs you', text: 'Hand up: it asked a question and is waiting for your answer.' },
+    done: { label: 'Done', text: 'Turn over, session still open. Sipping coffee until you reply.' },
+    stale: { label: 'Stale', text: 'The process ended mid-turn. Slumped over the keyboard.' },
+    finished: { label: 'Finished', text: 'Opened its PR and exited. Click Got it and it heads out the door.' },
+    leaving: { label: 'Leaving', text: 'Heading out the door.' },
+    arriving: { label: 'Arriving', text: 'A new session just started. Walking to a free desk.' },
+    wander: { label: 'Coffee run', text: 'Wandering to the coffee machine: a demo of the walk cycle.' }
+  };
+
+  const agents = [];
+  function addAgent(spec, seatIndex, state) {
+    const a = new Agent(spec);
+    a.state = state;
+    if (seatIndex != null) a.seatAt(SEATS[seatIndex]);
+    agents.push(a);
+    return a;
+  }
+
+  addAgent({ name: '#12 · Recipe search', project: 'recipe-box', shirt: '#4D86FF', skin: SKIN[0], hat: 'headphones', hatColor: '#3A3150' }, 0, 'working');
+  const asker = addAgent({ name: '#7 · Hourly forecast', project: 'weather-app', shirt: '#F07A4A', skin: SKIN[1], hat: 'cap', hatColor: '#3E6799' }, 1, 'needs');
+  addAgent({ name: 'flaky test hunt', project: 'notes-app', shirt: '#8C8FA0', skin: SKIN[3], hat: 'beanie', hatColor: '#6B5B95' }, 2, 'stale');
+  addAgent({ name: 'mobile layout check', project: 'weather-app', shirt: '#5BA37A', skin: SKIN[2], hat: 'tuft', hatColor: '#3B2A20' }, 3, 'done');
+  addAgent({ name: '#9 · Shopping list export', project: 'recipe-box', shirt: '#E2B347', skin: SKIN[4], hat: 'chef', hatColor: '#FFFFFF' }, 4, 'working').setState('finished');
+  const finisher = agents[4];
+  finisher.mode = 'standing';
+  finisher.root.position.copy(finisher.seat.standSpot);
+  finisher.root.rotation.y = 0;
+
+  const wanderer = addAgent({ name: 'Release notes draft', project: 'notes-app', shirt: '#C25B7A', skin: SKIN[0], hat: 'bun', hatColor: '#2B1E16', apron: '#FFE3EA', wanders: true }, null, 'wander');
+  const WANDER = [
+    { p: new THREE.Vector3(1.4, 0, 3.2) },
+    { p: new THREE.Vector3(3.3, 0, 2.4) },
+    { p: new THREE.Vector3(2.6, 0, -2.85), pause: 2.6, coffee: true },
+    { p: new THREE.Vector3(1.4, 0, -2.2) }
+  ];
+  let wanderIndex = 0;
+  wanderer.root.position.copy(WANDER[0].p);
+  function wanderNext() {
+    wanderIndex = (wanderIndex + 1) % WANDER.length;
+    const stop = WANDER[wanderIndex];
+    wanderer.walk([stop.p], () => {
+      if (stop.pause) {
+        wanderer.root.rotation.y = Math.PI;
+        wanderer.wait = stop.pause;
+        wanderer.hasCoffee = true;
+        wanderer.path = [stop.p.clone()];
+        wanderer.onArrive = wanderNext;
+        wanderer.mode = 'walking';
+      } else {
+        wanderNext();
+      }
+    });
+  }
+  wanderNext();
+
+  const LOOKS = [
+    { shirt: '#7E6BD6', hat: 'beanie', hatColor: '#F07A4A' },
+    { shirt: '#3FB3A6', hat: 'cap', hatColor: '#E2B347' },
+    { shirt: '#F07A9A', hat: 'headphones', hatColor: '#4D86FF' },
+    { shirt: '#9BC53D', hat: 'chef', hatColor: '#FFFFFF' }
+  ];
+  let arrivals = 0;
+  function arrive() {
+    const seat = SEATS.find((s) => !s.agent);
+    if (!seat) return;
+    const look = LOOKS[arrivals++ % LOOKS.length];
+    const a = addAgent(Object.assign({ name: 'New session ' + arrivals, project: 'weather-app', skin: SKIN[arrivals % SKIN.length] }, look), null, 'arriving');
+    seat.agent = a;
+    a.seat = seat;
+    a.root.position.copy(DOOR);
+    a.root.rotation.y = 0;
+    a.scale = 0.01;
+    a.growing = true;
+    const route = seat.facing === 1
+      ? [new THREE.Vector3(4.6, 0, -2.3), new THREE.Vector3(seat.x, 0, -2.3), seat.approach]
+      : [new THREE.Vector3(4.6, 0, -2.3), new THREE.Vector3(1.4, 0, -2.3), new THREE.Vector3(1.4, 0, 3.2), seat.approach];
+    a.walk(route, () => a.hop(seat.sitPos.clone(), seat.yaw, () => { a.mode = 'seated'; a.state = 'working'; renderCard(); }));
+    select(a);
+    onAgentsChanged();
+  }
+
+  // ---------- selection ring ----------
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.68, 40), new THREE.MeshBasicMaterial({ color: '#FFB648', transparent: true, opacity: 0.9, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2;
+  scene.add(ring);
+
+  // ---------- card UI ----------
+  const card = document.getElementById('card');
+  let selected = asker;
+
+  function select(a) { selected = a; renderCard(); }
+
+  function stateKey(a) {
+    if (a.wanders) return 'wander';
+    return a.state;
+  }
+
+  function onAgentsChanged() {
+    if (selected && selected.mode === 'gone') selected = null;
+    renderCard();
+  }
+
+  function renderCard() {
+    const present = agents.filter((a) => a.mode !== 'gone');
+    const freeSeat = SEATS.some((s) => !s.agent);
+    const chips = present.map((a, i) => `<button class="btn" data-pick="${agents.indexOf(a)}" aria-pressed="${a === selected}">${escapeHtml(a.name.split(' · ')[0])}</button>`).join('');
+    let body;
+    if (!selected) {
+      body = `<h2>Pick an agent</h2><p class="desc">Click a character in the office, or choose one below.</p>`;
+    } else {
+      const key = stateKey(selected), info = STATE_INFO[key];
+      const controllable = !selected.wanders && ['working', 'needs', 'done', 'stale', 'finished'].includes(selected.state) && (selected.mode === 'seated' || selected.mode === 'standing');
+      const stateButtons = ['working', 'needs', 'done', 'stale', 'finished'].map((s) =>
+        `<button class="btn" data-state="${s}" aria-pressed="${selected.state === s}" ${controllable ? '' : 'disabled'}>${STATE_INFO[s].label}</button>`).join('');
+      body = `
+        <div class="section">
+          <h2>${escapeHtml(selected.name)}</h2>
+          <div class="meta"><span>${escapeHtml(selected.project)}</span><span class="pill ${key === 'leaving' || key === 'arriving' ? 'wander' : key}">${info.label}</span></div>
+          <p class="desc">${info.text}</p>
+          ${selected.state === 'finished' && selected.mode === 'standing' ? '<div class="row"><button class="btn primary" data-gotit>Got it</button></div>' : ''}
+        </div>
+        ${selected.wanders ? '' : `<div class="section"><span class="label">Try a state</span><div class="row">${stateButtons}</div></div>`}`;
+    }
+    card.innerHTML = `${body}
+      <div class="divider"></div>
+      <div class="section"><span class="label">In the office</span><div class="row">${chips}</div></div>
+      <button class="btn" data-arrive ${freeSeat ? '' : 'disabled'}>${freeSeat ? 'New agent arrives' : 'No free desk'}</button>`;
+  }
+
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  card.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.dataset.pick) select(agents[+b.dataset.pick]);
+    else if (b.dataset.state && selected) { selected.setState(b.dataset.state); renderCard(); }
+    else if ('gotit' in b.dataset && selected) { selected.leave(); renderCard(); }
+    else if ('arrive' in b.dataset) arrive();
+  });
+
+  // ---------- camera controls and picking ----------
+  const canvas = renderer.domElement;
+  const raycaster = new THREE.Raycaster();
+  let drag = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    drag = { x: e.clientX, y: e.clientY, theta: orbit.theta, phi: orbit.phi, moved: false };
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.hypot(dx, dy) > 4) { drag.moved = true; canvas.classList.add('dragging'); }
+    orbit.theta = THREE.MathUtils.clamp(drag.theta - dx * 0.005, -0.9, 0.9);
+    orbit.phi = THREE.MathUtils.clamp(drag.phi - dy * 0.004, 0.5, 1.15);
+    placeCamera();
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    canvas.classList.remove('dragging');
+    if (drag && !drag.moved) pick(e);
+    drag = null;
+  });
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    orbit.radius = THREE.MathUtils.clamp(orbit.radius * (e.deltaY > 0 ? 1.08 : 0.92), 6, 22);
+    placeCamera();
+  }, { passive: false });
+
+  function pick(e) {
+    const r = canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    const roots = agents.filter((a) => a.mode !== 'gone').map((a) => a.root);
+    const hit = raycaster.intersectObjects(roots, true).find((h) => h.object.userData.agent);
+    if (hit) select(hit.object.userData.agent);
+  }
+
+  // ---------- loop ----------
+  const clock = new THREE.Clock();
+  function frame() {
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const t = clock.elapsedTime;
+    agents.forEach((a) => {
+      if (a.mode === 'gone') return;
+      if (a.growing) { a.scale = Math.min(1, a.scale + dt * 2.5); if (a.scale >= 1) a.growing = false; }
+      const before = a.state + a.mode;
+      a.update(t, dt);
+      if (a === selected && before !== a.state + a.mode) renderCard();
+    });
+    if (selected && selected.mode !== 'gone') {
+      ring.visible = true;
+      ring.position.set(selected.root.position.x, 0.02, selected.root.position.z);
+      ring.scale.setScalar(1 + Math.sin(t * 4) * 0.05 * motion);
+    } else {
+      ring.visible = false;
+    }
+    renderer.render(scene, camera);
+    document.getElementById('status').hidden = true;
+    requestAnimationFrame(frame);
+  }
+
+  addEventListener('resize', resize);
+  resize();
+  renderCard();
+  frame();
+})();
+</script>
