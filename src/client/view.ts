@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { buildOffice } from './office.ts';
-import { createGestures, frameFloor, initialOrbit, placeCamera, wheelRadius } from './camera.ts';
+import {
+  createDoubleTap, createGestures, floorPoint, focusOn, frameFloor, goHome, initialOrbit, placeCamera, wheelRadius, zoomToward,
+} from './camera.ts';
 
 /** Renderer, lights, orbit camera and the office. Agents are layered on by callers. */
 export function createView(host: HTMLElement) {
@@ -51,12 +53,21 @@ export function createView(host: HTMLElement) {
     frameFloor(camera, orbit, rows);
   }
 
-  // Drag to orbit, pinch or scroll to zoom. A press that doesn't move counts as a click.
+  // Drag to orbit, middle-drag or two fingers to pan, pinch or scroll to zoom towards the pointer,
+  // double-click to focus, Home to go back. A press that doesn't move counts as a click.
   const canvas = renderer.domElement;
   const clickHandlers: ((e: PointerEvent) => void)[] = [];
-  const gestures = createGestures(orbit);
+  /** The floor point under a screen point, from where the camera is now. */
+  const floorAt = (x: number, y: number) => {
+    const r = canvas.getBoundingClientRect();
+    placeCamera(camera, orbit);
+    return floorPoint(camera, { x: ((x - r.left) / r.width) * 2 - 1, y: -((y - r.top) / r.height) * 2 + 1 }, orbit.target.y);
+  };
+  const gestures = createGestures(orbit, floorAt);
+  const doubleTap = createDoubleTap();
   canvas.addEventListener('pointerdown', (e) => {
-    gestures.down(e.pointerId, e.clientX, e.clientY);
+    if (e.button === 1) e.preventDefault(); // no autoscroll on middle-drag
+    gestures.down(e.pointerId, e.clientX, e.clientY, e.button);
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
@@ -66,7 +77,13 @@ export function createView(host: HTMLElement) {
   });
   canvas.addEventListener('pointerup', (e) => {
     canvas.classList.remove('dragging');
-    if (gestures.up(e.pointerId)) clickHandlers.forEach((handle) => handle(e));
+    if (!gestures.up(e.pointerId)) return;
+    clickHandlers.forEach((handle) => handle(e));
+    const point = doubleTap(e.clientX, e.clientY, e.timeStamp) && floorAt(e.clientX, e.clientY);
+    if (point) {
+      focusOn(orbit, point);
+      placeCamera(camera, orbit);
+    }
   });
   canvas.addEventListener('pointercancel', (e) => {
     canvas.classList.remove('dragging');
@@ -74,9 +91,17 @@ export function createView(host: HTMLElement) {
   });
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    orbit.radius = wheelRadius(orbit.radius, e.deltaY, orbit.maxRadius);
+    zoomToward(orbit, floorAt(e.clientX, e.clientY), wheelRadius(orbit.radius, e.deltaY, orbit.maxRadius));
     placeCamera(camera, orbit);
   }, { passive: false });
+
+  const home = () => goHome(camera, orbit, rows);
+  document.getElementById('home')?.addEventListener('click', home);
+  addEventListener('keydown', (e) => {
+    if (e.key !== 'Home') return;
+    e.preventDefault();
+    home();
+  });
 
   const frameHandlers: ((t: number, dt: number) => void)[] = [];
   const timer = new THREE.Clock();
