@@ -94,7 +94,7 @@ function pool(seed = 4) {
   const o = office(2, seed);
   o.set(1, 'done');
   o.set(2, 'done');
-  for (let i = 0; i < 4 * 60 * 60 && ![...o.c.agents.values()].every((a) => a.place?.spot === 'pool-table'); i++) o.run(0.25);
+  for (let i = 0; i < 4 * 4 * 60 * 60 && ![...o.c.agents.values()].every((a) => a.place?.spot === 'pool-table'); i++) o.run(0.25);
   for (const a of o.c.agents.values()) a.nextAt = 1e9; // both stay
   const from = o.log.length;
   o.run(3 * RACK_SECONDS);

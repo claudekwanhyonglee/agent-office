@@ -9,18 +9,22 @@ import { RETURN_SECONDS, driftParams, type Drift } from './float.ts';
 
 /** Seconds an idle agent waits at its desk before wandering off (AC: within 3 s). */
 const SET_OFF = { min: 1, max: 2.5 };
+/** Agents turning idle in the same update set off one after another, this far apart (#59). */
+const STAGGER = { min: 0.55, max: 1 };
+/** No two idle agents' next moves are closer than this, unless they're in the same game (#59). */
+const MOVE_GAP = 0.35;
 /** Seconds an idle agent stays at a spot. */
 const STAY = { min: 10, max: 30 };
 /** How often a due agent looks for someone to chat with, and how long to wait when every spot is full. */
 const CHAT_CHANCE = 0.35;
-const RETRY = 5;
+const RETRY = { min: 3, max: 8 };
 /** Places closer than this share furniture: only one of them can be used at a time. */
 const OVERLAP = 0.5;
 /** Seconds after arriving before the first paper plane, then between throws. */
-const PLANE_FIRST = 1;
+const PLANE_FIRST = { min: 0.5, max: 1.5 };
 const PLANE_EVERY = { min: 4, max: 7 };
 /** Seconds a high-fiver or coffee courier stays once there. */
-const ERRAND_STAY = 3;
+const ERRAND_STAY = { min: 2.5, max: 3.5 };
 /** The dog (#34): how long it stops at a spot or rests in its bed, how often it goes to bed, how often agents go to it. */
 const DOG_PAUSE = { min: 5, max: 15 };
 const DOG_REST = { min: 20, max: 45 };
@@ -57,6 +61,8 @@ export interface Occupant {
   /** When the agent next does its place's one-off action (throwing a paper plane). */
   actAt: number;
   reaction: Reaction | null;
+  /** Just turned idle (or found idle on first load): it sets off at its own staggered time (#59). */
+  settingOff?: boolean;
 }
 
 export type OfficeEvent =
@@ -117,6 +123,12 @@ export class OfficeController {
   rows = INITIAL_ROWS;
   layout = officeLayout(INITIAL_ROWS);
   private firstUpdate = true;
+  /** The last set-off handed out in this update, so agents turning idle together are staggered (#59). */
+  private lastSetOff = -Infinity;
+  /** When a chat or game was last started: one per moment, so a game's end doesn't set off a crowd (#59). */
+  private togetherAt = -Infinity;
+  /** When a helper was last sent on an errand: one per moment, so a batch of state changes doesn't send a crowd (#59). */
+  private errandAt = -Infinity;
   private clock: Clock;
   /** Desks with a delivered mug, by the key of the agent working there. */
   private mugs = new Map<string, number>();
@@ -136,6 +148,7 @@ export class OfficeController {
     const now = this.clock.now();
     const events: OfficeEvent[] = [];
     const listed = new Map(records.map((r) => [r.sessionId, r]));
+    this.lastSetOff = -Infinity;
 
     for (const [key, agent] of this.agents) {
       if (listed.has(key)) continue;
@@ -240,7 +253,7 @@ export class OfficeController {
 
   private arrive(key: string, record: AgentRecord, now: number, events: OfficeEvent[]) {
     const seat = this.freeSeat(now, events);
-    const agent: Occupant = { record, seat, place: null, arrivesAt: now, nextAt: null, actAt: now + PLANE_FIRST, reaction: null };
+    const agent: Occupant = { record, seat, place: null, arrivesAt: now, nextAt: null, actAt: now + this.between(PLANE_FIRST), reaction: null };
     this.agents.set(key, agent);
     const path = arrivalPath(this.layout, seat);
     if (this.firstUpdate) {
@@ -248,14 +261,14 @@ export class OfficeController {
       const place = isIdle(record.state) ? this.pick(this.freePlaces().filter((p) => !this.spotOf(p)?.game)) : null;
       if (place) {
         agent.place = place;
-        agent.nextAt = now + this.between(STAY);
+        agent.nextAt = this.setOffTime(now, STAY, agent);
       }
       events.push({ type: 'arrive', key, record, seat, path, walk: false, place });
       return;
     }
     agent.walk = { path, origin: this.layout.doorLink, startedAt: now };
     agent.arrivesAt = now + pathLength(path) / WALK_SPEED;
-    if (isIdle(record.state)) agent.nextAt = agent.arrivesAt + this.between(SET_OFF);
+    if (isIdle(record.state)) agent.nextAt = this.setOffTime(agent.arrivesAt, SET_OFF, agent);
     events.push({ type: 'arrive', key, record, seat, path, walk: true, place: null });
   }
 
@@ -269,7 +282,7 @@ export class OfficeController {
       const away = agent.place || (agent.walk && now < agent.arrivesAt);
       if (away) this.send(key, agent, null, now, events);
     } else if (!isIdle(was)) {
-      agent.nextAt = now + this.between(SET_OFF);
+      agent.nextAt = this.setOffTime(now, SET_OFF, agent);
     }
     this.react(key, agent, was, now, events);
   }
@@ -279,7 +292,7 @@ export class OfficeController {
     const dog = this.dog;
     if (dog.nextAt > now || dog.arrivesAt > now) return;
     if (this.dogVisitors().length) {
-      dog.nextAt = now + RETRY;
+      dog.nextAt = now + this.between(RETRY);
       return;
     }
     const [bed, ...others] = this.layout.dogSpots;
@@ -351,19 +364,21 @@ export class OfficeController {
 
   /** The nearest idle agent (by route length) walks over to high-five an agent that just finished; it waits for them. */
   private highFive(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
+    if (this.errandAt === now) return;
     const place = this.deskSide('high-five', 'high-five', agent.seat);
     const lengths = this.helpers(key).map(([k, a]) => ({ k, a, length: pathLength(route(this.layout, this.whereNow(a, now), place.link)) }));
     if (!lengths.length) return;
     const { k, a } = lengths.reduce((best, c) => (c.length < best.length ? c : best));
     this.errand(k, a, place, { kind: 'high-five', target: key, done: false }, now, events);
-    agent.nextAt = Math.max(agent.nextAt ?? now, a.nextAt!);
+    // It waits for the high five, then moves on just after the high-fiver.
+    agent.nextAt = this.stagger(Math.max(agent.nextAt ?? now, a.nextAt!), { min: 0, max: 0.5 }, [agent]);
   }
 
   /** An idle agent fetches a coffee from the kitchen and leaves it on the desk of an agent that started working. */
   private bringCoffee(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
     const onItsWay = [...this.agents.values()].some((a) => a.reaction?.kind === 'coffee' && a.reaction.target === key);
     const courier = this.pick(this.helpers(key));
-    if (this.mugs.has(key) || onItsWay || !courier) return;
+    if (this.mugs.has(key) || onItsWay || !courier || this.errandAt === now) return;
     const kitchen = this.layout.hangouts.find((s) => s.name === 'kitchen')!.places[0];
     const place = this.deskSide('coffee-delivery', 'delivering', agent.seat);
     this.errand(courier[0], courier[1], place, { kind: 'coffee', target: key, done: false }, now, events, kitchen);
@@ -378,8 +393,9 @@ export class OfficeController {
 
   /** Sends an agent on an errand for another: it does its part on arrival (see `act`), then moves on. */
   private errand(key: string, agent: Occupant, place: HangoutPlace, reaction: Reaction, now: number, events: OfficeEvent[], via?: HangoutPlace) {
+    this.errandAt = now;
     this.send(key, agent, place, now, events, via);
-    agent.nextAt = agent.arrivesAt + ERRAND_STAY;
+    agent.nextAt = this.stagger(agent.arrivesAt, ERRAND_STAY, [agent]);
     agent.actAt = agent.arrivesAt;
     agent.reaction = reaction;
   }
@@ -396,7 +412,7 @@ export class OfficeController {
   }
 
   private wander(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
-    if (this.clock.random() < CHAT_CHANCE && this.startTogether(key, agent, now, events)) return;
+    if (this.clock.random() < CHAT_CHANCE && this.togetherAt !== now && this.startTogether(key, agent, now, events)) return;
     if (this.clock.random() < DOG_CHANCE && this.visitDog(key, agent, now, events)) return;
     const here = agent.place?.spot;
     const place = this.pick(this.freePlaces().filter((p) => this.isSolo(p) && p.spot !== here));
@@ -404,8 +420,34 @@ export class OfficeController {
     else if (agent.place && !this.isSolo(agent.place)) {
       // Nowhere free, but a game can't be played alone: wait at the desk instead.
       this.send(key, agent, null, now, events);
-      agent.nextAt = agent.arrivesAt + RETRY;
-    } else agent.nextAt = now + RETRY;
+      agent.nextAt = this.stagger(agent.arrivesAt, RETRY, [agent]);
+    } else agent.nextAt = this.stagger(now, RETRY, [agent]);
+  }
+
+  /**
+   * When an agent that just turned idle (or was found idle on first load) moves: `range` after
+   * `from`, and if others turned idle in the same update, a STAGGER after the last of them (#59).
+   */
+  private setOffTime(from: number, range: { min: number; max: number }, agent: Occupant) {
+    agent.settingOff = true;
+    let t = this.stagger(from, range, [agent]);
+    if (t < this.lastSetOff + STAGGER.min) t = this.stagger(Math.max(from, this.lastSetOff), STAGGER, [agent]);
+    this.lastSetOff = t;
+    return t;
+  }
+
+  /**
+   * `from` plus a random pick from `range`, moved to the nearest moment (in range if it can) that's
+   * at least MOVE_GAP from every other agent's next move, leaving out `except` (#59).
+   */
+  private stagger(from: number, { min, max }: { min: number; max: number }, except: Occupant[]) {
+    const others = [...this.agents.values()].filter((a) => a.nextAt != null && !except.includes(a)).map((a) => a.nextAt!);
+    const want = from + this.between({ min, max });
+    const clear = (t: number) => t >= from + min && others.every((o) => Math.abs(t - o) >= MOVE_GAP - 1e-9);
+    const slots = [want, ...others.flatMap((o) => [o - MOVE_GAP, o + MOVE_GAP])].filter(clear);
+    const inRange = slots.filter((t) => t <= from + max);
+    const nearest = (ts: number[]) => ts.reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a));
+    return nearest(inRange.length ? inRange : slots);
   }
 
   /**
@@ -418,6 +460,7 @@ export class OfficeController {
     if (!spot) return false;
     const partners = this.shuffled(this.freeToJoin(key, now)).slice(0, spot.places.length - 1);
     if (partners.length + 1 < (spot.game?.min ?? spot.places.length)) return false;
+    this.togetherAt = now;
     const players: [string, Occupant][] = [[key, agent], ...partners];
     // Partners first: sending the starter may end its old game, and those players then look for partners too.
     for (let i = players.length - 1; i >= 0; i--) this.send(players[i][0], players[i][1], spot.places[i], now, events);
@@ -425,16 +468,19 @@ export class OfficeController {
       // One end time that keeps every player's stay within STAY (when their arrivals are close enough).
       const arrivals = players.map(([, a]) => a.arrivesAt);
       const earliest = Math.max(...arrivals) + STAY.min, latest = Math.min(...arrivals) + STAY.max;
-      const end = this.between({ min: earliest, max: Math.max(earliest, latest) });
+      const end = this.stagger(0, { min: earliest, max: Math.max(earliest, latest) }, players.map(([, a]) => a));
       for (const [, a] of players) a.nextAt = end;
     }
     return true;
   }
 
-  /** Other idle agents free to join in: arrived, and either at their desk or done with a minimum stay at a solo place. */
+  /**
+   * Other idle agents free to join in: arrived, and either at their desk or done with a minimum stay
+   * at a solo place. Agents that just turned idle set off on their own, staggered (#59).
+   */
   private freeToJoin(key: string, now: number) {
     return [...this.agents].filter(([other, a]) =>
-      other !== key && isIdle(a.record.state) && a.nextAt != null && a.arrivesAt <= now
+      other !== key && isIdle(a.record.state) && a.nextAt != null && a.arrivesAt <= now && !a.settingOff
       && (!a.place || (this.isSolo(a.place) && now - a.arrivesAt >= STAY.min)));
   }
 
@@ -471,14 +517,15 @@ export class OfficeController {
     const to = place ? place.link : agent.seat.link;
     const path = via ? [...route(this.layout, origin, via.link), ...route(this.layout, via.link, to).slice(1)] : route(this.layout, origin, to);
     agent.reaction = null;
+    agent.settingOff = false;
     const left = agent.place;
     // Afloat in a pool dip, the agent paddles back to the ring's home spot before setting off (#57).
     const setsOff = left?.pose === 'floating' && agent.arrivesAt <= now ? now + RETURN_SECONDS : now;
     agent.place = place;
     agent.walk = { path, origin, startedAt: setsOff };
     agent.arrivesAt = setsOff + pathLength(path) / WALK_SPEED;
-    agent.nextAt = place ? agent.arrivesAt + this.between(STAY) : null;
-    agent.actAt = agent.arrivesAt + PLANE_FIRST;
+    agent.nextAt = place ? this.stagger(agent.arrivesAt, STAY, [agent]) : null;
+    agent.actAt = agent.arrivesAt + this.between(PLANE_FIRST);
     events.push({ type: 'walk', key, path, place });
     if (place?.pose === 'floating') events.push({ type: 'drift', key, drift: driftParams(this.clock.random) });
     if (left !== place) this.endIfShortHanded(left, now, events);
@@ -573,7 +620,7 @@ export class OfficeController {
       agent.place = agent.place && (moved[places.indexOf(agent.place)] ?? agent.place); // errand places don't move
       agent.walk = undefined;
       agent.arrivesAt = now;
-      if (agent.place && agent.nextAt == null) agent.nextAt = now + this.between(STAY);
+      if (agent.place && agent.nextAt == null) agent.nextAt = this.stagger(now, STAY, [agent]);
       events.push({ type: 'place', key, seat: agent.seat, state: agent.record.state, place: agent.place });
     }
   }

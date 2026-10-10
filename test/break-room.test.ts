@@ -108,9 +108,11 @@ describe('#30 AC5 paper planes land on desks', () => {
     let throws = 0;
     for (let i = 0; i < 4 * 60 * 60; i++) {
       o.clock.t += 0.25;
+      // Where each agent was when the tick began: a thrower may be asked to join a game later in the same tick.
+      const before = new Map([...o.c.agents].map(([k, a]) => [k, { spot: a.place?.spot, arrivesAt: a.arrivesAt }]));
       for (const t of ofType(o.c.tick(), 'plane')) {
-        const agent = o.c.agents.get(t.key)!;
-        expect(agent.place?.spot).toBe('planes');
+        const agent = before.get(t.key)!;
+        expect(agent.spot).toBe('planes');
         expect(agent.arrivesAt).toBeLessThanOrEqual(o.clock.t);
         throws++;
       }
