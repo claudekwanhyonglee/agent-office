@@ -1,5 +1,6 @@
 import './style.css';
 import { createView } from './view.ts';
+import type { FeedPayload } from '../shared/agent.ts';
 
 const INITIAL_PODS = 2;
 
@@ -12,9 +13,9 @@ export function hasWebGL() {
   }
 }
 
-function showStatus(text: string, problem = false) {
+function showStatus(text: string | null, problem = false) {
   const status = document.getElementById('status')!;
-  status.hidden = false;
+  status.hidden = text == null;
   status.className = problem ? 'status problem' : 'status';
   status.textContent = text;
 }
@@ -31,6 +32,19 @@ export function boot({ createView: makeView }: BootOptions = {}) {
   const view = (makeView ?? createView)(document.getElementById('scene')!);
   view.setPodCount(INITIAL_PODS);
   showStatus('No Claude Code sessions running');
+
+  function applyFeed(payload: FeedPayload) {
+    if (!Array.isArray(payload)) return showStatus(payload.error, true);
+    showStatus(payload.length ? null : 'No Claude Code sessions running');
+  }
+
+  return { applyFeed };
 }
 
-if (!import.meta.env.VITEST) boot();
+if (!import.meta.env.VITEST) {
+  const app = boot();
+  if (app) {
+    const events = new EventSource('/api/events');
+    events.onmessage = (e) => app.applyFeed(JSON.parse(e.data));
+  }
+}

@@ -31,6 +31,16 @@ describe('#2 AC1 server', () => {
     expect(await res.text()).toContain('Agent Office');
   });
 
+  it('privacy: refuses requests addressed to another host name', async () => {
+    server = await startServer({ port: 0, staticDir: staticDir() });
+    const { port } = server.address() as AddressInfo;
+    const { request } = await import('node:http');
+    const status = await new Promise<number>((done) => {
+      request({ host: '127.0.0.1', port, path: '/', headers: { host: 'attacker.example' } }, (res) => done(res.statusCode!)).end();
+    });
+    expect(status).toBe(403);
+  });
+
   it('#2 AC1 does not serve files outside the static folder', async () => {
     server = await startServer({ port: 0, staticDir: staticDir() });
     const { port } = server.address() as AddressInfo;

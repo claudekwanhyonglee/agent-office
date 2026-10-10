@@ -31,6 +31,12 @@ export interface ServerOptions {
 
 export function startServer({ port, staticDir, api }: ServerOptions): Promise<Server> {
   const server = createServer(async (req, res) => {
+    // Only answer requests addressed to this machine (blocks DNS rebinding).
+    const host = (req.headers.host ?? '').replace(/:\d+$/, '');
+    if (host !== HOST && host !== 'localhost') {
+      res.writeHead(403, { 'content-type': 'text/plain' });
+      return res.end('Forbidden');
+    }
     try {
       if (api && (await api(req, res))) return;
       await serveStatic(staticDir, req, res);

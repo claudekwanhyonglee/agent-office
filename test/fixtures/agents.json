@@ -1,0 +1,9 @@
+[
+  { "pid": 101, "id": "aaaa0001", "cwd": "/home/alex/projects/demo-app", "kind": "interactive", "startedAt": 1790000000000, "sessionId": "aaaa0001-1111-4111-8111-111111111111", "name": "demo-app search", "status": "busy", "state": "working" },
+  { "pid": 102, "id": "aaaa0002", "cwd": "/home/alex/projects/demo-app/.claude/worktrees/tk-epic-3", "kind": "background", "startedAt": 1790000000000, "sessionId": "aaaa0002-2222-4222-8222-222222222222", "name": "demo-app #3 · Add search", "status": "idle", "state": "blocked" },
+  { "pid": 103, "id": "aaaa0003", "cwd": "/home/alex/projects/notes-app", "kind": "interactive", "startedAt": 1790000000000, "sessionId": "aaaa0003-3333-4333-8333-333333333333", "name": "notes tidy", "status": "idle", "state": "done" },
+  { "id": "aaaa0004", "cwd": "/home/alex/projects/demo-app/.claude/worktrees/tk-epic-4", "kind": "background", "startedAt": 1790000000000, "sessionId": "aaaa0004-4444-4444-8444-444444444444", "name": "demo-app #4 · Export", "state": "done" },
+  { "id": "aaaa0005", "cwd": "/home/alex/projects/notes-app", "kind": "background", "startedAt": 1790000000000, "sessionId": "aaaa0005-5555-4555-8555-555555555555", "name": "flaky test hunt", "state": "stopped" },
+  { "id": "aaaa0006", "cwd": "/home/alex/projects/weather-app", "kind": "background", "startedAt": 1790000000000, "sessionId": "aaaa0006-6666-4666-8666-666666666666", "name": "forecast", "state": "working" },
+  { "id": "aaaa0007", "cwd": "/home/alex/projects/weather-app", "kind": "background", "startedAt": 1790000000000, "sessionId": "aaaa0007-7777-4777-8777-777777777777", "name": "old work", "state": "done" }
+]

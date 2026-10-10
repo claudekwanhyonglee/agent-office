@@ -24,4 +24,13 @@ describe('#2 page', () => {
     expect(status().hidden).toBe(false);
     expect(status().textContent).toBe('No Claude Code sessions running');
   });
+
+  it('#3 AC5 shows a feed error in place of the empty-state text', () => {
+    const app = boot({ createView: () => ({ setPodCount: () => [] }) })!;
+    app.applyFeed({ error: 'claude agents failed: boom' });
+    expect(status().hidden).toBe(false);
+    expect(status().textContent).toContain('claude agents failed: boom');
+    app.applyFeed([]);
+    expect(status().textContent).toBe('No Claude Code sessions running');
+  });
 });
