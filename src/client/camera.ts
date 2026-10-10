@@ -1,16 +1,125 @@
 import * as THREE from 'three';
-import { officeLayout } from './layout.ts';
+import { INITIAL_ROWS, WALL_HEIGHT, officeLayout } from './layout.ts';
 
 /** How far the camera can zoom, in metres from its target. Narrow screens may raise `max` to fit the floor (#22). */
 export const ZOOM = { min: 6, max: 45 };
 /** Vertical field of view: 34° normally, widened up to 45° on narrow screens (#22). */
 export const FOV = { base: 34, max: 45 };
+/** Tilt from straight down, in radians: nearly overhead to nearly level, never below the floor. */
+export const TILT = { min: 0.1, max: 1.45 };
 /** Furthest the fit will back off; the camera's far plane is 150 m. */
 const FIT_LIMIT = 120;
 
-export interface Orbit { theta: number; phi: number; radius: number; target: THREE.Vector3; maxRadius: number }
+/** Where the orbit target may go: the whole floor, deck included. */
+export interface FloorBounds { left: number; right: number; back: number; front: number }
 
-export const initialOrbit = (): Orbit => ({ theta: 0.22, phi: 0.86, radius: 18, target: new THREE.Vector3(0, 0.5, 0), maxRadius: ZOOM.max });
+export interface Orbit { theta: number; phi: number; radius: number; target: THREE.Vector3; maxRadius: number; bounds: FloorBounds }
+
+export const initialOrbit = (): Orbit => ({
+  theta: 0.22, phi: 0.86, radius: 18, target: new THREE.Vector3(0, 0.5, 0), maxRadius: ZOOM.max, bounds: officeLayout(INITIAL_ROWS).bounds,
+});
+
+/** Metres the target moves per pixel dragged, per metre of zoom. */
+const PAN_SPEED = 0.0008;
+
+/** Keeps the target in the room: over the floor (deck included), between the floor and the wall top. */
+function keepInRoom({ target, bounds }: Orbit) {
+  target.x = THREE.MathUtils.clamp(target.x, bounds.left, bounds.right);
+  target.y = THREE.MathUtils.clamp(target.y, 0, WALL_HEIGHT);
+  target.z = THREE.MathUtils.clamp(target.z, bounds.back, bounds.front);
+}
+
+/** Slides the target across the floor as if dragging the floor by (dx, dy) pixels. */
+export function panBy(orbit: Orbit, dx: number, dy: number) {
+  const step = orbit.radius * PAN_SPEED;
+  const sin = Math.sin(orbit.theta), cos = Math.cos(orbit.theta);
+  orbit.target.x -= (cos * dx + sin * dy) * step;
+  orbit.target.z += (sin * dx - cos * dy) * step;
+  keepInRoom(orbit);
+}
+
+/** Zooms to `radius`, moving towards `point` so it stays where it is on screen (null: towards the target). */
+export function zoomToward(orbit: Orbit, point: THREE.Vector3 | null, radius: number) {
+  if (point) orbit.target.sub(point).multiplyScalar(radius / orbit.radius).add(point);
+  orbit.radius = radius;
+  keepInRoom(orbit);
+}
+
+/** Centres the target on a point (on the floor, furniture or the big board). */
+export function focusOn(orbit: Orbit, point: THREE.Vector3) {
+  orbit.target.copy(point);
+  keepInRoom(orbit);
+}
+
+/** A surface under the pointer: the point hit, and the surface's facing there. */
+export interface Hit { point: THREE.Vector3; normal: THREE.Vector3 }
+
+/** Screen pixels to rays (from where the camera is now), and to what they hit in the office. */
+export interface Pointer {
+  ray(x: number, y: number): THREE.Ray;
+  pick(x: number, y: number): Hit | null;
+}
+
+/** Drawn and solid: not hidden, not see-through (glass, the selection ring), not an outline hull. */
+function solid(object: THREE.Object3D) {
+  if (!(object instanceof THREE.Mesh)) return false;
+  const material = object.material as THREE.Material;
+  if (material.transparent || material.side === THREE.BackSide) return false;
+  for (let o: THREE.Object3D | null = object; o; o = o.parent) if (!o.visible) return false;
+  return true;
+}
+
+/** The first solid surface `raycaster` hits under `root`. */
+export function pickSurface(raycaster: THREE.Raycaster, root: THREE.Object3D): Hit | null {
+  const hit = raycaster.intersectObject(root, true).find((h) => solid(h.object));
+  if (!hit) return null;
+  const normal = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, 1, 0);
+  return { point: hit.point.clone(), normal };
+}
+
+/** A point under the pointer, and the plane it slides along when dragged. */
+export interface Grab { point: THREE.Vector3; plane: THREE.Plane }
+
+/**
+ * What the pointer grabs: the surface under it (the floor, a desk, the big board), or, over nothing,
+ * the level plane through the target.
+ */
+export function grabAt(pointer: Pointer, orbit: Orbit, x: number, y: number): Grab | null {
+  const hit = pointer.pick(x, y);
+  if (hit) return { point: hit.point, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(hit.normal, hit.point) };
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -orbit.target.y);
+  const point = pointer.ray(x, y).intersectPlane(plane, new THREE.Vector3());
+  return point && { point, plane };
+}
+
+/**
+ * Map-style mouse: left (or middle) drag pans; right or Shift+left drag orbits. On touch and pen,
+ * one finger orbits (two fingers pan).
+ */
+export const pansWith = ({ button, shiftKey, pointerType }: { button: number; shiftKey: boolean; pointerType: string }) =>
+  pointerType === 'mouse' && (button === 1 || (button === 0 && !shiftKey));
+
+/** Right-drag orbits the office, so it doesn't open the browser's menu there. */
+export const blockContextMenu = (canvas: EventTarget) => canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+/** Back to the view on first load: starting angle, tilt and target, zoomed to fit the floor. */
+export function goHome(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: number) {
+  const start = initialOrbit();
+  orbit.theta = start.theta;
+  orbit.phi = start.phi;
+  orbit.target.copy(start.target);
+  frameFloor(camera, orbit, rows);
+}
+
+/** Returns a tap checker: true when a tap lands soon after, and close to, the previous one. */
+export function createDoubleTap(withinMs = 350, nearPx = 24) {
+  let last: { x: number; y: number; t: number } | null = null;
+  return (x: number, y: number, t: number) => {
+    const double = !!last && t - last.t <= withinMs && Math.hypot(x - last.x, y - last.y) <= nearPx;
+    last = double ? null : { x, y, t };
+    return double;
+  };
+}
 
 export function placeCamera(camera: THREE.PerspectiveCamera, { theta, phi, radius, target }: Orbit) {
   camera.position.set(
@@ -73,7 +182,8 @@ export function fitRadius(camera: THREE.PerspectiveCamera, orbit: Orbit, points:
 /** Sets the fov for the screen shape, aims at the floor and backs off until all of it is on screen. */
 export function frameFloor(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: number) {
   camera.fov = fovFor(camera.aspect);
-  const { left, right, back, front } = officeLayout(rows).bounds;
+  orbit.bounds = officeLayout(rows).bounds;
+  const { left, right, back, front } = orbit.bounds;
   orbit.target.z = (back + front) / 2 + 1.5;
   // Never closer than the hand-tuned desktop framing, so walls and furniture above the floor stay in view.
   const handTuned = 4 + Math.max(right - left, front - back) * 0.9;
@@ -82,33 +192,61 @@ export function frameFloor(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: 
   placeCamera(camera, orbit);
 }
 
+type ScreenPoint = { x: number; y: number };
+
+/** How far (px) a press may wobble and still count as a tap. */
+const TAP_SLOP = 4;
+
 /**
- * Pointer gestures on the canvas: one finger (or mouse) orbits, two fingers pinch-zoom.
- * A press that neither moves nor ever had a second finger counts as a tap.
+ * Pointer gestures on the canvas: a press orbits, or pans if it `pans` (see `pansWith`); two fingers
+ * pan and pinch-zoom towards their centre. Panning grabs the surface under the pointer (via
+ * `pointer`) and keeps it there. A press that `taps` (left button, a finger), barely moves and never
+ * had a second finger counts as a tap.
  */
-export function createGestures(orbit: Orbit) {
-  const pointers = new Map<number, { x: number; y: number }>();
+export function createGestures(orbit: Orbit, pointer: Pointer | null = null) {
+  const pointers = new Map<number, ScreenPoint>();
   let drag: { x: number; y: number; theta: number; phi: number } | null = null;
-  let pinch: { distance: number; radius: number } | null = null;
+  let pan: { at: ScreenPoint; plane: THREE.Plane | null } | null = null;
+  let pinch: { distance: number; radius: number; centre: ScreenPoint; plane: THREE.Plane | null } | null = null;
+  let pressedAt: ScreenPoint = { x: 0, y: 0 };
   let moved = false;
-  let multiTouch = false;
-  const spread = () => {
+  let tappable = false;
+  const noteMove = ({ x, y }: ScreenPoint) => {
+    if (Math.hypot(x - pressedAt.x, y - pressedAt.y) > TAP_SLOP) moved = true;
+  };
+  const grabPlane = ({ x, y }: ScreenPoint) => (pointer && grabAt(pointer, orbit, x, y)?.plane) || null;
+  const onPlane = (plane: THREE.Plane | null, { x, y }: ScreenPoint) =>
+    (plane && pointer?.ray(x, y).intersectPlane(plane, new THREE.Vector3())) || null;
+  /** Drags the grabbed surface from one screen point to another, so it stays under the pointer. */
+  const slide = (plane: THREE.Plane | null, from: ScreenPoint, to: ScreenPoint) => {
+    const grabbed = onPlane(plane, from), under = onPlane(plane, to);
+    if (!grabbed || !under) return panBy(orbit, to.x - from.x, to.y - from.y); // nothing to grab: slide along the floor
+    orbit.target.add(grabbed).sub(under);
+    keepInRoom(orbit);
+  };
+  const twoFingers = () => {
     const [a, b] = [...pointers.values()];
-    return Math.hypot(a.x - b.x, a.y - b.y);
+    return { spread: Math.hypot(a.x - b.x, a.y - b.y), centre: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   };
 
   return {
     get dragging() { return moved; },
-    down(id: number, x: number, y: number) {
+    /** `pans`: this press pans rather than orbits (see `pansWith`). `taps`: a still press is a click. */
+    down(id: number, x: number, y: number, { pans = false, taps = true } = {}) {
       pointers.set(id, { x, y });
+      drag = pan = null;
       if (pointers.size === 1) {
-        drag = { x, y, theta: orbit.theta, phi: orbit.phi };
+        pressedAt = { x, y };
         moved = false;
-        multiTouch = false;
+        tappable = taps;
+        if (pans) pan = { at: { x, y }, plane: grabPlane({ x, y }) };
+        else drag = { x, y, theta: orbit.theta, phi: orbit.phi };
       } else {
-        drag = null;
-        multiTouch = true;
-        if (pointers.size === 2) pinch = { distance: spread(), radius: orbit.radius };
+        tappable = false;
+        if (pointers.size === 2) {
+          const { spread, centre } = twoFingers();
+          pinch = { distance: spread, radius: orbit.radius, centre, plane: grabPlane(centre) };
+        }
       }
     },
     /** Returns whether the camera moved. */
@@ -116,23 +254,32 @@ export function createGestures(orbit: Orbit) {
       if (!pointers.has(id)) return false;
       pointers.set(id, { x, y });
       if (pinch && pointers.size === 2) {
-        orbit.radius = pinchRadius(pinch.radius, pinch.distance, spread(), orbit.maxRadius);
+        const { spread, centre } = twoFingers();
+        zoomToward(orbit, onPlane(pinch.plane, pinch.centre), pinchRadius(pinch.radius, pinch.distance, spread, orbit.maxRadius));
+        slide(pinch.plane, pinch.centre, centre);
+        pinch.centre = centre;
+        return true;
+      }
+      if (pan) {
+        slide(pan.plane, pan.at, { x, y });
+        pan.at = { x, y };
+        noteMove({ x, y });
         return true;
       }
       if (!drag) return false;
       const dx = x - drag.x, dy = y - drag.y;
-      if (Math.hypot(dx, dy) > 4) moved = true;
-      orbit.theta = THREE.MathUtils.clamp(drag.theta - dx * 0.005, -0.9, 0.9);
-      orbit.phi = THREE.MathUtils.clamp(drag.phi - dy * 0.004, 0.5, 1.15);
+      noteMove({ x, y });
+      orbit.theta = drag.theta - dx * 0.005;
+      orbit.phi = THREE.MathUtils.clamp(drag.phi - dy * 0.004, TILT.min, TILT.max);
       return true;
     },
     /** Returns whether this release was a tap. */
     up(id: number) {
       if (!pointers.delete(id)) return false;
       if (pointers.size < 2) pinch = null;
-      if (pointers.size > 0) { drag = null; return false; }
-      const tap = !!drag && !moved && !multiTouch;
-      drag = null;
+      if (pointers.size > 0) { drag = pan = null; return false; }
+      const tap = tappable && !moved;
+      drag = pan = null;
       moved = false;
       return tap;
     },

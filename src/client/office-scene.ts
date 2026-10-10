@@ -5,7 +5,7 @@ import { OfficeController, type OfficeEvent } from './controller.ts';
 import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { lookFor } from './look.ts';
-import { updateScreens } from './office.ts';
+import { updateBackWall, updateScreens } from './office.ts';
 
 /** The agent a picked mesh belongs to, if any. */
 export function agentKeyOf(object: THREE.Object3D | null | undefined): string | null {
@@ -98,7 +98,8 @@ export function createOfficeScene(host: HTMLElement) {
       if (c.mode === 'gone') { view.scene.remove(c.root); leaving.delete(c); }
     }
     const occupants = controller.occupants();
-    updateScreens(office.seats, occupants, t, view.camera.position);
+    updateScreens(office.seats, occupants, t);
+    updateBackWall(office, view.camera.position);
     office.board.update(occupants);
     const target = selected ? characters.get(selected) : undefined;
     ring.visible = !!target;

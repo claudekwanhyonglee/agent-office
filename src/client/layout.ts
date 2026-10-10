@@ -10,8 +10,6 @@ export interface SeatSpot {
   row: number;
   desk: Point;
   chair: Point;
-  /** The see-through screen, on the camera side of the desk. */
-  screenAt: Point;
   /** Facing direction of the seated agent (towards the camera side): forward is (sin yaw, cos yaw). */
   yaw: number;
   sit: Point;
@@ -53,12 +51,13 @@ const ROW_GAP = 3.4;
 /** Desk centre to desk centre along the arc. */
 const DESK_SPACING = 1.36;
 const CHAIR_BEHIND = 1.2;
-const SCREEN_AHEAD = 0.75;
 const APPROACH = 0.7;
 /** The walkway behind each row of chairs, measured from the row's desks. */
 const LANE_BEHIND = 2.1;
 
 export const FLOOR = { left: -9, right: 9, front: 13.4 };
+/** The back wall's height; the camera's pivot stays below it. */
+export const WALL_HEIGHT = 3.4;
 /** The glass wall between the office and the deck. */
 export const GLASS_Z = 6.8;
 export const GLASS_DOORS = [{ x0: -6.3, x1: -5.3 }, { x0: 5.3, x1: 6.3 }];
@@ -83,7 +82,7 @@ function seatsFor(rows: number): SeatSpot[] {
       const chair = onArc(r + CHAIR_BEHIND, angle), approach = onArc(r + CHAIR_BEHIND + APPROACH, angle);
       const desk = onArc(r, angle);
       seats.push({
-        index: seats.length, row, desk, chair, screenAt: onArc(r - SCREEN_AHEAD, angle),
+        index: seats.length, row, desk, chair,
         yaw: yawTowards(chair, desk), sit: chair, approach, standSpot: approach,
         link: [chair, approach, onArc(r + LANE_BEHIND, angle)],
       });

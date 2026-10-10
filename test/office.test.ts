@@ -12,14 +12,14 @@ function kinds(root: Object3D) {
 }
 
 describe('#2 AC3 empty office', () => {
-  // #13 changed the starting office to four pods of 4 desks; #25 to two rows of 8, with see-through screens for monitors.
-  it('#2 AC3 has desk rows with a screen and chair at every desk', () => {
+  // #13 changed the starting office to four pods of 4 desks; #25 to two rows of 8; #38 back to solid monitors.
+  it('#2 AC3 has desk rows with a monitor and chair at every desk', () => {
     const office = buildOffice(2);
     const count = kinds(office.group);
     expect(office.seats).toHaveLength(16);
     expect(count['desk-row']).toBe(2);
     expect(count.desk).toBe(16);
-    expect(count.screen).toBe(16);
+    expect(count.monitor).toBe(16);
     expect(count.chair).toBe(16);
   });
 

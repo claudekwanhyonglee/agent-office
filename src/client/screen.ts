@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
 import type { Point } from './layout.ts';
 import { SCREEN_OFF, screenColor } from './poses.ts';
-import { at, cyl, tag } from './toon.ts';
+import { at, box, tag } from './toon.ts';
 
 /** What a desk screen (and its big-board tile) shows. */
 export interface ScreenContent { name: string; state: OfficeState; lines: string[] }
@@ -44,9 +44,15 @@ const THEME: Record<OfficeState, { bg: string; edge: string }> = {
 };
 const TOOL_COLOR: [string, string][] = [['Bash', '#FFCF7A'], ['Edit', '#8FB8FF'], ['Write', '#8FB8FF'], ['Read', '#CDB8FF'], ['Grep', '#CDB8FF']];
 const toolColor = (line: string) => TOOL_COLOR.find(([tool]) => line.startsWith(tool))?.[1] ?? '#C9C0E3';
-const clip = (text: string, chars: number) => (text.length > chars ? `${text.slice(0, chars - 1)}…` : text);
+/** `text`, cut and ended with … if it's wider than `maxWidth` in the current font. */
+function fit(g: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  if (g.measureText(text).width <= maxWidth) return text;
+  let chars = text.length;
+  while (chars > 0 && g.measureText(`${text.slice(0, chars)}…`).width > maxWidth) chars--;
+  return `${text.slice(0, chars)}…`;
+}
 
-/** Draws `content` as a see-through holo screen. `typed` is how much of the newest working line has typed in (0–1). */
+/** Draws `content` as a screen card. `typed` is how much of the newest working line has typed in (0–1). */
 export function paintScreen(g: CanvasRenderingContext2D, content: ScreenContent, typed = 1) {
   const { width: w, height: h } = SCREEN_SIZE;
   const theme = THEME[content.state];
@@ -66,7 +72,7 @@ export function paintScreen(g: CanvasRenderingContext2D, content: ScreenContent,
   g.font = `700 15px ${MONO}`;
   g.textBaseline = 'middle';
   g.fillStyle = '#FFF8EC';
-  g.fillText(clip(content.name, 30), 14, 20);
+  g.fillText(fit(g, content.name, w - 50), 14, 20);
   g.fillStyle = theme.edge;
   g.beginPath();
   g.arc(w - 18, 19, 6, 0, Math.PI * 2);
@@ -100,8 +106,13 @@ export function paintScreen(g: CanvasRenderingContext2D, content: ScreenContent,
   }
 }
 
-function paintActivity(g: CanvasRenderingContext2D, lines: string[], typed: number) {
+/** Working lines that fit below the title bar; the newest are kept. */
+const MAX_LINES = 7;
+
+function paintActivity(g: CanvasRenderingContext2D, allLines: string[], typed: number) {
   g.font = `500 14px ${MONO}`;
+  // Room for the typing cursor after the longest line.
+  const lines = allLines.slice(-MAX_LINES).map((line) => fit(g, line, SCREEN_SIZE.width - 40));
   lines.forEach((line, i) => {
     const newest = i === lines.length - 1;
     const shown = newest ? line.slice(0, Math.ceil(line.length * typed)) : line;
@@ -126,7 +137,7 @@ function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, m
   }
   if (row) rows.push(row);
   if (rows.length > maxLines) rows.splice(maxLines - 1, Infinity, `${rows[maxLines - 1]}…`);
-  rows.forEach((r, i) => g.fillText(r, x, y + i * lineHeight));
+  rows.forEach((r, i) => g.fillText(fit(g, r, maxWidth), x, y + i * lineHeight));
 }
 
 function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -152,44 +163,42 @@ export function newCanvas(width: number, height: number) {
 
 const TYPE_SECONDS = 0.8;
 
+/** Screen size in metres; same shape as the canvas, so the card isn't stretched. */
+const DISPLAY = { width: 0.72, height: 0.72 / (SCREEN_SIZE.width / SCREEN_SIZE.height) };
+/** How far towards the front of the desk the monitor stands, and its screen's centre height. */
+const MONITOR_AHEAD = 0.22, MONITOR_Y = 1.22;
+
 /**
- * A see-through screen in front of a desk: a pane that turns to face the camera, over a little
- * projector on the desk that glows in the state's colour. Builds without a DOM; draws when it has one.
+ * A solid monitor at the front of a desk (dark body on a stand) whose screen faces the agent's
+ * chair. Builds without a DOM; draws the content when it has one.
  */
 export class DeskScreen {
-  readonly root = tag(new THREE.Group(), 'screen');
-  readonly pane: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
-  readonly glow: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>;
+  readonly root = tag(new THREE.Group(), 'monitor');
+  readonly display: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   content: ScreenContent | null = null;
-  /** The drawn screen, for the big board to copy; null without a canvas. */
-  readonly canvas: HTMLCanvasElement | null;
   private g: CanvasRenderingContext2D | null;
   private texture: THREE.CanvasTexture | null = null;
-  private key = '';
+  private key: string | null = null;
   private typingFrom = -Infinity;
   private typed = 1;
 
-  /** `at`: where the pane stands; `yaw`: the desk's facing; `deskBack`: how far behind the pane the projector sits. */
-  constructor(spot: Point, yaw: number, deskBack: number) {
+  /** `desk`: the desk's centre; `yaw`: its facing (forward is the front of the room). */
+  constructor(desk: Point, yaw: number) {
     const drawn = newCanvas(SCREEN_SIZE.width, SCREEN_SIZE.height);
-    this.canvas = drawn?.canvas ?? null;
     this.g = drawn?.g ?? null;
-    const material = new THREE.MeshBasicMaterial({ color: '#8FE3FF', transparent: true, opacity: 0.25, depthWrite: false });
-    if (this.canvas) {
-      this.texture = new THREE.CanvasTexture(this.canvas);
+    if (drawn) {
+      this.texture = new THREE.CanvasTexture(drawn.canvas);
       this.texture.colorSpace = THREE.SRGBColorSpace;
       this.texture.anisotropy = 4;
-      Object.assign(material, { map: this.texture, color: new THREE.Color('#FFFFFF'), opacity: 1 });
     }
-    this.pane = at(new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.72), material), 0, 1.4, 0);
-    this.pane.renderOrder = 5;
-    this.pane.visible = false;
-    this.glow = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.02, 20), new THREE.MeshBasicMaterial({ color: SCREEN_OFF }));
-    const projector = at(cyl(0.16, 0.2, 0.05, '#3A3150', { outline: 0.04 }), 0, 0.815, -deskBack);
-    projector.add(at(this.glow, 0, 0.03, 0));
-    this.root.add(this.pane, projector);
-    this.root.position.set(spot.x, 0, spot.z);
+    const body = at(box(DISPLAY.width + 0.1, DISPLAY.height + 0.1, 0.06, '#3A3150'), 0, MONITOR_Y, MONITOR_AHEAD);
+    const stand = at(box(0.1, 0.25, 0.08, '#4A4068'), 0, 0.92, MONITOR_AHEAD + 0.02);
+    this.display = at(new THREE.Mesh(new THREE.PlaneGeometry(DISPLAY.width, DISPLAY.height), new THREE.MeshBasicMaterial()), 0, MONITOR_Y, MONITOR_AHEAD - 0.035);
+    this.display.rotation.y = Math.PI; // turned (not mirrored) to face the chair
+    this.root.add(body, stand, this.display);
+    this.root.position.set(desk.x, 0, desk.z);
     this.root.rotation.y = yaw;
+    this.show(null, 0);
   }
 
   /** Shows `content` (null: an empty desk). Call every frame; it only redraws when something changed or is typing in. */
@@ -202,8 +211,7 @@ export class DeskScreen {
       this.typingFrom = newLine ? now : -Infinity;
       this.key = key;
       this.content = content;
-      this.pane.visible = !!content;
-      this.glow.material.color.set(content ? screenColor(content.state) : SCREEN_OFF);
+      this.light(content);
     }
     const typing = this.typed < 1;
     this.typed = Math.min(1, Math.max(0, (now - this.typingFrom) / TYPE_SECONDS));
@@ -213,10 +221,12 @@ export class DeskScreen {
     }
   }
 
-  /** Turns and tilts the pane to face the camera, so it always reads from the camera's side. */
-  face(camera: THREE.Vector3) {
-    const { x, z } = this.root.position;
-    const dx = camera.x - x, dz = camera.z - z;
-    this.pane.rotation.set(-Math.atan2(camera.y - this.pane.position.y, Math.hypot(dx, dz)), Math.atan2(dx, dz) - this.root.rotation.y, 0, 'YXZ');
+  /** Empty desks are dark; occupied ones show the drawn card (or, with no canvas, the state's glow). */
+  private light(content: ScreenContent | null) {
+    const { material } = this.display;
+    const map = content && this.texture;
+    if (material.map !== map) material.needsUpdate = true;
+    material.map = map || null;
+    material.color.set(!content ? SCREEN_OFF : map ? '#FFFFFF' : screenColor(content.state));
   }
 }

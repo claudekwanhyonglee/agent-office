@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { at, ball, box, cyl, tag, toonRamp } from './toon.ts';
 import {
-  DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, MEETING_ROOM, MEETING_TABLE, officeLayout, type OfficeLayout, type SeatSpot,
+  DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, MEETING_ROOM, MEETING_TABLE, WALL_HEIGHT, officeLayout, type OfficeLayout, type SeatSpot,
 } from './layout.ts';
 import { SCREEN_OFF } from './poses.ts';
 import { DeskScreen, screenContent } from './screen.ts';
@@ -15,21 +15,25 @@ export interface Seat extends SeatSpot {
 }
 
 /**
- * Each desk's screen shows its occupant (empty desks show nothing), turned towards `camera` when given.
+ * Each desk's monitor shows its occupant (empty desks stay dark).
  * Call every frame: screens only redraw when their content changes.
  */
-export function updateScreens(seats: Seat[], occupants: Map<number, AgentRecord>, now: number, camera?: THREE.Vector3) {
+export function updateScreens(seats: Seat[], occupants: Map<number, AgentRecord>, now: number) {
   for (const seat of seats) {
     seat.screen.show(screenContent(occupants.get(seat.index)), now);
-    if (camera) seat.screen.face(camera);
   }
+}
+
+/** Hides the back wall while the camera is behind it, so it doesn't block the view of the floor. */
+export function updateBackWall(office: { backWall: THREE.Object3D; layout: OfficeLayout }, camera: THREE.Vector3) {
+  office.backWall.visible = camera.z > office.layout.bounds.back;
 }
 
 /** The office with `rows` curved rows of desks. Builds without a DOM or WebGL. */
 export function buildOffice(rows: number) {
   const layout = officeLayout(rows);
   const group = new THREE.Group();
-  addRoom(group, layout);
+  const backWall = addRoom(group, layout);
   addFrontGlass(group);
   addMeetingRoom(group);
   addKitchen(group, layout);
@@ -44,11 +48,11 @@ export function buildOffice(rows: number) {
     const row = deskRows[spot.row];
     row.add(turned(at(buildDesk(), spot.desk.x, 0, spot.desk.z), spot.yaw));
     row.add(turned(at(buildChair(), spot.chair.x, 0, spot.chair.z), spot.yaw));
-    const screen = new DeskScreen(spot.screenAt, spot.yaw, Math.hypot(spot.screenAt.x - spot.desk.x, spot.screenAt.z - spot.desk.z) - 0.22);
+    const screen = new DeskScreen(spot.desk, spot.yaw);
     row.add(screen.root);
     return { ...spot, screen };
   });
-  return { group, seats, layout, board };
+  return { group, seats, layout, board, backWall };
 }
 
 const turned = <T extends THREE.Object3D>(obj: T, yaw: number) => {
@@ -90,11 +94,13 @@ function addRoom(group: THREE.Group, layout: OfficeLayout) {
 
   // The back wall is tall (the camera faces it, and the big board hangs on it); the left wall stays low.
   const backZ = back - 0.15;
-  group.add(tag(at(box(width + 0.3, 3.4, 0.25, WALL, { outline: 0.01 }), centerX, 1.7, backZ), 'wall'));
-  group.add(tag(at(box(0.25, 1.4, indoorDepth + 0.25, WALL, { outline: 0.01 }), left - 0.15, 0.7, indoorZ), 'wall'));
+  const backWall = new THREE.Group();
+  backWall.add(tag(at(box(width + 0.3, WALL_HEIGHT, 0.25, WALL, { outline: 0.01 }), centerX, WALL_HEIGHT / 2, backZ), 'wall'));
   for (const x of layout.windows) {
-    group.add(tag(at(box(1.0, 0.6, 0.05, '#BFE6F5', { outline: 0.03, shadow: false }), x, 1.9, backZ + 0.14), 'window'));
+    backWall.add(tag(at(box(1.0, 0.6, 0.05, '#BFE6F5', { outline: 0.03, shadow: false }), x, 1.9, backZ + 0.14), 'window'));
   }
+  group.add(backWall);
+  group.add(tag(at(box(0.25, 1.4, indoorDepth + 0.25, WALL, { outline: 0.01 }), left - 0.15, 0.7, indoorZ), 'wall'));
 
   const door = tag(new THREE.Group(), 'door');
   door.add(at(box(0.9, 2.0, 0.06, INK, { outline: 0, shadow: false }), 0, 1.0, 0));
@@ -103,6 +109,7 @@ function addRoom(group: THREE.Group, layout: OfficeLayout) {
   door.add(at(box(1.14, 0.12, 0.3, WOOD), 0, 2.06, 0.01));
   door.add(at(box(0.9, 0.03, 0.6, '#7FB069', { outline: 0.02, shadow: false }), 0, 0.015, 0.57));
   group.add(at(door, layout.door.x, 0, back + 0.13));
+  return backWall;
 }
 
 const glass = new THREE.MeshBasicMaterial({ color: '#BFE6F5', transparent: true, opacity: 0.28, depthWrite: false });
