@@ -19,18 +19,46 @@ describe('#2 page', () => {
     expect(status().textContent).toMatch(/3D isn.t available in this browser/);
   });
 
-  it('#2 AC3 shows "No Claude Code sessions running" with no agents', () => {
-    boot({ createOffice: () => ({ show() {}, onPick() {}, onHover() {} }) });
-    expect(status().hidden).toBe(false);
-    expect(status().textContent).toBe('No Claude Code sessions running');
-  });
-
-  it('#3 AC5 shows a feed error in place of the empty-state text', () => {
+  it('#3 AC5 shows a feed error in the status popup', () => {
     const app = boot({ createOffice: () => ({ show() {}, onPick() {}, onHover() {} }) })!;
     app.applyFeed({ error: 'claude agents failed: boom' });
     expect(status().hidden).toBe(false);
     expect(status().textContent).toContain('claude agents failed: boom');
+  });
+});
+
+const quietOffice = () => boot({ createOffice: () => ({ show() {}, onPick() {}, onHover() {} }) })!;
+const expectHidden = () => {
+  expect(status().hidden).toBe(true);
+  expect(status().textContent).toBe('');
+};
+
+describe('#10 quiet empty office', () => {
+  it('#10 AC1 with zero agents on boot, the status popup is hidden and empty', () => {
+    quietOffice();
+    expectHidden();
+  });
+
+  it('#10 AC1 an empty feed keeps the popup hidden and empty', () => {
+    quietOffice().applyFeed([]);
+    expectHidden();
+  });
+
+  it('#10 AC2 feed errors and the no-WebGL message still show in the popup', () => {
+    quietOffice().applyFeed({ error: 'claude agents failed: boom' });
+    expect(status().hidden).toBe(false);
+    expect(status().className).toContain('problem');
+    expect(status().textContent).toContain('claude agents failed: boom');
+
+    boot(); // jsdom has no WebGL
+    expect(status().hidden).toBe(false);
+    expect(status().textContent).toMatch(/3D isn.t available/);
+  });
+
+  it('#10 AC3 after a feed error, an empty feed hides the popup again', () => {
+    const app = quietOffice();
+    app.applyFeed({ error: 'boom' });
     app.applyFeed([]);
-    expect(status().textContent).toBe('No Claude Code sessions running');
+    expectHidden();
   });
 });

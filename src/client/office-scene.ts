@@ -1,10 +1,17 @@
 import * as THREE from 'three';
 import type { AgentRecord } from '../shared/agent.ts';
 import { createView } from './view.ts';
-import { OfficeController, INITIAL_PODS } from './controller.ts';
+import { OfficeController, INITIAL_PODS, type OfficeEvent } from './controller.ts';
 import { Character } from './character.ts';
 import { lookFor } from './look.ts';
 import { updateScreens, type Seat } from './office.ts';
+
+/** The agent a picked mesh belongs to, if any. */
+export function agentKeyOf(object: THREE.Object3D | null | undefined): string | null {
+  let node = object ?? null;
+  while (node && !node.userData.agentKey) node = node.parent;
+  return node?.userData.agentKey ?? null;
+}
 
 /** The live office: the 3D view plus a character for every listed agent. */
 export function createOfficeScene(host: HTMLElement) {
@@ -25,7 +32,11 @@ export function createOfficeScene(host: HTMLElement) {
   view.scene.add(ring);
 
   function show(records: AgentRecord[]) {
-    for (const event of controller.update(records)) {
+    apply(controller.update(records));
+  }
+
+  function apply(events: OfficeEvent[]) {
+    for (const event of events) {
       if (event.type === 'pods') {
         seats = view.setPodCount(event.count);
       } else if (event.type === 'arrive') {
@@ -34,7 +45,10 @@ export function createOfficeScene(host: HTMLElement) {
         view.scene.add(character.root);
         characters.set(event.key, character);
         if (event.walk) character.arrive(event.seat, event.record.state, event.path);
+        else if (event.place) character.placeAt(event.seat, event.record.state, event.place);
         else character.sitAt(event.seat, event.record.state);
+      } else if (event.type === 'walk') {
+        characters.get(event.key)?.go(event.path, event.place);
       } else if (event.type === 'state') {
         characters.get(event.key)?.setState(event.state);
       } else if (event.type === 'leave') {
@@ -53,9 +67,7 @@ export function createOfficeScene(host: HTMLElement) {
     const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(ndc, view.camera);
     const hit = raycaster.intersectObjects([...characters.values()].map((c) => c.root), true)[0];
-    let node: THREE.Object3D | null = hit?.object ?? null;
-    while (node && !node.userData.agentKey) node = node.parent;
-    return node?.userData.agentKey ?? null;
+    return agentKeyOf(hit?.object);
   }
 
   function onPick(handle: (key: string | null) => void) {
@@ -74,6 +86,7 @@ export function createOfficeScene(host: HTMLElement) {
   }
 
   view.onFrame((t, dt) => {
+    apply(controller.tick());
     characters.forEach((c) => c.update(t, dt));
     for (const c of leaving) {
       c.update(t, dt);

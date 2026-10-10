@@ -37,14 +37,15 @@ describe('#5 AC1 seating', () => {
 });
 
 describe('#5 AC2 more pods', () => {
-  it('#5 AC2 starts with two pods and adds one when every desk is taken', () => {
+  // #13 changed the unit: pods of 4, grown a whole row (2 pods) at a time, starting at 16 desks.
+  it('#5 AC2 adds desks when every desk is taken', () => {
     const c = new OfficeController();
-    c.update(range(1, 10));
-    expect(c.podCount).toBe(2);
-    c.update(range(1, 11));
-    expect(c.podCount).toBe(3);
-    expect(seatOf(c, 11)).toBe(10);
-    expect(seatLayout(3)[10].deskZ).toBeGreaterThan(seatLayout(2)[9].deskZ);
+    c.update(range(1, 16));
+    expect(c.podCount).toBe(4);
+    c.update(range(1, 17));
+    expect(c.podCount).toBe(6);
+    expect(seatOf(c, 17)).toBe(16);
+    expect(seatLayout(6)[16].deskZ).toBeGreaterThan(seatLayout(4)[15].deskZ);
   });
 });
 
@@ -102,9 +103,11 @@ describe('#5 AC4 walking in and out', () => {
   });
 
   it('#5 AC4 the walked character ends at its seat, and leaves through the door', () => {
-    const c = new OfficeController();
+    const clock = { t: 0 };
+    const c = new OfficeController({ now: () => clock.t });
     c.update([]);
     const [arrive] = ofType(c.update([rec(1)]), 'arrive');
+    clock.t = 30; // #14: the controller knows when the walk-in ends
     const character = new Character(lookFor('session-1'));
     character.arrive(arrive.seat, 'working', arrive.path);
     for (let t = 0; t < 30 && character.mode !== 'seated'; t += 0.05) character.update(t, 0.05);

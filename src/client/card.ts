@@ -14,6 +14,22 @@ const escapeHtml = (s: string) =>
 interface CardActions {
   close(): void;
   acknowledge(record: AgentRecord): void;
+  /** Whether the last message is shown in full, and how to flip it. */
+  expanded: boolean;
+  toggleMessage(): void;
+}
+
+const PREVIEW_LINES = 4;
+const PREVIEW_CHARS = 280;
+const isLong = (text: string) => text.split('\n').length > PREVIEW_LINES || text.length > PREVIEW_CHARS;
+const preview = (text: string) => `${text.split('\n').slice(0, PREVIEW_LINES).join('\n').slice(0, PREVIEW_CHARS).trimEnd()}…`;
+
+function messageSection(text: string | null, expanded: boolean) {
+  if (!text) return '';
+  const long = isLong(text);
+  const shown = long && !expanded ? preview(text) : text;
+  const toggle = long ? `<button class="btn link" data-more aria-expanded="${expanded}">${expanded ? 'Show less' : 'Show more'}</button>` : '';
+  return `<div class="section"><span class="label">Last message</span><p class="desc">${escapeHtml(shown)}</p>${toggle}</div>`;
 }
 
 export const attachCommand = (record: AgentRecord) => `claude attach ${record.id}`;
@@ -32,7 +48,7 @@ export function renderCard(card: HTMLElement, record: AgentRecord, actions: Card
       ${record.branch ? `<span>· ${escapeHtml(record.branch)}</span>` : ''}
       <span class="pill ${record.state}">${STATE_LABEL[record.state]}</span>
     </div>
-    ${record.lastMessage ? `<div class="section"><span class="label">Last message</span><p class="desc">${escapeHtml(record.lastMessage)}</p></div>` : ''}
+    ${messageSection(record.lastMessage, actions.expanded)}
     <div class="section">
       <span class="label">Pick it up</span>
       <div class="command"><code>${escapeHtml(command)}</code><button class="btn" data-copy>Copy</button></div>
@@ -45,6 +61,8 @@ export function renderCard(card: HTMLElement, record: AgentRecord, actions: Card
   copy.onclick = () => {
     navigator.clipboard?.writeText(command).then(() => { copy.textContent = 'Copied'; }, () => { copy.textContent = 'Copy failed'; });
   };
+  const more = card.querySelector<HTMLButtonElement>('[data-more]');
+  if (more) more.onclick = actions.toggleMessage;
   const ack = card.querySelector<HTMLButtonElement>('[data-ack]');
   if (ack) ack.onclick = () => { ack.disabled = true; actions.acknowledge(record); };
 }

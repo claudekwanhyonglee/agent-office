@@ -2,17 +2,17 @@ import * as THREE from 'three';
 import type { OfficeState } from '../shared/agent.ts';
 import { at, ball, cyl, mesh } from './toon.ts';
 import type { Look, HatKind } from './look.ts';
-import type { Point, SeatSpot } from './layout.ts';
+import { WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
 
 const SEAT_Y = 0.38;
-const WALK_SPEED = 1.7;
 const HOP_SECONDS = 0.45;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const motion = REDUCED_MOTION ? 0.35 : 1;
 
-export type Mode = 'seated' | 'standing' | 'walking' | 'hopping' | 'exiting' | 'gone';
+/** `hanging` is an idle agent at a hangout place (see `place`). */
+export type Mode = 'seated' | 'standing' | 'hanging' | 'walking' | 'hopping' | 'exiting' | 'gone';
 
 const vec = (p: Point, y = 0) => new THREE.Vector3(p.x, y, p.z);
 
@@ -29,6 +29,7 @@ export class Character {
   state: OfficeState = 'working';
   bubbleKind: BubbleKind | null = null;
   seat?: SeatSpot;
+  place: HangoutPlace | null = null;
 
   private pivot = new THREE.Group();
   private head = new THREE.Group();
@@ -36,6 +37,7 @@ export class Character {
   private hands: THREE.Mesh[];
   private feet: THREE.Mesh[];
   private mug = new THREE.Group();
+  private snack: THREE.Mesh;
   private bubble: THREE.Sprite;
   private path: THREE.Vector3[] = [];
   private onArrive?: () => void;
@@ -96,6 +98,9 @@ export class Character {
     this.mug.add(handle);
     this.mug.position.set(0.04, 0.1, 0.06);
     this.hands[1].add(this.mug);
+    this.snack = mesh(new THREE.BoxGeometry(0.2, 0.08, 0.14), '#E2B347', { outline: 0.06 });
+    this.snack.position.set(-0.02, 0.1, 0.06);
+    this.hands[0].add(this.snack);
 
     this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true }));
     this.bubble.center.set(0.5, 0);
@@ -104,9 +109,10 @@ export class Character {
     this.root.add(this.bubble);
   }
 
-  get pose(): Pose | 'walking' {
+  get pose(): Pose | HangoutPose | 'walking' {
     if (this.mode === 'seated') return POSES[this.state].pose;
     if (this.mode === 'standing') return 'standing';
+    if (this.mode === 'hanging') return this.place!.pose;
     return 'walking';
   }
 
@@ -115,6 +121,20 @@ export class Character {
     this.seat = seat;
     this.state = state;
     this.settle();
+  }
+
+  /** Place straight at a hangout spot (idle agents already there when the page opens). */
+  placeAt(seat: SeatSpot, state: OfficeState, place: HangoutPlace) {
+    this.seat = seat;
+    this.state = state;
+    this.hangAt(place);
+  }
+
+  /** Walk along `path` to a hangout `place`, or back to the desk when it's null. */
+  go(path: Point[], place: HangoutPlace | null) {
+    if (!place) this.setOff(path, path.length - 1, () => this.hopToPlace());
+    else if (place.sits) this.setOff(path, path.length - 1, () => this.hop(vec(place, SEAT_Y), place.yaw, () => this.hangAt(place)));
+    else this.setOff(path, path.length, () => this.hangAt(place));
   }
 
   /** Walk in from the door along `path` (which ends at the seat), then sit down. */
@@ -133,11 +153,30 @@ export class Character {
     else if (this.mode === 'standing' && state !== 'finished') this.hopToPlace();
   }
 
-  /** Get up and walk out along `path` (desk → door), then disappear. */
+  /** Walk out along `path` (from wherever the agent is to the door), then disappear. */
   leave(path: Point[]) {
-    const out = () => this.walk(path.slice(2), () => { this.mode = 'exiting'; this.exitK = 0; });
-    if (this.mode === 'seated' || this.mode === 'standing') this.hop(vec(path[1]), this.root.rotation.y, out);
-    else out();
+    this.setOff(path, path.length, () => { this.mode = 'exiting'; this.exitK = 0; });
+  }
+
+  /**
+   * Start along `path` (whose first point is where the agent is, or a point behind it on the leg
+   * it's walking) and walk up to point `end`: hop off a chair or sofa first, or turn round mid-walk.
+   */
+  private setOff(path: Point[], end: number, then: () => void) {
+    const walkFrom = (from: number) => this.walk(path.slice(from, end), then);
+    const offFurniture = this.mode === 'seated' || this.mode === 'standing' || (this.mode === 'hanging' && this.place!.sits);
+    if (offFurniture) this.hop(vec(path[1] ?? path[0]), this.root.rotation.y, () => walkFrom(2));
+    else if (this.mode === 'hanging') walkFrom(1);
+    else if (this.mode === 'hopping') this.hopTween!.then = () => walkFrom(0);
+    else walkFrom(0);
+    this.place = null;
+  }
+
+  private hangAt(place: HangoutPlace) {
+    this.place = place;
+    this.mode = 'hanging';
+    this.root.position.copy(vec(place, place.sits ? SEAT_Y : 0));
+    this.root.rotation.y = place.yaw;
   }
 
   private settle() {
@@ -174,7 +213,9 @@ export class Character {
     p.scale.set(1, 1, 1);
     head.rotation.set(0, 0, 0);
     this.mug.visible = false;
-    let bubble: BubbleKind | null = null;
+    this.snack.visible = false;
+    // Every agent keeps its state's bubble, wherever it is.
+    const bubble: BubbleKind | null = POSES[this.state].bubble;
     let bubbleY = 2.2;
 
     this.blinkAt -= dt;
@@ -192,7 +233,6 @@ export class Character {
       fl.position.set(-0.16, -0.24, 0.34);
       fr.position.set(0.16, -0.24, 0.34);
       const pose = POSES[this.state].pose;
-      bubble = POSES[this.state].bubble;
       if (pose === 'typing') {
         p.position.y = Math.sin(tt * 9) * 0.012 * motion;
         head.rotation.x = 0.14 + Math.sin(tt * 1.3) * 0.04 * motion;
@@ -233,8 +273,9 @@ export class Character {
       fl.position.set(-0.17, 0.06, 0.04);
       fr.position.set(0.17, 0.06, 0.04);
       head.rotation.x = -0.1;
-      bubble = 'finished';
       bubbleY = 2.15 + hopY;
+    } else if (this.mode === 'hanging') {
+      bubbleY = this.hangingPose(this.place!, tt, dt);
     }
 
     this.bubbleKind = bubble;
@@ -246,6 +287,41 @@ export class Character {
       this.bubble.position.set(0.32, bubbleY, 0);
     }
     this.root.scale.setScalar(this.scale);
+  }
+
+  /** Poses at a hangout place; returns the bubble height. */
+  private hangingPose(place: HangoutPlace, tt: number, dt: number) {
+    const p = this.pivot, head = this.head, [hl, hr] = this.hands, [fl, fr] = this.feet;
+    this.root.rotation.y = lerpAngle(this.root.rotation.y, place.yaw, Math.min(1, dt * 8));
+    if (place.pose === 'lounging') {
+      fl.position.set(-0.16, -0.24, 0.34);
+      fr.position.set(0.16, -0.24, 0.34);
+      p.rotation.x = -0.28;
+      head.rotation.x = -0.1 + Math.sin(tt * 0.8) * 0.05 * motion;
+      hl.position.set(-0.4, 0.42, 0.2);
+      hr.position.set(0.34, 0.62, 0.36);
+      this.mug.visible = true;
+      return 2.1;
+    }
+    fl.position.set(-0.17, 0.06, 0.04);
+    fr.position.set(0.17, 0.06, 0.04);
+    if (place.pose === 'chatting') {
+      const talk = Math.sin(tt * 6);
+      p.position.y = Math.abs(Math.sin(tt * 3)) * 0.03 * motion;
+      head.rotation.x = Math.sin(tt * 2.4) * 0.12 * motion;
+      head.rotation.z = Math.sin(tt * 1.3) * 0.08 * motion;
+      hl.position.set(-0.42, 0.75 + Math.max(0, talk) * 0.18 * motion, 0.22);
+      hr.position.set(0.42, 0.75 + Math.max(0, -talk) * 0.18 * motion, 0.22);
+    } else {
+      const eating = place.pose === 'eating';
+      const bite = (tt % 4) / 4 < 0.25;
+      const hand = eating ? hl : hr;
+      (eating ? hr : hl).position.set(eating ? 0.47 : -0.47, 0.6, 0.06);
+      hand.position.lerp(bite ? new THREE.Vector3(eating ? -0.1 : 0.1, 1.08, 0.42) : new THREE.Vector3(eating ? -0.36 : 0.36, 0.66, 0.34), Math.min(1, dt * 8));
+      head.rotation.x = bite ? -0.2 : 0;
+      (eating ? this.snack : this.mug).visible = true;
+    }
+    return 2.2 + Math.sin(tt * 1.6) * 0.04 * motion;
   }
 
   private locomote(dt: number) {

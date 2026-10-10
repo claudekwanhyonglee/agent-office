@@ -35,7 +35,8 @@ export interface TranscriptDetails {
   branch: string | null;
 }
 
-const MAX_MESSAGE = 300;
+/** Safety cap only: the card collapses long messages itself. */
+const MAX_MESSAGE = 20_000;
 const NONE: TranscriptDetails = { lastMessage: null, branch: null };
 
 interface Block { type?: string; text?: string; name?: string; input?: { questions?: { question?: unknown }[] } }
