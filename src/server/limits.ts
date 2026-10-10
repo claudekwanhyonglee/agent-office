@@ -1,18 +1,7 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { claudeConfigDir, type Paths } from './transcript.ts';
-
-export interface LimitWindow {
-  usedPercentage: number;
-  /** Epoch milliseconds. */
-  resetsAt: number;
-}
-
-export interface Limits {
-  /** The 5-hour window; null when unknown. */
-  session: LimitWindow | null;
-  weekly: LimitWindow | null;
-}
+import type { LimitWindow, Limits } from '../shared/usage.ts';
 
 /** Where bin/statusline.js saves the limits (keep the two in step). */
 export function limitsFile(paths: Paths = {}) {

@@ -1,14 +1,9 @@
 import path from 'node:path';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { projectName } from './agents.ts';
-import type { LimitWindow } from './limits.ts';
+import type { LimitWindow, ProjectTokens } from '../shared/usage.ts';
 
 const WEEK = 7 * 24 * 3600 * 1000;
-
-export interface ProjectTokens {
-  project: string;
-  tokens: number;
-}
 
 /** One model reply, as counted toward the weekly total. */
 interface Reply {

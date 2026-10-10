@@ -3,8 +3,7 @@ import os from 'node:os';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { claudeConfigDir, type Paths } from './transcript.ts';
 
-/** Is limit tracking (our status line in Claude's settings.json) set up? */
-export type TrackingStatus = 'enabled' | 'off' | 'other' | 'unreadable';
+import type { TrackingStatus } from '../shared/usage.ts';
 
 export interface TrackingFiles {
   /** Claude Code's user settings. */

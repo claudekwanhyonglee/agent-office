@@ -132,7 +132,9 @@ describe('#6 AC5 phone width', () => {
   it('#6 AC5 card and header fit the screen; long text wraps or scrolls inside', () => {
     const css = readFileSync('src/client/style.css', 'utf8');
     const rule = (selector: string, source = css) => source.match(new RegExp(`(^|\\n)\\s*${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`))?.[2] ?? '';
-    expect(rule('.brand')).toMatch(/max-width:\s*calc\(100% - 32px\)/);
+    // The header sits in the left column (#47), which keeps it on screen.
+    expect(rule('.left')).toMatch(/max-width:\s*calc\(100% - 32px\)/);
+    expect(rule('.brand')).toMatch(/max-width:\s*100%/);
     expect(rule('.brand')).toMatch(/flex-wrap:\s*wrap/);
     expect(rule('.card')).toMatch(/max-width:\s*calc\(100% - 32px\)/);
     expect(rule('.command code')).toMatch(/overflow-x:\s*auto/);

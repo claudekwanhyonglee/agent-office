@@ -9,6 +9,7 @@ import { createAckStore } from './acknowledged.ts';
 import { limitsFile, readLimits } from './limits.ts';
 import { weekStart, weeklyTokens } from './tokens.ts';
 import { claudeConfigDir } from './transcript.ts';
+import type { UsagePayload } from '../shared/usage.ts';
 import { enableTracking, refreshScript, trackingFiles, trackingStatus } from './tracking.ts';
 
 const POLL_MS = 2000;
@@ -20,7 +21,7 @@ const acknowledged = createAckStore();
 const tracking = { ...trackingFiles(), scriptSource: fileURLToPath(new URL('../../../bin/statusline.js', import.meta.url)) };
 refreshScript(tracking);
 const projectsDir = join(claudeConfigDir(), 'projects');
-function readUsage() {
+function readUsage(): UsagePayload {
   const now = Date.now();
   const limits = readLimits(limitsFile(), now);
   return { tracking: trackingStatus(tracking), limits, projects: weeklyTokens(projectsDir, weekStart(limits.weekly, now)) };
