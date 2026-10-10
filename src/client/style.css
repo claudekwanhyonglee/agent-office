@@ -26,15 +26,44 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 #scene canvas.dragging { cursor: grabbing; }
 #scene canvas.pointing { cursor: pointer; }
 
-.brand {
+.left {
   position: absolute; left: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
-  max-width: calc(100% - 32px); box-sizing: border-box;
+  max-width: calc(100% - 32px);
+  /* Clears the Home button at the bottom left. */
+  max-height: calc(100% - 88px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
+  /* The gaps around the logo and panel belong to the office: drags and clicks go through. */
+  pointer-events: none;
+}
+.left > * { pointer-events: auto; }
+.brand {
+  flex-shrink: 0; max-width: 100%; box-sizing: border-box;
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 16px;
   border-radius: 14px; background: var(--panel); border: 1px solid var(--line);
 }
 .brand h1 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: .2px; }
 .brand span { font-size: 13px; color: var(--muted); }
 .count { white-space: nowrap; }
+
+.usage {
+  width: 260px; max-width: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 10px 14px;
+  border-radius: 14px; background: var(--panel); border: 1px solid var(--line); font-size: 13px;
+}
+.usage-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.usage-body { display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
+.usage-body[hidden] { display: none; }
+.usage p { margin: 0; line-height: 1.4; }
+.muted { color: var(--muted); }
+.limit { display: flex; flex-direction: column; gap: 5px; }
+.limit-line { display: flex; align-items: baseline; gap: 8px; }
+.limit-line .muted { margin-left: auto; font-size: 12px; }
+.bar { height: 8px; border-radius: 999px; background: var(--chip); overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: inherit; background: var(--blue); }
+.notice { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; color: var(--muted); }
+.notice .problem { color: var(--amber); }
+.projects { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.projects li { display: flex; justify-content: space-between; gap: 12px; }
+.projects li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .count.needs b { color: var(--amber); }
 
 .card {
@@ -120,5 +149,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 
 @media (max-width: 700px) {
   .card { top: auto; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); right: 16px; left: 16px; width: auto; max-width: none; max-height: 52%; overflow-y: auto; }
+  /* Ends above the highest the card can reach (52% + 12px from the bottom), with a gap. */
+  .left { max-height: calc(48% - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   .hint { display: none; }
 }

@@ -1,6 +1,7 @@
 import './style.css';
 import { createOfficeScene } from './office-scene.ts';
 import { renderCard, renderCounts, showTooltip } from './card.ts';
+import { startUsagePanel } from './usage.ts';
 import type { AgentRecord, FeedPayload } from '../shared/agent.ts';
 
 export function hasWebGL() {
@@ -85,6 +86,7 @@ export function boot({ createOffice }: BootOptions = {}) {
 }
 
 if (!import.meta.env.VITEST) {
+  startUsagePanel(document.getElementById('usage')!);
   const app = boot();
   if (app) {
     const events = new EventSource('/api/events');
