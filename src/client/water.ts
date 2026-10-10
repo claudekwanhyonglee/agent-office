@@ -69,20 +69,34 @@ function fishModel(color: string) {
   return fish;
 }
 
-/** The pond's fish, swimming their loops. */
+/** A "!!" (two bars over two dots), shown over a fish that's spotted the float (#58). */
+function alertMark() {
+  const mark = new THREE.Group();
+  for (const dx of [-0.05, 0.05]) {
+    mark.add(at(mesh(new THREE.BoxGeometry(0.035, 0.14, 0.035), '#FFB648', { outline: 0.1, shadow: false }), dx, 0.1, 0));
+    mark.add(at(ball(0.022, '#FFB648', { outline: 0.1, shadow: false }), dx, -0.01, 0));
+  }
+  return mark;
+}
+
+/** The pond's fish, swimming their loops; one may be caught (#58). */
 export class PondFish {
   readonly fish = ['#F07A4A', '#E2B347'].slice(0, FISH).map(fishModel);
+  readonly alerts = this.fish.map(alertMark);
 
   constructor(parent: THREE.Object3D) {
-    parent.add(...this.fish);
+    parent.add(...this.fish, ...this.alerts);
     this.update(0);
   }
 
-  update(t: number) {
+  /** `caught`: a fish taking part in a catch, where the cast puts it. */
+  update(t: number, caught: { index: number; at: { x: number; y: number; z: number }; heading: number; alert: boolean } | null = null) {
     this.fish.forEach((f, i) => {
-      const at = fishAt(i, t);
+      const at = caught?.index === i ? { ...caught.at, heading: caught.heading } : fishAt(i, t);
       f.position.set(at.x, at.y, at.z);
       f.rotation.y = at.heading;
+      this.alerts[i].visible = caught?.index === i && caught.alert;
+      this.alerts[i].position.set(at.x, 0.45, at.z);
     });
   }
 }

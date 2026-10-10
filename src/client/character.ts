@@ -7,6 +7,7 @@ import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
 import { HIT, hitTimes, type Rally, type Side } from './pong.ts';
 import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
+import { ROD_HAND, ROD_LENGTH, rodPitch, type Cast } from './fishing.ts';
 import { BOARD, COLLECT_FROM, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, dartsAt } from './darts.ts';
 
 const SEAT_Y = 0.38;
@@ -75,6 +76,8 @@ export class Character {
   /** How this agent's ring drifts in a pool dip (#57), and the paddle home before climbing out. */
   private drift: Drift | null = null;
   private returning: { from: Afloat; k: number; then: () => void } | null = null;
+  /** The cast this angler is making (#58), and seconds into it. */
+  private casting: { cast: Cast; t: number } | null = null;
   /** Seconds since the agent got to its hangout place. */
   private placeTime = 0;
   /** Seconds since the agent started leaving; its bubble pops, then stays gone (#49). */
@@ -206,6 +209,16 @@ export class Character {
     return this.drift ? driftAt(this.drift, this.placeTime) : still;
   }
 
+  /** A new cast starts now (#58). */
+  fish(cast: Cast) {
+    this.casting = { cast, t: 0 };
+  }
+
+  /** Fishing from the jetty (#58). */
+  fishing() {
+    return this.mode === 'hanging' && this.place?.pose === 'fishing';
+  }
+
   /** At the darts line (#54): where, and seconds since arriving there (the board's darts follow it). */
   dartsThrower() {
     return this.mode === 'hanging' && this.place?.pose === 'throwing-darts' ? { place: this.place, t: this.placeTime } : null;
@@ -251,6 +264,7 @@ export class Character {
     else walkFrom(0);
     this.place = null;
     this.rally = null;
+    this.casting = null;
   }
 
   private hangAt(place: HangoutPlace) {
@@ -410,7 +424,8 @@ export class Character {
       const held = this.held[place.pose];
       if (held) held.visible = true;
       if (this.rally) this.rally.t += dt;
-      return activity({ pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally, placeTime: this.placeTime }, tt);
+      if (this.casting) this.casting.t += dt;
+      return activity({ casting: this.casting, pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally, placeTime: this.placeTime }, tt);
     }
     if (place.pose === 'chatting') {
       const talk = Math.sin(tt * 6);
@@ -552,6 +567,7 @@ interface Body {
   rally?: { rally: Rally; side: Side; t: number } | null;
   /** Seconds since arriving at the place. */
   placeTime?: number;
+  casting?: { cast: Cast; t: number } | null;
 }
 
 /** Darts (#54): the throwing hand while aiming, drawn back just before the release, and at the release. */
@@ -652,12 +668,13 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     fr.position.set(0.12, 0.42, 0.12);
     return 2.4;
   },
-  fishing: ({ head, hands: [hl, hr], held }, tt) => {
-    const bob = Math.sin(tt * 2.2) * 0.05 * motion;
+  fishing: ({ head, hands: [hl, hr], held, casting }) => {
+    // The rod points out over the water, tip up; a cast swings it back over the shoulder and forward (#58).
+    const pitch = casting ? rodPitch(casting.cast, casting.t) : 0.5;
     head.rotation.x = 0.15;
     hl.position.set(-0.12, 0.75, 0.42);
-    hr.position.set(0.1, 0.82 + bob, 0.45);
-    if (held) held.rotation.x = -0.9 + bob;
+    hr.position.set(ROD_HAND.x, ROD_HAND.y, ROD_HAND.z);
+    if (held) held.rotation.x = Math.PI / 2 - pitch;
     return 2.2;
   },
   'throwing-darts': ({ head, hands: [hl, hr], feet: [fl, fr], held, placeTime = 0 }) => {
@@ -809,9 +826,9 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
 
 function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   const rod = new THREE.Group();
-  const pole = at(cyl(0.015, 0.025, 1.6, '#8C6A4A', { outline: 0 }), 0, 0.8, 0);
+  const pole = at(cyl(0.015, 0.025, ROD_LENGTH, '#8C6A4A', { outline: 0 }), 0, ROD_LENGTH / 2, 0);
+  pole.userData.part = 'rod';
   rod.add(pole);
-  rod.add(at(cyl(0.004, 0.004, 0.9, '#FFFFFF', { outline: 0, shadow: false }), 0, 1.6, 0.0));
   const dart = dartModel();
   const ball = at(mesh(new THREE.SphereGeometry(0.13, 16, 12), '#F07A4A', { outline: 0.06 }), 0, 0.15, 0.1);
   // Gripped near the butt: the tip is 1.025 m along from the hand.

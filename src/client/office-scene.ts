@@ -5,7 +5,7 @@ import { OfficeController, type OfficeEvent } from './controller.ts';
 import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { PaperPlanes } from './paper-planes.ts';
-import { BoardDarts, DeskMugs, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
+import { BoardDarts, DeskMugs, FishingGear, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
 import { PondFish, updateWater } from './water.ts';
 import { Dog } from './dog.ts';
 import { lookFor } from './look.ts';
@@ -33,6 +33,8 @@ export function createOfficeScene(host: HTMLElement) {
   const pongBall = new PongBallMesh(view.scene);
   const boardDarts = new BoardDarts(view.scene);
   const pondFish = new PondFish(view.scene);
+  const fishingGear = new FishingGear(view.scene);
+  let pondTime = 0;
   const dog = new Dog();
   dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
   view.scene.add(dog.root);
@@ -78,6 +80,12 @@ export function createOfficeScene(host: HTMLElement) {
       } else if (event.type === 'dog') {
         if (event.path.length === 1) dog.placeAt(event.path[0], event.lie);
         else dog.go(event.path, event.lie);
+      } else if (event.type === 'cast') {
+        const angler = characters.get(event.key);
+        if (angler?.place) {
+          angler.fish(event.cast);
+          fishingGear.start(event.cast, angler.place, pondTime);
+        }
       } else if (event.type === 'cheer') {
         for (const key of event.keys) characters.get(key)?.cheer();
       } else if (event.type === 'drift') {
@@ -129,8 +137,11 @@ export function createOfficeScene(host: HTMLElement) {
     planes.update(dt);
     poolBalls.update(dt);
     pongBall.update(dt);
+    pondTime = t;
     updateWater(t);
-    pondFish.update(t);
+    if ([...characters.values()].some((c) => c.fishing())) fishingGear.update(dt);
+    else fishingGear.stop();
+    pondFish.update(t, fishingGear.frame()?.fish ?? null);
     office.tv.update([...characters.values()].some((c) => c.onSofa()), t);
     const dip = office.layout.hangouts.find((s) => s.name === 'pool-dip')!.places;
     const riders = [...characters.values(), ...leaving];

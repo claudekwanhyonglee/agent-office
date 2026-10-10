@@ -6,6 +6,7 @@ import { dartModel } from './character.ts';
 import { THROWS, dartFlight, dartsAt } from './darts.ts';
 import type { Afloat } from './float.ts';
 import { POND_DEPTH, POOL_DEPTH, waterSurface } from './water.ts';
+import { CAST_SECONDS, castAt, type Cast, type CastFrame } from './fishing.ts';
 import { toonRamp } from './toon.ts';
 import { BALL_R, POCKETS, POCKET_R, SHOT_SECONDS, ballsAt } from './pool.ts';
 import { BALL_R as PONG_BALL_R, NET_TOP, pongBallAt, type Rally } from './pong.ts';
@@ -245,6 +246,65 @@ export function floatRings(group: THREE.Object3D, afloat: (Afloat | null)[]) {
     o.position.set(home.x - pool.x + (a?.x ?? 0), RING_Y + (a?.bob ?? 0), home.z - pool.z + (a?.z ?? 0));
     o.rotation.z = a?.spin ?? 0;
   });
+}
+
+/** The angler's float, line and ripple (#58), following the cast the controller says. */
+export class FishingGear {
+  readonly float = new THREE.Group();
+  readonly line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: '#F4EEE2' }));
+  readonly ripple = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 32), new THREE.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, depthWrite: false }));
+  private cast: { cast: Cast; place: HangoutPlace; start: number; t: number } | null = null;
+  private now: CastFrame | null = null;
+
+  constructor(parent: THREE.Object3D) {
+    this.float.add(at(ball(0.04, '#FF5A5A', { outline: 0.08, shadow: false }), 0, 0.02, 0));
+    this.float.add(at(ball(0.03, '#FFFFFF', { outline: 0.08, shadow: false }), 0, 0.06, 0));
+    this.ripple.rotation.x = -Math.PI / 2;
+    this.ripple.renderOrder = 2;
+    parent.add(this.float, this.line, this.ripple);
+    this.stop();
+  }
+
+  /** A cast from `place` starts now, `start` seconds on the pond's clock (its fish's paths). */
+  start(cast: Cast, place: HangoutPlace, start: number) {
+    this.cast = { cast, place, start, t: 0 };
+    this.update(0);
+  }
+
+  stop() {
+    this.cast = this.now = null;
+    this.float.visible = this.line.visible = this.ripple.visible = false;
+  }
+
+  /** The current moment of the cast, for the fish taking part in a catch. */
+  frame() {
+    return this.now;
+  }
+
+  update(dt: number) {
+    if (!this.cast) return;
+    const c = this.cast;
+    c.t = Math.min(c.t + dt, CAST_SECONDS);
+    const f = (this.now = castAt(c.cast, c.t, c.place, c.start));
+    this.float.visible = !!f.float;
+    if (f.float) this.float.position.set(f.float.x, f.float.y, f.float.z);
+    this.line.visible = true;
+    const positions = this.line.geometry.getAttribute('position') as THREE.BufferAttribute;
+    positions.setXYZ(0, f.tip.x, f.tip.y, f.tip.z);
+    positions.setXYZ(1, f.lineEnd.x, f.lineEnd.y, f.lineEnd.z);
+    positions.needsUpdate = true;
+    this.ripple.visible = !!f.ripple;
+    if (f.ripple) {
+      this.ripple.position.set(f.ripple.x, 0.035, f.ripple.z);
+      this.ripple.scale.setScalar(f.ripple.radius);
+      this.ripple.material.opacity = f.ripple.opacity;
+    }
+  }
+
+  lineEnds() {
+    const p = this.line.geometry.getAttribute('position');
+    return [0, 1].map((i) => new THREE.Vector3().fromBufferAttribute(p, i));
+  }
 }
 
 /** The pool's coping, around the hole in the deck (#63). */

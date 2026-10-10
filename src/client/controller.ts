@@ -6,6 +6,8 @@ import {
 import { SHOT_COUNT, SHOT_SECONDS } from './pool.ts';
 import { hitter, rallySeconds, type Rally, type Side } from './pong.ts';
 import { RETURN_SECONDS, driftParams, type Drift } from './float.ts';
+import { CAST_SECONDS, landingFrom, type Cast } from './fishing.ts';
+import { FISH } from './water.ts';
 
 /** Seconds an idle agent waits at its desk before wandering off (AC: within 3 s). */
 const SET_OFF = { min: 1, max: 2.5 };
@@ -37,6 +39,8 @@ const RALLY_HITS = { min: 1, max: 9 };
 /** Seconds between cheers on the sofa while anyone sits there (#61). */
 const CHEER_EVERY = { min: 20, max: 60 };
 const SOFA = ['lounge', 'couch-co-op'];
+/** How often a cast ends in a catch (#58). */
+const CATCH_CHANCE = 0.35;
 
 const isIdle = (state: OfficeState) => state === 'done' || state === 'finished';
 
@@ -99,7 +103,9 @@ export type OfficeEvent =
   /** How agent `key`'s ring will drift once it's afloat in the pool dip it's walking to (#57). */
   | { type: 'drift'; key: string; drift: Drift }
   /** Everyone sitting on the sofa (`keys`) fist-pumps, all at once (#61). */
-  | { type: 'cheer'; keys: string[] };
+  | { type: 'cheer'; keys: string[] }
+  /** Agent `key` casts from the jetty (#58): where the float lands, and the fish it catches, if any. */
+  | { type: 'cast'; key: string; cast: Cast };
 
 export interface DogState {
   spot: DogSpot;
@@ -555,6 +561,13 @@ export class OfficeController {
     if (agent.place?.pose === 'throwing-ball' && this.dog.arrivesAt <= now) {
       this.fetch(key, now, events);
       agent.actAt = now + this.between(FETCH_EVERY);
+      return;
+    }
+    if (agent.place?.pose === 'fishing') {
+      const landing = landingFrom(this.clock.random);
+      const fish = this.clock.random() < CATCH_CHANCE ? Math.floor(this.clock.random() * FISH) : null;
+      events.push({ type: 'cast', key, cast: { landing, fish } });
+      agent.actAt = now + CAST_SECONDS;
       return;
     }
     if (agent.place?.pose !== 'throwing-plane') return;
