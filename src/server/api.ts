@@ -2,13 +2,35 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ApiHandler } from './http.ts';
 import type { Feed } from './feed.ts';
 import type { AckStore } from './acknowledged.ts';
+import { isThisMachine } from './tracking.ts';
+
+export interface UsageApi {
+  read(): unknown;
+  /** Turns on limit tracking; returns the same payload as read(). */
+  enable(): unknown;
+}
 
 const MAX_BODY = 4096;
 const MAX_ID = 200;
 
-export function createApi(feed: Feed, acknowledged?: AckStore): ApiHandler {
+export function createApi(feed: Feed, acknowledged?: AckStore, usage?: UsageApi): ApiHandler {
   return async (req, res) => {
     const path = new URL(req.url ?? '/', 'http://local').pathname;
+
+    if (req.method === 'GET' && path === '/api/usage' && usage) {
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(JSON.stringify(usage.read()));
+      return true;
+    }
+
+    if (req.method === 'POST' && path === '/api/usage/enable' && usage) {
+      // Edits Claude's settings: JSON only (no cross-site posts) and never from another machine.
+      if (!req.headers['content-type']?.startsWith('application/json')) return reply(res, 415, 'Send JSON.');
+      if (!isThisMachine(req.socket.remoteAddress)) return reply(res, 403, 'Limit tracking can only be enabled on this computer.');
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(JSON.stringify(usage.enable()));
+      return true;
+    }
 
     if (req.method === 'GET' && path === '/api/agents') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });

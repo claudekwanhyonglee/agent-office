@@ -48,8 +48,16 @@ Agent Office only reads local Claude Code data, and never sends anything anywher
 
 - It runs `claude agents --json --all` and reads session transcripts in your Claude config folder
   (`$CLAUDE_CONFIG_DIR`, or `.claude` in your home folder).
-- The only thing it writes is the list of agents you dismissed with Got it, in `.agent-office/acknowledged.json`
+- It writes the list of agents you dismissed with Got it, in `.agent-office/acknowledged.json`
   in your home folder.
+- Only if you press **Enable limit tracking** in the usage panel, it also:
+  - copies a small script to `.agent-office/statusline.js` in your home folder (and updates it when Agent Office starts),
+  - adds a `statusLine` entry running that script to Claude Code's `settings.json` in your Claude config folder,
+    keeping your other settings. It never replaces a status line you already have.
+
+  Claude Code then runs the script on each status line refresh; it saves your plan's 5-hour and weekly limits
+  to `agent-office-limits.json` in your Claude config folder. It prints nothing and adds nothing to Claude's context.
+  To turn it off, remove the `statusLine` entry. Enabling only works from this computer, even with `--lan`.
 - By default the server listens on 127.0.0.1 only, so other machines can't reach it.
   With `--lan` (or `LAN=1`) it listens on your network too, and anyone on that network can see the office
   and press Got it; it still refuses requests addressed to any other host name.
