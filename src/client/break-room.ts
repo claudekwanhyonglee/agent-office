@@ -1,7 +1,9 @@
 // Break-room props (#29), at their plan C positions. Each is tagged so route tests treat it as furniture.
 import * as THREE from 'three';
 import { at, ball, box, cyl, mesh, tag } from './toon.ts';
-import { BREAK_ROOM, type SeatSpot } from './layout.ts';
+import { BREAK_ROOM, type HangoutPlace, type SeatSpot } from './layout.ts';
+import { dartModel } from './character.ts';
+import { THROWS, dartFlight, dartsAt } from './darts.ts';
 import { BALL_R, POCKETS, POCKET_R, SHOT_SECONDS, ballsAt } from './pool.ts';
 import { BALL_R as PONG_BALL_R, NET_TOP, pongBallAt, type Rally } from './pong.ts';
 
@@ -194,6 +196,28 @@ export class PongBallMesh {
     const at = this.rally && pongBallAt(this.rally, this.t);
     this.mesh.visible = !!at?.visible;
     if (at) this.mesh.position.set(BREAK_ROOM.pingPong.x + at.x, at.y, BREAK_ROOM.pingPong.z + at.z);
+  }
+}
+
+/** The darts in the air or stuck in the board (#54), following the thrower at the line; none without one. */
+export class BoardDarts {
+  readonly darts = Array.from({ length: THROWS }, () => dartModel());
+
+  constructor(parent: THREE.Object3D) {
+    parent.add(...this.darts);
+    this.update(null);
+  }
+
+  update(thrower: { place: HangoutPlace; t: number } | null) {
+    const round = thrower && dartsAt(thrower.t);
+    this.darts.forEach((dart, i) => {
+      const k = !round ? null : i < round.stuck ? 1 : round.flying?.index === i ? round.flying.k : null;
+      dart.visible = k != null;
+      if (k == null) return;
+      const { origin, dir } = dartFlight(thrower!.place, i, k);
+      dart.position.set(origin.x, origin.y, origin.z);
+      dart.lookAt(origin.x + dir.x, origin.y + dir.y, origin.z + dir.z);
+    });
   }
 }
 

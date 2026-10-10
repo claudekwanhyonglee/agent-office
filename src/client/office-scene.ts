@@ -5,7 +5,7 @@ import { OfficeController, type OfficeEvent } from './controller.ts';
 import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { PaperPlanes } from './paper-planes.ts';
-import { DeskMugs, PongBallMesh, PoolBalls } from './break-room.ts';
+import { BoardDarts, DeskMugs, PongBallMesh, PoolBalls } from './break-room.ts';
 import { Dog } from './dog.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
@@ -30,6 +30,7 @@ export function createOfficeScene(host: HTMLElement) {
   const mugs = new DeskMugs(view.scene);
   const poolBalls = new PoolBalls(view.scene);
   const pongBall = new PongBallMesh(view.scene);
+  const boardDarts = new BoardDarts(view.scene);
   const dog = new Dog();
   dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
   view.scene.add(dog.root);
@@ -122,6 +123,7 @@ export function createOfficeScene(host: HTMLElement) {
     planes.update(dt);
     poolBalls.update(dt);
     pongBall.update(dt);
+    boardDarts.update([...characters.values()].map((c) => c.dartsThrower()).find((d) => d) ?? null);
     dog.update(t, dt);
     for (const c of leaving) {
       c.update(t, dt);

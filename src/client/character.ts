@@ -6,6 +6,7 @@ import { WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatS
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
 import { HIT, hitTimes, type Rally, type Side } from './pong.ts';
+import { BOARD, COLLECT_FROM, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, dartsAt } from './darts.ts';
 
 const SEAT_Y = 0.38;
 const WOOD_DARK = '#8C6A4A';
@@ -65,6 +66,8 @@ export class Character {
   private highFiving = 0;
   /** The table-tennis rally this agent is playing (#70): which end it's at, and seconds into the rally. */
   private rally: { rally: Rally; side: Side; t: number } | null = null;
+  /** Seconds since the agent got to its hangout place. */
+  private placeTime = 0;
   /** Seconds since the agent started leaving; its bubble pops, then stays gone (#49). */
   private leftFor: number | null = null;
 
@@ -178,6 +181,11 @@ export class Character {
     this.rally = rally && { rally, side, t: 0 };
   }
 
+  /** At the darts line (#54): where, and seconds since arriving there (the board's darts follow it). */
+  dartsThrower() {
+    return this.mode === 'hanging' && this.place?.pose === 'throwing-darts' ? { place: this.place, t: this.placeTime } : null;
+  }
+
   /** Raise a hand for a high five (#33), whatever the agent is doing. */
   highFive() {
     this.highFiving = HIGH_FIVE_SECONDS;
@@ -207,6 +215,7 @@ export class Character {
   private hangAt(place: HangoutPlace) {
     this.place = place;
     this.mode = 'hanging';
+    this.placeTime = 0;
     this.root.position.copy(vec(place, place.sits ? SEAT_Y : 0));
     this.root.rotation.y = place.yaw;
   }
@@ -333,7 +342,9 @@ export class Character {
   /** Poses at a hangout place; returns the bubble height. */
   private hangingPose(place: HangoutPlace, tt: number, dt: number) {
     const p = this.pivot, head = this.head, [hl, hr] = this.hands, [fl, fr] = this.feet;
+    this.placeTime += dt;
     this.root.rotation.y = lerpAngle(this.root.rotation.y, place.yaw, Math.min(1, dt * 8));
+    if (place.pose === 'throwing-darts') this.collectDarts(place);
     if (place.pose === 'lounging') {
       fl.position.set(-0.16, -0.24, 0.34);
       fr.position.set(0.16, -0.24, 0.34);
@@ -351,7 +362,7 @@ export class Character {
       const held = this.held[place.pose];
       if (held) held.visible = true;
       if (this.rally) this.rally.t += dt;
-      return activity({ pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally }, tt);
+      return activity({ pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally, placeTime: this.placeTime }, tt);
     }
     if (place.pose === 'chatting') {
       const talk = Math.sin(tt * 6);
@@ -370,6 +381,15 @@ export class Character {
       (eating ? this.snack : this.mug).visible = true;
     }
     return 2.2 + Math.sin(tt * 1.6) * 0.04 * motion;
+  }
+
+  /** Darts (#54): after a round, walk up to the board to pull the darts out, then back to the line. */
+  private collectDarts(place: HangoutPlace) {
+    const walk = dartsAt(this.placeTime).walk;
+    const back = dartsAt(this.placeTime + 0.05).walk < walk;
+    const to = BOARD.x + COLLECT_FROM;
+    this.root.position.set(place.x + (to - place.x) * walk, 0, place.z);
+    if (walk > 0) this.root.rotation.y = back ? place.yaw + Math.PI : place.yaw;
   }
 
   private locomote(dt: number) {
@@ -471,6 +491,24 @@ function hat(kind: HatKind, color: string) {
 interface Body {
   pivot: THREE.Group; head: THREE.Group; hands: THREE.Mesh[]; feet: THREE.Mesh[]; held?: THREE.Object3D;
   rally?: { rally: Rally; side: Side; t: number } | null;
+  /** Seconds since arriving at the place. */
+  placeTime?: number;
+}
+
+/** Darts (#54): the throwing hand while aiming, drawn back just before the release, and at the release. */
+const AIM_HAND = new THREE.Vector3(0.25, 1.45, 0.15);
+const DRAWN_HAND = new THREE.Vector3(0.25, 1.5, -0.05);
+const THROWN_HAND = new THREE.Vector3(RELEASE_HAND.x, RELEASE_HAND.y, RELEASE_HAND.z);
+
+/** The throwing hand `u` seconds into a throw: aim, draw back, snap forward to let go, follow through, back to aim. */
+function dartHand(u: number) {
+  const ease = (k: number) => k * k * (3 - 2 * k);
+  const from = (a: THREE.Vector3, b: THREE.Vector3, k: number) => a.clone().lerp(b, ease(Math.min(1, Math.max(0, k))));
+  if (u < RELEASE_AT - 0.3) return AIM_HAND.clone();
+  if (u < RELEASE_AT - 0.12) return from(AIM_HAND, DRAWN_HAND, (u - (RELEASE_AT - 0.3)) / 0.18);
+  if (u < RELEASE_AT) return DRAWN_HAND.clone().lerp(THROWN_HAND, (u - (RELEASE_AT - 0.12)) / 0.12);
+  if (u < RELEASE_AT + 0.4) return THROWN_HAND.clone();
+  return from(THROWN_HAND, AIM_HAND, (u - RELEASE_AT - 0.4) / 0.4);
 }
 
 /** Table tennis (#70): the bat's blade sits this far from the hand; a swing takes SWING seconds, centred on the hit. */
@@ -548,14 +586,20 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     if (held) held.rotation.x = -0.9 + bob;
     return 2.2;
   },
-  'throwing-darts': ({ pivot, head, hands: [hl, hr], held }, tt) => {
-    const k = throwPhase(tt, 2.6);
-    const windUp = k < 0.6;
-    pivot.rotation.y = windUp ? -0.15 : 0.1;
+  'throwing-darts': ({ head, hands: [hl, hr], feet: [fl, fr], held, placeTime = 0 }) => {
+    const round = dartsAt(placeTime), r = ((placeTime % ROUND) + ROUND) % ROUND;
     head.rotation.x = -0.05;
     hl.position.set(-0.45, 0.65, 0.1);
-    hr.position.copy(windUp ? new THREE.Vector3(0.3, 1.35, -0.05) : new THREE.Vector3(0.22, 1.25, 0.55));
-    if (held) held.visible = windUp;
+    if (held) held.visible = round.holding;
+    if (r < THROWS * THROW_EVERY) {
+      hr.position.copy(dartHand(r % THROW_EVERY));
+      return 2.2;
+    }
+    // Collecting: walking up to the board and back, reaching up to pull the darts out.
+    const step = round.walk > 0 && round.walk < 1 ? Math.sin(placeTime * 11) : 0;
+    fl.position.set(-0.17, 0.06 + Math.max(0, step) * 0.1, 0.04 + step * 0.16);
+    fr.position.set(0.17, 0.06 + Math.max(0, -step) * 0.1, 0.04 - step * 0.16);
+    hr.position.set(0.3, round.walk === 1 ? 1.55 : 0.6, round.walk === 1 ? 0.4 : 0.06);
     return 2.2;
   },
   'shooting-hoops': ({ pivot, head, hands: [hl, hr], feet: [fl, fr], held }, tt) => {
@@ -695,8 +739,7 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   const pole = at(cyl(0.015, 0.025, 1.6, '#8C6A4A', { outline: 0 }), 0, 0.8, 0);
   rod.add(pole);
   rod.add(at(cyl(0.004, 0.004, 0.9, '#FFFFFF', { outline: 0, shadow: false }), 0, 1.6, 0.0));
-  const dart = at(cyl(0.012, 0.03, 0.18, '#FF5A5A', { outline: 0.05 }), 0, 0.08, 0.05);
-  dart.rotation.x = Math.PI / 2;
+  const dart = dartModel();
   const ball = at(mesh(new THREE.SphereGeometry(0.13, 16, 12), '#F07A4A', { outline: 0.06 }), 0, 0.15, 0.1);
   // Gripped near the butt: the tip is 1.025 m along from the hand.
   const cue = () => tag(at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.3, 0), 'cue');
@@ -721,6 +764,30 @@ function gamepad() {
   pad.add(at(ball(0.025, '#FF5A5A', { outline: 0, shadow: false }), -0.04, 0.1, 0.02));
   pad.add(at(ball(0.025, '#4D86FF', { outline: 0, shadow: false }), -0.2, 0.1, 0.02));
   return pad;
+}
+
+/** A dart (#54): point, barrel, shaft and crossed flights, pointing along +z from its origin (the grip). */
+export function dartModel() {
+  const dart = new THREE.Group();
+  const along = (o: THREE.Mesh, z: number, part?: string) => {
+    o.rotation.x = Math.PI / 2;
+    o.position.z = z;
+    if (part) o.userData.part = part;
+    return dart.add(o);
+  };
+  along(cyl(0.001, 0.005, 0.05, '#C9C0E3', { outline: 0, shadow: false }), 0.1, 'dart-point');
+  along(cyl(0.011, 0.011, 0.06, '#FF5A5A', { outline: 0.05, shadow: false }), 0.045, 'dart-barrel');
+  along(cyl(0.004, 0.004, 0.06, INK_DARK, { outline: 0, shadow: false }), -0.015);
+  const flights = new THREE.Group();
+  flights.userData.part = 'dart-flights';
+  for (const turn of [0, Math.PI / 2]) {
+    const fin = mesh(new THREE.BoxGeometry(0.05, 0.002, 0.045), '#4D86FF', { outline: 0, shadow: false });
+    fin.rotation.z = turn;
+    flights.add(fin);
+  }
+  flights.position.z = -0.045;
+  dart.add(flights);
+  return dart;
 }
 
 /** A small white dart-shaped plane, nose along +z. */
