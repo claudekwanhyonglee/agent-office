@@ -126,9 +126,18 @@ describe('#6 AC5 phone width', () => {
   });
 });
 
+describe('#17 AC1 the card shows the last message as Markdown', () => {
+  it('#17 AC1 the card renders **hi** as <strong>hi</strong>', () => {
+    const { pick } = start([{ ...rec(1, 'done'), lastMessage: '**hi** <b>no</b>' }]);
+    pick('session-1');
+    expect(card().querySelector('.desc strong')!.textContent).toBe('hi');
+    expect(card().querySelector('.desc b')).toBeNull();
+  });
+});
+
 describe('#11 expandable last message', () => {
   const withMessage = (lastMessage: string) => ({ ...rec(1, 'done'), lastMessage });
-  const desc = () => card().querySelector('.desc')!.textContent!;
+  const desc = () => card().querySelector('.desc')!.textContent!.trim();
   const longText = 'A'.repeat(200) + ' ' + 'B'.repeat(200);
   const manyLines = ['one', 'two', 'three', 'four', 'five'].join('\n');
 

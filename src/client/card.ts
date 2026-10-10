@@ -1,4 +1,5 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
+import { escapeHtml, renderMarkdown } from './markdown.ts';
 
 export const STATE_LABEL: Record<OfficeState, string> = {
   working: 'Working',
@@ -8,8 +9,6 @@ export const STATE_LABEL: Record<OfficeState, string> = {
   finished: 'Finished',
 };
 
-const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 interface CardActions {
   close(): void;
@@ -29,7 +28,7 @@ function messageSection(text: string | null, expanded: boolean) {
   const long = isLong(text);
   const shown = long && !expanded ? preview(text) : text;
   const toggle = long ? `<button class="btn link" data-more aria-expanded="${expanded}">${expanded ? 'Show less' : 'Show more'}</button>` : '';
-  return `<div class="section"><span class="label">Last message</span><p class="desc">${escapeHtml(shown)}</p>${toggle}</div>`;
+  return `<div class="section"><span class="label">Last message</span><div class="desc">${renderMarkdown(shown)}</div>${toggle}</div>`;
 }
 
 export const attachCommand = (record: AgentRecord) => `claude attach ${record.id}`;
