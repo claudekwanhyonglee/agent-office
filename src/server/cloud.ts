@@ -18,10 +18,15 @@ interface Login { token: string; expiresAt?: number; organization?: string }
 
 const readJson = (read: () => string) => { try { return JSON.parse(read()); } catch { return null; } };
 
+/** Why the keychain gave nothing, shown when no login is found. */
+let keychainProblem = '';
+
 function keychainCredentials(): Promise<string | null> {
   if (process.platform !== 'darwin') return Promise.resolve(null);
   return new Promise((resolve) => {
-    execFile('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], { timeout: 10_000 }, (error, stdout) => {
+    // Generous timeout: macOS may be waiting for you to click Allow on its keychain prompt.
+    execFile('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], { timeout: 120_000 }, (error, stdout, stderr) => {
+      keychainProblem = error ? (error.killed ? 'the keychain prompt timed out' : String(stderr).trim() || error.message) : '';
       resolve(error ? null : stdout.trim());
     });
   });
@@ -37,7 +42,7 @@ export async function readLogin(env: NodeJS.ProcessEnv = process.env): Promise<L
   return oauth?.accessToken ? { token: oauth.accessToken, expiresAt: oauth.expiresAt, organization } : null;
 }
 
-const NO_LOGIN = "Couldn't find your Claude login on this computer. Run `claude` and sign in with your Claude account, then restart Agent Office.";
+const NO_LOGIN = "Couldn't read your Claude login on this computer. Run `claude` and sign in with your Claude account, then restart Agent Office.";
 const EXPIRED = 'Your Claude login on this computer has expired. Run `claude` once (it refreshes the login), or set CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token` so it never expires.';
 
 /** Older and newer session APIs name the state differently; this gives the office one status bucket. */
@@ -84,7 +89,7 @@ const ENDPOINTS = [{ path: '/v1/code/sessions', beta: false }, { path: '/v1/sess
 
 export async function listCloudSessions(env: NodeJS.ProcessEnv = process.env): Promise<CloudSession[]> {
   const login = await readLogin(env);
-  if (!login) throw new Error(NO_LOGIN);
+  if (!login) throw new Error(keychainProblem ? `${NO_LOGIN} (Keychain: ${keychainProblem}. If macOS asks, click Always Allow.)` : NO_LOGIN);
   let last = '';
   for (const endpoint of working ? [working] : ENDPOINTS) {
     const res = await request(endpoint.path, login, endpoint.beta);
