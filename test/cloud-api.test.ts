@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseSession, sessionsFromResponse, wantsCloud } from '../src/server/cloud.ts';
+import { cloudAckStore, normaliseSession, rememberUpdated, sessionsFromResponse, wantsCloud } from '../src/server/cloud.ts';
 import { mapCloudState } from '../src/cloud/sessions.ts';
 
 describe('cloud mode', () => {
@@ -40,5 +40,17 @@ describe('cloud mode', () => {
     expect(sessionsFromResponse({ sessions: [{ id: 'b' }] }).map((s) => s.id)).toEqual(['b']);
     expect(sessionsFromResponse([{ id: 'c' }]).map((s) => s.id)).toEqual(['c']);
     expect(sessionsFromResponse(null)).toEqual([]);
+  });
+});
+
+describe('cloudAckStore', () => {
+  it('hides a session only until it updates again', () => {
+    const ids = new Set<string>();
+    const store = cloudAckStore({ has: (id) => ids.has(id), add: (id) => { ids.add(id); }, remove: (id) => { ids.delete(id); } });
+    rememberUpdated([{ id: 'cse_1', updated_at: '2026-10-12T05:00:00Z' } as never]);
+    store.add('cse_1');
+    expect(store.has('cse_1')).toBe(true);
+    rememberUpdated([{ id: 'cse_1', updated_at: '2026-10-12T06:00:00Z' } as never]);
+    expect(store.has('cse_1')).toBe(false);
   });
 });

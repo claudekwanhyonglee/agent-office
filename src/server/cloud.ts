@@ -2,6 +2,7 @@
 // with the login `claude` already saved on this computer. The token is only ever sent to Anthropic's API.
 // ponytail: this uses the same unpublished endpoint `claude --teleport` uses, so a Claude Code update may change it.
 import { execFile } from 'node:child_process';
+import type { AckStore } from './acknowledged.ts';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -126,8 +127,25 @@ export async function listCloudSessions(env: NodeJS.ProcessEnv = process.env): P
   return [...byId.values()];
 }
 
+/** Each session's updated_at from the last fetch, so a "Got it" lasts only until the session moves on. */
+const lastUpdated = new Map<string, string>();
+
+/**
+ * Resolving a Projects thread doesn't change its session record, so one that last asked for you keeps waving.
+ * "Got it" hides a cloud session until it next updates; acks are stored as `id@updated_at`.
+ */
+export function cloudAckStore(base: AckStore): AckStore {
+  const key = (id: string) => `${id}@${lastUpdated.get(id) ?? ''}`;
+  return { has: (id) => base.has(key(id)), add: (id) => base.add(key(id)), remove: (id) => base.remove(key(id)) };
+}
+
+export function rememberUpdated(sessions: CloudSession[]) {
+  for (const s of sessions) lastUpdated.set(s.id, s.updated_at ?? '');
+}
+
 /** The agent records the page shows in cloud mode. */
 export async function loadCloudAgents({ now, acknowledged }: { now: number; acknowledged?: { has(id: string): boolean } }): Promise<AgentRecord[]> {
-  const records = buildCloudList(await listCloudSessions(), now);
-  return records.filter((r) => !(acknowledged?.has(r.sessionId) && (r.state === 'finished' || r.state === 'stale')));
+  const sessions = await listCloudSessions();
+  rememberUpdated(sessions);
+  return buildCloudList(sessions, now).filter((r) => r.state === 'working' || !acknowledged?.has(r.sessionId));
 }

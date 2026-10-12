@@ -5,7 +5,7 @@ import { createApi } from './api.ts';
 import { createFeed } from './feed.ts';
 import { listClaudeAgents } from './claude.ts';
 import { loadAgents } from './load.ts';
-import { loadCloudAgents, wantsCloud } from './cloud.ts';
+import { cloudAckStore, loadCloudAgents, wantsCloud } from './cloud.ts';
 import { createAckStore } from './acknowledged.ts';
 import { limitsFile, readLimits } from './limits.ts';
 import { weekStart, weeklyTokens } from './tokens.ts';
@@ -21,7 +21,7 @@ const port = resolvePort(process.env);
 const lan = wantsLan(process.argv, process.env);
 const cloud = wantsCloud(process.argv, process.env);
 
-const acknowledged = createAckStore();
+const acknowledged = cloud ? cloudAckStore(createAckStore()) : createAckStore();
 const tracking = { ...trackingFiles(), scriptSource: fileURLToPath(new URL('../../../bin/statusline.js', import.meta.url)) };
 refreshScript(tracking);
 const projectsDir = join(claudeConfigDir(), 'projects');

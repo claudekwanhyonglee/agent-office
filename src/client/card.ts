@@ -56,7 +56,7 @@ export function renderCard(card: HTMLElement, record: AgentRecord, actions: Card
         ? `<div><a class="btn primary" href="${escapeHtml(actions.openLink(record))}" target="_blank" rel="noopener">Open session</a></div>`
         : `<div class="command"><code>${escapeHtml(command)}</code><button class="btn" data-copy>Copy</button></div>`}
     </div>
-    ${canDismiss(record) ? '<div><button class="btn primary" data-ack>Got it</button></div>' : ''}`;
+    ${canDismiss(record) || (actions.openLink && record.state !== 'working') ? '<div><button class="btn primary" data-ack>Got it</button></div>' : ''}`;
   card.hidden = false;
 
   card.querySelector<HTMLButtonElement>('[data-close]')!.onclick = actions.close;
