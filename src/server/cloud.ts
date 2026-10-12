@@ -131,8 +131,15 @@ const QUERIES = ['', '&tags=hearth-thread'].map((q) => `/v1/code/sessions?limit=
 export async function listCloudSessions(env: NodeJS.ProcessEnv = process.env): Promise<CloudSession[]> {
   const login = await readLogin(env);
   if (!login) throw new Error(keychainProblem ? `${NO_LOGIN} (Keychain: ${keychainProblem}. If macOS asks, click Always Allow.)` : NO_LOGIN);
-  const responses = await Promise.all(QUERIES.map((path) => request(path, login, false)));
+  let responses = await Promise.all(QUERIES.map((path) => request(path, login, false)));
+  // ~/.claude.json can name a different organization than the saved login (e.g. a work setup), so retry without it.
+  if (responses.some((res) => res.status === 401) && login.organization) {
+    const bare = { ...login, organization: undefined };
+    responses = await Promise.all(QUERIES.map((path) => request(path, bare, false)));
+  }
   if (responses.some((res) => res.status === 401)) {
+    const body = (await responses.find((res) => res.status === 401)!.text()).slice(0, 200);
+    console.error(`Anthropic said 401: ${body}`);
     throw new Error(login.expiresAt && login.expiresAt < Date.now() ? EXPIRED : `${EXPIRED} (HTTP 401)`);
   }
   const ok = responses.filter((res) => res.ok);
