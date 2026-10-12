@@ -34,6 +34,21 @@ Or set `LAN=1`, e.g. `LAN=1 npx github:claudekwanhyonglee/agent-office`. It then
 
 There is no login: anyone on your network can see the office and press **Got it**. Only use it on a network you trust.
 
+## Cloud sessions on your computer
+
+If you run Claude Code in the cloud (claude.ai/code, the Claude app, Projects), start the office in cloud mode:
+
+```sh
+npx github:savvymonkeyfoo/agent-office#cloud-artifact --cloud
+```
+
+Or set `CLOUD=1`. It lists your cloud sessions every 5 seconds using the Claude login `claude` saved on this computer
+(the macOS keychain, or `.credentials.json` in your Claude config folder). The login is only sent to Anthropic's API.
+If the login expires, run `claude` once to refresh it, or set `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
+Click an agent to open its session on claude.ai.
+
+This uses the same unpublished endpoint `claude --teleport` uses, so a Claude Code update could break it.
+
 ## Cloud sessions (claude.ai artifact)
 
 This fork can also run as a private claude.ai artifact that shows your Claude Code **cloud** sessions

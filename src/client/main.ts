@@ -3,6 +3,7 @@ import { createOfficeScene } from './office-scene.ts';
 import { renderCard, showTooltip } from './card.ts';
 import { startUsagePanel } from './usage.ts';
 import { hasWebGL } from './webgl.ts';
+import { sessionUrl } from '../cloud/sessions.ts';
 import type { AgentRecord, FeedPayload } from '../shared/agent.ts';
 
 export { hasWebGL };
@@ -51,6 +52,8 @@ export function boot({ createOffice }: BootOptions = {}) {
       acknowledge,
       expanded,
       toggleMessage: () => { expanded = !expanded; select(selected); },
+      // Cloud sessions (ids like session_…) open on claude.ai instead of `claude attach`.
+      openLink: selected.startsWith('session_') ? sessionUrl : undefined,
     });
   }
 
