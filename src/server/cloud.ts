@@ -25,7 +25,7 @@ function keychainCredentials(): Promise<string | null> {
   if (process.platform !== 'darwin') return Promise.resolve(null);
   return new Promise((resolve) => {
     // Generous timeout: macOS may be waiting for you to click Allow on its keychain prompt.
-    execFile('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], { timeout: 120_000 }, (error, stdout, stderr) => {
+    execFile('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], { timeout: 120_000, maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
       keychainProblem = error ? (error.killed ? 'the keychain prompt timed out' : String(stderr).trim() || error.message) : '';
       resolve(error ? null : stdout.trim());
     });
@@ -37,9 +37,18 @@ export async function readLogin(env: NodeJS.ProcessEnv = process.env): Promise<L
   const account = readJson(() => readFileSync(join(homedir(), '.claude.json'), 'utf8'));
   const organization: string | undefined = account?.oauthAccount?.organizationUuid;
   if (env.CLAUDE_CODE_OAUTH_TOKEN) return { token: env.CLAUDE_CODE_OAUTH_TOKEN, organization };
-  const raw = (await keychainCredentials()) ?? readJson(() => readFileSync(join(claudeConfigDir(), '.credentials.json'), 'utf8'));
-  const oauth = (typeof raw === 'string' ? readJson(() => raw) : raw)?.claudeAiOauth;
-  return oauth?.accessToken ? { token: oauth.accessToken, expiresAt: oauth.expiresAt, organization } : null;
+  const fromKeychain = await keychainCredentials();
+  const raw = fromKeychain ?? readJson(() => readFileSync(join(claudeConfigDir(), '.credentials.json'), 'utf8'));
+  const parsed = typeof raw === 'string' ? readJson(() => raw) : raw;
+  const oauth = parsed?.claudeAiOauth;
+  if (!oauth?.accessToken) {
+    // Describe what was found without showing any of it.
+    if (fromKeychain != null && !parsed) keychainProblem = `got ${fromKeychain.length} characters that aren't JSON (first character code ${fromKeychain.charCodeAt(0)})`;
+    else if (parsed) keychainProblem = `found ${Object.keys(parsed).join(', ')} but no claudeAiOauth.accessToken`;
+    else if (!keychainProblem) keychainProblem = fromKeychain == null ? 'nothing returned' : 'empty';
+    return null;
+  }
+  return { token: oauth.accessToken, expiresAt: oauth.expiresAt, organization };
 }
 
 const NO_LOGIN = "Couldn't read your Claude login on this computer. Run `claude` and sign in with your Claude account, then restart Agent Office.";
