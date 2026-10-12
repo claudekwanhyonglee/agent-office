@@ -7,6 +7,10 @@ export interface CloudSession {
   session_status?: string;
   status_bucket?: string;
   updated_at?: string;
+  tags?: string[];
+  parent_session_id?: string;
+  /** The Projects project a thread session belongs to, filled in from its coordinator's title. */
+  project_name?: string;
   session_context?: {
     sources?: { git_repository?: { url?: string } }[];
     outcomes?: { git_repository?: { git_info?: { repo?: string; branches?: string[] } } }[];
@@ -38,6 +42,7 @@ export function mapCloudState({ status_bucket: bucket, session_status: status }:
 
 /** Repo name (`owner/repo` → `repo`), or "Claude" for sessions without one. */
 export function cloudProject(session: CloudSession) {
+  if (session.project_name) return session.project_name;
   const repo = session.session_context?.outcomes?.find((o) => o.git_repository?.git_info?.repo)?.git_repository?.git_info?.repo
     ?? session.session_context?.sources?.find((s) => s.git_repository?.url)?.git_repository?.url;
   return repo?.replace(/\.git$/, '').split('/').filter(Boolean).at(-1) ?? 'Claude';

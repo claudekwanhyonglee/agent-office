@@ -2,6 +2,7 @@ import './style.css';
 import { createOfficeScene } from './office-scene.ts';
 import { renderCard, showTooltip } from './card.ts';
 import { startUsagePanel } from './usage.ts';
+import { mountProjectFilter } from './projects.ts';
 import { hasWebGL } from './webgl.ts';
 import { sessionUrl } from '../cloud/sessions.ts';
 import type { AgentRecord, FeedPayload } from '../shared/agent.ts';
@@ -69,10 +70,15 @@ export function boot({ createOffice }: BootOptions = {}) {
   office.onPick(select);
   office.onHover((key, x, y) => showTooltip(tooltip, key ? records.get(key) : undefined, x, y));
 
+  const projects = mountProjectFilter(document.getElementById('projects')!, () => last && applyFeed(last));
+  let last: FeedPayload | null = null;
+
   function applyFeed(payload: FeedPayload) {
     if (!Array.isArray(payload)) return showStatus(payload.error, true);
-    records = new Map(payload.map((r) => [r.sessionId, r]));
-    office.show(payload);
+    last = payload;
+    const shown = projects.filter(payload);
+    records = new Map(shown.map((r) => [r.sessionId, r]));
+    office.show(shown);
     showStatus(null);
     if (selected) select(selected);
   }

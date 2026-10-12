@@ -129,6 +129,21 @@ function send(path: string, login: Login, beta: boolean) {
  */
 const QUERIES = ['', '&tags=hearth-thread'].map((q) => `/v1/code/sessions?limit=100${q}`);
 
+/** Each Projects project has one coordinator session, titled `Project coordinator ("Name")`. */
+const COORDINATORS = '/v1/code/sessions?limit=100&tags=hearth-overview';
+
+const bareId = (id = '') => id.replace(/^(cse|session)_/, '');
+
+/** Names each Projects thread by its project, via its parent (the project's coordinator). */
+export function nameProjects(sessions: CloudSession[], coordinators: CloudSession[]) {
+  const names = new Map(coordinators.map((c) => [bareId(c.id), c.title?.match(/"(.+)"/)?.[1] ?? c.title ?? 'Project']));
+  for (const s of sessions) {
+    if (!s.tags?.includes('hearth-thread')) continue;
+    s.project_name = names.get(bareId(s.parent_session_id)) ?? 'Projects';
+  }
+  return sessions;
+}
+
 const REFRESH_EVERY = 5 * 60_000;
 let lastRefresh = 0;
 let refreshNext = false;
@@ -157,10 +172,12 @@ export async function listCloudSessions(env: NodeJS.ProcessEnv = process.env): P
     login = (await readLogin(env)) ?? login;
   }
   if (!login) throw new Error(keychainProblem ? `${NO_LOGIN} (Keychain: ${keychainProblem}. If macOS asks, click Always Allow.)` : NO_LOGIN);
-  let responses = await Promise.all(QUERIES.map((path) => request(path, login, false)));
+  const first: Login = login;
+  let responses = await Promise.all(QUERIES.map((path) => request(path, first, false)));
   // ~/.claude.json can name a different organization than the saved login (e.g. a work setup), so retry without it.
   if (responses.some((res) => res.status === 401) && login.organization) {
-    const bare = { ...login, organization: undefined };
+    const bare: Login = { ...first, organization: undefined };
+    login = bare;
     responses = await Promise.all(QUERIES.map((path) => request(path, bare, false)));
   }
   if (responses.some((res) => res.status === 401)) {
@@ -176,7 +193,8 @@ export async function listCloudSessions(env: NodeJS.ProcessEnv = process.env): P
   }
   const byId = new Map<string, CloudSession>();
   for (const res of ok) for (const session of sessionsFromResponse(await res.json())) byId.set(session.id, session);
-  return [...byId.values()];
+  const coordinators = await request(COORDINATORS, login, false).then((res) => res.ok ? res.json() : null, () => null);
+  return nameProjects([...byId.values()], sessionsFromResponse(coordinators));
 }
 
 /** Each session's updated_at from the last fetch, so a "Got it" lasts only until the session moves on. */
