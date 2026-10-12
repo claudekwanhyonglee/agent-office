@@ -3,6 +3,7 @@
 // ponytail: this uses the same unpublished endpoint `claude --teleport` uses, so a Claude Code update may change it.
 import { execFile } from 'node:child_process';
 import type { AckStore } from './acknowledged.ts';
+import type { CloudLimit } from '../shared/usage.ts';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -143,9 +144,23 @@ export function rememberUpdated(sessions: CloudSession[]) {
   for (const s of sessions) lastUpdated.set(s.id, s.updated_at ?? '');
 }
 
+let limit: CloudLimit | null = null;
+
+/** Your plan limit as the most recently active session last saw it (cloud sessions give a status, not a percentage). */
+export function latestCloudLimit(sessions: CloudSession[]): CloudLimit | null {
+  const seen = sessions
+    .filter((s) => s.external_metadata?.rate_limit_info?.status)
+    .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))[0]?.external_metadata?.rate_limit_info;
+  if (!seen) return null;
+  return { status: seen.status!, resetsAt: seen.resetsAt ? seen.resetsAt * 1000 : null, window: seen.rateLimitType ?? null, overage: !!seen.isUsingOverage };
+}
+
+export const cloudLimit = () => limit;
+
 /** The agent records the page shows in cloud mode. */
 export async function loadCloudAgents({ now, acknowledged }: { now: number; acknowledged?: { has(id: string): boolean } }): Promise<AgentRecord[]> {
   const sessions = await listCloudSessions();
   rememberUpdated(sessions);
+  limit = latestCloudLimit(sessions) ?? limit;
   return buildCloudList(sessions, now).filter((r) => r.state === 'working' || !acknowledged?.has(r.sessionId));
 }

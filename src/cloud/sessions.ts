@@ -12,7 +12,13 @@ export interface CloudSession {
     outcomes?: { git_repository?: { git_info?: { repo?: string; branches?: string[] } } }[];
   };
   post_turn_summary?: { status_detail?: string; recent_action?: string; needs_action?: string };
-  external_metadata?: { current_branches?: Record<string, string | null> };
+  external_metadata?: {
+    current_branches?: Record<string, string | null>;
+    /** The session's progress checklist (Projects threads write one). */
+    status?: { text?: string };
+    rate_limit_info?: { status?: string; resetsAt?: number; rateLimitType?: string; isUsingOverage?: boolean };
+    artifacts?: { title?: string; url?: string }[];
+  };
 }
 
 const DAY = 24 * 3600_000;
@@ -37,6 +43,28 @@ export function cloudProject(session: CloudSession) {
   return repo?.replace(/\.git$/, '').split('/').filter(Boolean).at(-1) ?? 'Claude';
 }
 
+/** `owner/repo` the session works in, if any. */
+function cloudRepo(session: CloudSession) {
+  const named = session.session_context?.outcomes?.find((o) => o.git_repository?.git_info?.repo)?.git_repository?.git_info?.repo;
+  const url = session.session_context?.sources?.find((s) => s.git_repository?.url)?.git_repository?.url;
+  return named ?? url?.match(/github\.com\/([^/]+\/[^/.]+)/)?.[1] ?? null;
+}
+
+/** The checklist lines, without markdown bold. */
+export function cloudProgress(session: CloudSession) {
+  return (session.external_metadata?.status?.text ?? '').split('\n').map((l) => l.replace(/\*\*/g, '').trim()).filter(Boolean);
+}
+
+/** The session records no PR link, so search the repo's PRs for its branch; plus any artifacts it published. */
+export function cloudLinks(session: CloudSession) {
+  const links: { label: string; url: string }[] = [];
+  const repo = cloudRepo(session);
+  const branch = cloudBranch(session);
+  if (repo && branch) links.push({ label: 'Pull request', url: `https://github.com/${repo}/pulls?q=${encodeURIComponent(`is:pr head:${branch}`)}` });
+  for (const a of session.external_metadata?.artifacts ?? []) if (a.url?.startsWith('https://')) links.push({ label: a.title || 'Artifact', url: a.url });
+  return links;
+}
+
 function cloudBranch(session: CloudSession) {
   const current = Object.values(session.external_metadata?.current_branches ?? {}).find(Boolean);
   return current ?? session.session_context?.outcomes?.[0]?.git_repository?.git_info?.branches?.[0] ?? null;
@@ -56,6 +84,8 @@ export function toCloudRecord(session: CloudSession): AgentRecord {
     lastMessage,
     branch: cloudBranch(session),
     activity: [summary.recent_action, summary.status_detail].filter((line): line is string => !!line),
+    progress: cloudProgress(session),
+    links: cloudLinks(session),
   };
 }
 

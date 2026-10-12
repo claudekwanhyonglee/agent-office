@@ -153,3 +153,13 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; box-si
   /* Ends above the highest the card can reach (52% + 12px from the bottom), with a gap. */
   .left { max-height: calc(48% - 100px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
 }
+
+/* Cloud sessions: their progress checklist and links. */
+.progress { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; line-height: 1.4; color: var(--ink); }
+.progress li { display: flex; gap: 6px; overflow-wrap: anywhere; min-width: 0; }
+.progress li.head { font-weight: 700; }
+.progress li.done::before { content: '✓'; color: #2E9E66; }
+.progress li.now::before { content: '●'; color: var(--blue); }
+.progress li.todo { color: var(--muted); }
+.progress li.todo::before { content: '○'; }
+.links { display: flex; flex-wrap: wrap; gap: 6px; }

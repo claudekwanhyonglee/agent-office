@@ -5,7 +5,8 @@ import { createApi } from './api.ts';
 import { createFeed } from './feed.ts';
 import { listClaudeAgents } from './claude.ts';
 import { loadAgents } from './load.ts';
-import { cloudAckStore, loadCloudAgents, wantsCloud } from './cloud.ts';
+import { cloudAckStore, cloudLimit, loadCloudAgents, wantsCloud } from './cloud.ts';
+import { createNeedsNotifier } from './notify.ts';
 import { createAckStore } from './acknowledged.ts';
 import { limitsFile, readLimits } from './limits.ts';
 import { weekStart, weeklyTokens } from './tokens.ts';
@@ -28,11 +29,14 @@ const projectsDir = join(claudeConfigDir(), 'projects');
 function readUsage(): UsagePayload {
   const now = Date.now();
   const limits = readLimits(limitsFile(), now);
+  if (cloud) return { tracking: trackingStatus(tracking), limits, projects: [], cloud: cloudLimit() };
   return { tracking: trackingStatus(tracking), limits, projects: weeklyTokens(projectsDir, weekStart(limits.weekly, now)) };
 }
 const usage = { read: readUsage, enable: () => (enableTracking(tracking), readUsage()) };
+// NOTIFY=0 turns off the Mac notification when a cloud session starts needing you.
+const notifyNeeds = process.env.NOTIFY === '0' ? () => {} : createNeedsNotifier();
 const feed = cloud
-  ? createFeed(() => loadCloudAgents({ now: Date.now(), acknowledged }))
+  ? createFeed(async () => { const records = await loadCloudAgents({ now: Date.now(), acknowledged }); notifyNeeds(records); return records; })
   : createFeed(() => loadAgents({ list: listClaudeAgents, now: Date.now(), acknowledged }));
 await feed.poll(cloud ? CLOUD_POLL_MS : POLL_MS);
 

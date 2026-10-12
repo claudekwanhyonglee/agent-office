@@ -47,6 +47,8 @@ Or set `CLOUD=1`. It lists your cloud sessions (including Projects threads) ever
 If the login expires, run `claude` once to refresh it, or set `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
 Click an agent to open its session on claude.ai.
 
+In cloud mode, clicking an agent shows its progress checklist plus links to its session, pull request and artifacts. You get a Mac notification when a session starts needing you (set `NOTIFY=0` to turn that off), and the plan usage panel shows the limit status your cloud sessions report.
+
 This uses the same unpublished endpoint `claude --teleport` uses, so a Claude Code update could break it.
 
 ## Cloud sessions (claude.ai artifact)

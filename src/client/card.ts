@@ -25,6 +25,20 @@ const PREVIEW_LINES = 4;
 const PREVIEW_CHARS = 280;
 const isLong = (text: string) => text.split('\n').length > PREVIEW_LINES || text.length > PREVIEW_CHARS;
 
+function progressSection(record: AgentRecord) {
+  const lines = record.progress?.length ? record.progress : record.activity;
+  if (!record.progress || !lines.length) return '';
+  const items = lines.map((line) => {
+    const mark = line.match(/^([✓✱○])\s*/);
+    return `<li class="${mark ? { '✓': 'done', '✱': 'now', '○': 'todo' }[mark[1]] : 'head'}">${escapeHtml(mark ? line.slice(mark[0].length) : line)}</li>`;
+  }).join('');
+  return `<div class="section"><span class="label">What it's doing</span><ul class="progress">${items}</ul></div>`;
+}
+
+function linkButtons(record: AgentRecord) {
+  return (record.links ?? []).map((l) => `<a class="btn" href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label)}</a>`).join('');
+}
+
 function messageSection(text: string | null, expanded: boolean) {
   if (!text) return '';
   const long = isLong(text);
@@ -49,11 +63,12 @@ export function renderCard(card: HTMLElement, record: AgentRecord, actions: Card
       ${record.branch ? `<span>· ${escapeHtml(record.branch)}</span>` : ''}
       <span class="pill ${record.state}">${STATE_LABEL[record.state]}</span>
     </div>
+    ${progressSection(record)}
     ${messageSection(record.lastMessage, actions.expanded)}
     <div class="section">
       <span class="label">Pick it up</span>
       ${actions.openLink
-        ? `<div><a class="btn primary" href="${escapeHtml(actions.openLink(record))}" target="_blank" rel="noopener">Open session</a></div>`
+        ? `<div class="links"><a class="btn primary" href="${escapeHtml(actions.openLink(record))}" target="_blank" rel="noopener">Open session</a>${linkButtons(record)}</div>`
         : `<div class="command"><code>${escapeHtml(command)}</code><button class="btn" data-copy>Copy</button></div>`}
     </div>
     ${canDismiss(record) || (actions.openLink && record.state !== 'working') ? '<div><button class="btn primary" data-ack>Got it</button></div>' : ''}`;
