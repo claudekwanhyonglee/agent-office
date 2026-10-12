@@ -15,6 +15,7 @@ const ACK_KEY = 'agent-office:acknowledged';
 interface McpError { code: string; message?: string; server?: string }
 type WatchEvent = { type: 'data'; result: { payload?: unknown } } | { type: 'error'; error: McpError };
 interface Mcp {
+  listTools(server?: string): Promise<{ servers: { server: string; authStatus: string; tools: { name: string }[] }[] }>;
   watchTool(server: string, tool: string, input: unknown, handler: (ev: WatchEvent) => void, options?: { cache?: { staleTime?: number }; refetchInterval?: number }): () => void;
 }
 declare global {
@@ -119,8 +120,25 @@ async function start() {
       return;
     }
     if (RETRACT.has(ev.error.code)) { sessions = []; render(); }
-    showStatus(explain(ev.error), true);
+    showStatus(explain(ev.error) + diagnosis, true);
+    diagnose(mcp, ev.error);
   }, { cache: { staleTime: 15_000 }, refetchInterval: REFRESH_MS });
+}
+
+/** Adds what the connector actually offers to the error, so a wrong tool name is easy to spot. */
+let diagnosis = '';
+let diagnosed = false;
+function diagnose(mcp: Mcp, error: McpError) {
+  if (diagnosed) return;
+  diagnosed = true;
+  const add = (text: string) => {
+    diagnosis = ` [${error.code}] ${text}`;
+    document.getElementById('status')!.textContent += diagnosis;
+  };
+  mcp.listTools().then(({ servers }) => {
+    const found = servers.map((s) => `${s.server} (${s.authStatus}): ${s.tools.map((t) => t.name).join(', ') || 'no tools'}`).join(' · ');
+    add(`Connectors this page can see: ${found || 'none'}.`);
+  }, (e: McpError) => add(`Couldn’t list connectors: ${e.code}.`));
 }
 
 start();
