@@ -152,13 +152,13 @@ export function nameProjects(sessions: CloudSession[], coordinators: CloudSessio
 
 /** One session's full record; the list can leave fields out. */
 async function sessionDetail(id: string, login: Login): Promise<Record<string, unknown> | null> {
+  // Only the older sessions endpoint carries parent_session_id; it wants the session_… form of the id.
+  const sessionId = id.replace(/^cse_/, 'session_');
   try {
-    let res = await request(`/v1/code/sessions/${encodeURIComponent(id)}`, login, false);
-    // Parents come as session_…; this endpoint may only know the cse_… form.
-    if (!res.ok && id.startsWith('session_')) res = await request(`/v1/code/sessions/${encodeURIComponent(id.replace(/^session_/, 'cse_'))}`, login, false);
+    const res = await request(`/v1/sessions/${encodeURIComponent(sessionId)}?beta=true`, login, true);
     if (!res.ok) return null;
-    const body = await res.json() as Record<string, unknown> & { ccr?: Record<string, unknown>; session?: Record<string, unknown> };
-    return body.ccr ?? body.session ?? body;
+    const body = await res.json() as Record<string, unknown> & { ccr?: Record<string, unknown> };
+    return body.ccr ?? body;
   } catch {
     return null;
   }
