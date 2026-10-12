@@ -92,7 +92,24 @@ export function sessionsFromResponse(body: unknown): CloudSession[] {
   return Array.isArray(list) ? list.map(normaliseSession) : [];
 }
 
+/** Node's "fetch failed" hides the reason; work networks that inspect HTTPS are the usual one. */
+export function explainFetchError(error: unknown) {
+  const cause = (error as { cause?: { code?: string; message?: string } })?.cause;
+  const reason = cause?.code ?? cause?.message ?? (error instanceof Error ? error.message : String(error));
+  const tls = /CERT|SELF_SIGNED|UNABLE_TO|TLS|SSL/i.test(reason);
+  return `Couldn't reach Anthropic's API (${reason}).`
+    + (tls ? ' Your network seems to inspect HTTPS traffic. Start the office with NODE_OPTIONS=--use-system-ca so Node trusts your Mac\'s certificates.' : '');
+}
+
 async function request(path: string, login: Login, beta: boolean) {
+  try {
+    return await send(path, login, beta);
+  } catch (error) {
+    throw new Error(explainFetchError(error));
+  }
+}
+
+function send(path: string, login: Login, beta: boolean) {
   return fetch(`${API}${path}`, {
     headers: {
       Authorization: `Bearer ${login.token}`,

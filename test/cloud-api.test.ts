@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cloudAckStore, normaliseSession, rememberUpdated, sessionsFromResponse, wantsCloud } from '../src/server/cloud.ts';
+import { cloudAckStore, explainFetchError, normaliseSession, rememberUpdated, sessionsFromResponse, wantsCloud } from '../src/server/cloud.ts';
 import { mapCloudState } from '../src/cloud/sessions.ts';
 
 describe('cloud mode', () => {
@@ -52,5 +52,13 @@ describe('cloudAckStore', () => {
     expect(store.has('cse_1')).toBe(true);
     rememberUpdated([{ id: 'cse_1', updated_at: '2026-10-12T06:00:00Z' } as never]);
     expect(store.has('cse_1')).toBe(false);
+  });
+});
+
+describe('explainFetchError', () => {
+  it('names the cause and suggests system certificates for TLS problems', () => {
+    const error = Object.assign(new TypeError('fetch failed'), { cause: { code: 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY' } });
+    expect(explainFetchError(error)).toContain('UNABLE_TO_GET_ISSUER_CERT_LOCALLY');
+    expect(explainFetchError(error)).toContain('--use-system-ca');
   });
 });
