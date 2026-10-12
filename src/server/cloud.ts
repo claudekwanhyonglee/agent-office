@@ -11,7 +11,8 @@ import type { AgentRecord } from '../shared/agent.ts';
 import { buildCloudList, type CloudSession } from '../cloud/sessions.ts';
 import { claudeConfigDir } from './transcript.ts';
 
-const API = process.env.ANTHROPIC_BASE_URL?.replace(/\/$/, '') || 'https://api.anthropic.com';
+// Not ANTHROPIC_BASE_URL: that often points at a work gateway (e.g. Foundry) that can't see claude.ai sessions.
+const API = process.env.AGENT_OFFICE_API_URL?.replace(/\/$/, '') || 'https://api.anthropic.com';
 const BETA = 'ccr-byoc-2025-07-29';
 
 export const wantsCloud = (argv: string[], env: NodeJS.ProcessEnv) => argv.includes('--cloud') || env.CLOUD === '1';
