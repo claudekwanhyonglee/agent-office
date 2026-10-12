@@ -103,3 +103,7 @@ npm run typecheck
 npm start         # builds if needed, then serves
 npm run dev       # Vite dev server for the page (run npm start alongside for the API)
 ```
+
+### Keep it running on a Mac
+
+`scripts/launch-agent.sh install` runs cloud mode in the background: it starts when you log in and restarts if it stops, so no terminal window is needed. After `git pull && npm run build`, run it again to restart. `scripts/launch-agent.sh uninstall` removes it. Logs go to `~/Library/Logs/agent-office.log`.
