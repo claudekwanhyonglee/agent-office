@@ -54,7 +54,7 @@ export async function readLogin(env: NodeJS.ProcessEnv = process.env): Promise<L
 }
 
 const NO_LOGIN = "Couldn't read your Claude login on this computer. Run `claude` and sign in with your Claude account, then restart Agent Office.";
-const EXPIRED = 'Your Claude login on this computer has expired. Run `claude` once (it refreshes the login), or set CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token` so it never expires.';
+const EXPIRED = 'Your Claude login on this computer has expired or can\'t see cloud sessions. In a terminal run `claude`, then `/login` with the account your sessions belong to, and restart the office. (Tokens from `claude setup-token` can\'t list sessions.)';
 
 /** Older and newer session APIs name the state differently; this gives the office one status bucket. */
 const BUCKET_FOR_STATUS: Record<string, string> = {
