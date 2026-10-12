@@ -103,25 +103,27 @@ async function request(path: string, login: Login, beta: boolean) {
   });
 }
 
-/** Tries the sessions list endpoints `claude` itself uses, newest first; remembers the one that works. */
-let working: { path: string; beta: boolean } | null = null;
-const ENDPOINTS = [{ path: '/v1/code/sessions', beta: false }, { path: '/v1/sessions?beta=true', beta: true }];
+/**
+ * The plain list leaves out tagged sessions (Projects threads), so ask for those too and merge.
+ * Each list is newest first; 100 covers every live session in practice.
+ */
+const QUERIES = ['', '&tags=hearth-thread'].map((q) => `/v1/code/sessions?limit=100${q}`);
 
 export async function listCloudSessions(env: NodeJS.ProcessEnv = process.env): Promise<CloudSession[]> {
   const login = await readLogin(env);
   if (!login) throw new Error(keychainProblem ? `${NO_LOGIN} (Keychain: ${keychainProblem}. If macOS asks, click Always Allow.)` : NO_LOGIN);
-  let last = '';
-  for (const endpoint of working ? [working] : ENDPOINTS) {
-    const res = await request(endpoint.path, login, endpoint.beta);
-    if (res.ok) {
-      working = endpoint;
-      return sessionsFromResponse(await res.json());
-    }
-    if (res.status === 401) throw new Error(login.expiresAt && login.expiresAt < Date.now() ? EXPIRED : `${EXPIRED} (HTTP 401)`);
-    last = `${endpoint.path}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`;
+  const responses = await Promise.all(QUERIES.map((path) => request(path, login, false)));
+  if (responses.some((res) => res.status === 401)) {
+    throw new Error(login.expiresAt && login.expiresAt < Date.now() ? EXPIRED : `${EXPIRED} (HTTP 401)`);
   }
-  working = null;
-  throw new Error(`Couldn't list your cloud sessions (${last}).`);
+  const ok = responses.filter((res) => res.ok);
+  if (!ok.length) {
+    const res = responses[0];
+    throw new Error(`Couldn't list your cloud sessions (HTTP ${res.status} ${(await res.text()).slice(0, 200)}).`);
+  }
+  const byId = new Map<string, CloudSession>();
+  for (const res of ok) for (const session of sessionsFromResponse(await res.json())) byId.set(session.id, session);
+  return [...byId.values()];
 }
 
 /** The agent records the page shows in cloud mode. */

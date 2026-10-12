@@ -15,7 +15,7 @@ import { enableTracking, refreshScript, trackingFiles, trackingStatus } from './
 
 const POLL_MS = 2000;
 /** Cloud sessions come over the network, so ask less often. */
-const CLOUD_POLL_MS = 5000;
+const CLOUD_POLL_MS = 10_000;
 const staticDir = fileURLToPath(new URL('../../client', import.meta.url));
 const port = resolvePort(process.env);
 const lan = wantsLan(process.argv, process.env);

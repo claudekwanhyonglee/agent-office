@@ -42,7 +42,7 @@ If you run Claude Code in the cloud (claude.ai/code, the Claude app, Projects), 
 npx github:savvymonkeyfoo/agent-office#cloud-artifact --cloud
 ```
 
-Or set `CLOUD=1`. It lists your cloud sessions every 5 seconds using the Claude login `claude` saved on this computer
+Or set `CLOUD=1`. It lists your cloud sessions (including Projects threads) every 10 seconds using the Claude login `claude` saved on this computer
 (the macOS keychain, or `.credentials.json` in your Claude config folder). The login is only sent to Anthropic's API.
 If the login expires, run `claude` once to refresh it, or set `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
 Click an agent to open its session on claude.ai.
