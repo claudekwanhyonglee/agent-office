@@ -36,8 +36,11 @@ describe('#31 AC1 pair games start with two free idle agents', () => {
   it('#31 AC1 both players are sent to the two ends of the table in the same update, and both games get played', () => {
     const { updates } = busyBreakRoom(6, 8);
     const started = new Set<string>();
+    const at = new Map<string, string | undefined>();
     for (const events of updates) {
-      const toGames = ofType(events, 'walk').filter((w) => isGame(w.place?.spot));
+      // #53: pool players change places at the table every turn; only walks from elsewhere start a game.
+      const toGames = ofType(events, 'walk').filter((w) => isGame(w.place?.spot) && at.get(w.key) !== w.place!.spot);
+      for (const w of ofType(events, 'walk')) at.set(w.key, w.place?.spot);
       for (const g of GAMES) {
         const walks = toGames.filter((w) => w.place!.spot === g.spot);
         if (!walks.length) continue;

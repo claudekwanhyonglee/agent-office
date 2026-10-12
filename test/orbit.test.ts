@@ -48,8 +48,8 @@ describe('#39 AC2 wider tilt, never below the floor', () => {
 
   it('#39 AC2 a little past the old limits (0.5 and 1.15) is now allowed', () => {
     const up = initialOrbit(), down = initialOrbit();
-    drag(up, 0, (0.86 - 0.3) / 0.004);
-    drag(down, 0, -(1.3 - 0.86) / 0.004);
+    drag(up, 0, (up.phi - 0.3) / 0.004);
+    drag(down, 0, -(1.3 - down.phi) / 0.004);
     expect(up.phi).toBeCloseTo(0.3);
     expect(down.phi).toBeCloseTo(1.3);
   });

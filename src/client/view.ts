@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildOffice } from './office.ts';
 import {
-  blockContextMenu, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
+  bindHomeKey, blockContextMenu, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
   placeCamera, wheelRadius, zoomToward, type Pointer,
 } from './camera.ts';
 
@@ -108,11 +108,7 @@ export function createView(host: HTMLElement) {
 
   const home = () => goHome(camera, orbit, rows);
   document.getElementById('home')?.addEventListener('click', home);
-  addEventListener('keydown', (e) => {
-    if (e.key !== 'Home') return;
-    e.preventDefault();
-    home();
-  });
+  bindHomeKey(window, home);
 
   const frameHandlers: ((t: number, dt: number) => void)[] = [];
   const timer = new THREE.Clock();

@@ -66,12 +66,13 @@ describe('#21 AC2 two fingers neither orbit nor tap', () => {
 
   it('#21 AC2 one finger still taps, and dragging one finger still orbits without a tap', () => {
     const orbit = initialOrbit();
+    const start = orbit.theta;
     const g = createGestures(orbit);
     g.down(1, 100, 100);
     expect(g.up(1)).toBe(true);
     g.down(1, 100, 100);
     g.move(1, 160, 100);
-    expect(orbit.theta).toBeCloseTo(0.22 - 0.3);
+    expect(orbit.theta).toBeCloseTo(start - 0.3);
     expect(g.up(1)).toBe(false);
   });
 });

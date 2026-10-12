@@ -3,28 +3,45 @@ import {
   DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, behindChair, officeLayout, pathLength, route, withoutLoops, yawTowards,
   type DogSpot, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
 } from './layout.ts';
+import { SHOT_COUNT, SHOT_SECONDS } from './pool.ts';
+import { hitter, rallySeconds, type Rally, type Side } from './pong.ts';
+import { RETURN_SECONDS, driftParams, type Drift } from './float.ts';
+import { CAST_SECONDS, landingFrom, type Cast } from './fishing.ts';
+import { FISH } from './water.ts';
 
 /** Seconds an idle agent waits at its desk before wandering off (AC: within 3 s). */
 const SET_OFF = { min: 1, max: 2.5 };
+/** Agents turning idle in the same update set off one after another, this far apart (#59). */
+const STAGGER = { min: 0.55, max: 1 };
+/** No two idle agents' next moves are closer than this, unless they're in the same game (#59). */
+const MOVE_GAP = 0.35;
 /** Seconds an idle agent stays at a spot. */
 const STAY = { min: 10, max: 30 };
 /** How often a due agent looks for someone to chat with, and how long to wait when every spot is full. */
 const CHAT_CHANCE = 0.35;
-const RETRY = 5;
+const RETRY = { min: 3, max: 8 };
 /** Places closer than this share furniture: only one of them can be used at a time. */
 const OVERLAP = 0.5;
 /** Seconds after arriving before the first paper plane, then between throws. */
-const PLANE_FIRST = 1;
+const PLANE_FIRST = { min: 0.5, max: 1.5 };
 const PLANE_EVERY = { min: 4, max: 7 };
 /** Seconds a high-fiver or coffee courier stays once there. */
-const ERRAND_STAY = 3;
+const ERRAND_STAY = { min: 2.5, max: 3.5 };
 /** The dog (#34): how long it stops at a spot or rests in its bed, how often it goes to bed, how often agents go to it. */
 const DOG_PAUSE = { min: 5, max: 15 };
 const DOG_REST = { min: 20, max: 45 };
 const DOG_BED_CHANCE = 0.3;
 const DOG_CHANCE = 0.2;
-const DOG_VISITORS = 2;
+/** One agent with the dog at a time, so visitors don't clip into each other (#65). */
+const DOG_VISITORS = 1;
 const FETCH_EVERY = { min: 5, max: 8 };
+/** How many shots of a table-tennis rally reach the other bat before one is missed (#70). */
+const RALLY_HITS = { min: 1, max: 9 };
+/** Seconds between cheers on the sofa while anyone sits there (#61). */
+const CHEER_EVERY = { min: 20, max: 60 };
+const SOFA = ['lounge', 'couch-co-op'];
+/** How often a cast ends in a catch (#58). */
+const CATCH_CHANCE = 0.35;
 
 const isIdle = (state: OfficeState) => state === 'done' || state === 'finished';
 
@@ -52,6 +69,8 @@ export interface Occupant {
   /** When the agent next does its place's one-off action (throwing a paper plane). */
   actAt: number;
   reaction: Reaction | null;
+  /** Just turned idle (or found idle on first load): it sets off at its own staggered time (#59). */
+  settingOff?: boolean;
 }
 
 export type OfficeEvent =
@@ -77,7 +96,17 @@ export type OfficeEvent =
   /** The dog runs along `path`, then lies down (in its bed) or stands. */
   | { type: 'dog'; path: Point[]; lie: boolean }
   /** Agent `key` throws a ball for the dog (the dog's run follows). */
-  | { type: 'fetch'; key: string };
+  | { type: 'fetch'; key: string }
+  /** Turn `shot` of the pool rack starts (#53); null: play stopped, the balls go back in the rack. */
+  | { type: 'pool'; shot: number | null }
+  /** A table-tennis rally starts (#70) between `players` (at the -x end, then the +x end); null: play stopped. */
+  | { type: 'pong'; rally: Rally | null; players: [string, string] }
+  /** How agent `key`'s ring will drift once it's afloat in the pool dip it's walking to (#57). */
+  | { type: 'drift'; key: string; drift: Drift }
+  /** Everyone sitting on the sofa (`keys`) fist-pumps, all at once (#61). */
+  | { type: 'cheer'; keys: string[] }
+  /** Agent `key` casts from the jetty (#58): where the float lands, and the fish it catches, if any. */
+  | { type: 'cast'; key: string; cast: Cast };
 
 export interface DogState {
   spot: DogSpot;
@@ -106,10 +135,22 @@ export class OfficeController {
   rows = INITIAL_ROWS;
   layout = officeLayout(INITIAL_ROWS);
   private firstUpdate = true;
+  /** The last set-off handed out in this update, so agents turning idle together are staggered (#59). */
+  private lastSetOff = -Infinity;
+  /** When a chat or game was last started: one per moment, so a game's end doesn't set off a crowd (#59). */
+  private togetherAt = -Infinity;
+  /** A helper was sent on an errand in this update or tick: one at a time, so a batch of state changes doesn't send a crowd (#59). */
+  private errandSent = false;
   private clock: Clock;
   /** Desks with a delivered mug, by the key of the agent working there. */
   private mugs = new Map<string, number>();
   readonly dog: DogState;
+  /** The pool game in play (#53): its two players (the first breaks), the turn it's on and when the next starts. */
+  private pool: { players: [string, string]; turn: number; nextAt: number } | null = null;
+  /** The table-tennis game in play (#70): its players (-x end first), the rally and when it ends. */
+  private pong: { players: [string, string]; rally: Rally; nextAt: number } | null = null;
+  /** When the sofa next cheers, if anyone's sitting there then (#61). */
+  private cheerAt: number | null = null;
 
   constructor(clock: Partial<Clock> = {}) {
     this.clock = { ...systemClock, ...clock };
@@ -121,6 +162,8 @@ export class OfficeController {
     const now = this.clock.now();
     const events: OfficeEvent[] = [];
     const listed = new Map(records.map((r) => [r.sessionId, r]));
+    this.lastSetOff = -Infinity;
+    this.errandSent = false;
 
     for (const [key, agent] of this.agents) {
       if (listed.has(key)) continue;
@@ -145,12 +188,88 @@ export class OfficeController {
   tick(): OfficeEvent[] {
     const now = this.clock.now();
     const events: OfficeEvent[] = [];
+    this.errandSent = false;
     for (const [key, agent] of this.agents) {
       if (agent.nextAt != null && agent.nextAt <= now) this.wander(key, agent, now, events);
       else this.act(key, agent, now, events);
     }
     this.moveDog(now, events);
+    this.playPool(now, events);
+    this.playPong(now, events);
+    this.cheerOn(now, events);
     return events;
+  }
+
+  /** Every so often, everyone sitting on the sofa cheers together; with nobody there, the moment passes (#61). */
+  private cheerOn(now: number, events: OfficeEvent[]) {
+    this.cheerAt ??= now + this.between(CHEER_EVERY);
+    if (now < this.cheerAt) return;
+    this.cheerAt = now + this.between(CHEER_EVERY);
+    const keys = [...this.agents].filter(([, a]) => SOFA.includes(a.place?.spot ?? '') && a.arrivesAt <= now).map(([k]) => k);
+    if (keys.length) events.push({ type: 'cheer', keys });
+  }
+
+  /** The two players at a game's spot once both have arrived, if they have. */
+  private arrivedPlayers(spot: string, now: number) {
+    const players = [...this.agents].filter(([, a]) => a.place?.spot === spot);
+    return players.length === 2 && players.every(([, a]) => a.arrivesAt <= now) ? players : null;
+  }
+
+  /** Table tennis (#70): rallies of a random length, each ending in a miss; whoever missed serves the next. */
+  private playPong(now: number, events: OfficeEvent[]) {
+    let server: Side;
+    if (!this.pong) {
+      const players = this.arrivedPlayers('ping-pong', now);
+      if (!players) return;
+      const [left, right] = players.sort(([, a], [, b]) => a.place!.x - b.place!.x).map(([k]) => k);
+      server = this.clock.random() < 0.5 ? -1 : 1;
+      this.pong = { players: [left, right], rally: { server, hits: 0 }, nextAt: now };
+    } else {
+      if (now < this.pong.nextAt) return;
+      const last = this.pong.rally;
+      server = -hitter(last, last.hits) as Side;
+    }
+    const rally = { server, hits: Math.floor(this.between(RALLY_HITS)) };
+    this.pong.rally = rally;
+    this.pong.nextAt += rallySeconds(rally);
+    events.push({ type: 'pong', rally, players: this.pong.players });
+  }
+
+  /**
+   * Pool (#53): once both players are at the table, turns follow every SHOT_SECONDS. Each turn the
+   * last shooter steps back to wait at its end, and the other player steps up to the next shot's spot.
+   */
+  private playPool(now: number, events: OfficeEvent[]) {
+    if (!this.pool) {
+      const players = this.arrivedPlayers('pool-table', now);
+      if (!players) return;
+      const breaker = players.find(([, a]) => a.place!.pose === 'cue-shot') ?? players[0];
+      const other = players.find((p) => p !== breaker)!;
+      this.pool = { players: [breaker[0], other[0]], turn: 0, nextAt: now + SHOT_SECONDS };
+      events.push({ type: 'pool', shot: 0 });
+      return;
+    }
+    const pool = this.pool;
+    if (now < pool.nextAt) return;
+    const last = pool.turn % SHOT_COUNT, shot = (pool.turn + 1) % SHOT_COUNT;
+    const [waiter, shooter] = [pool.players[pool.turn % 2], pool.players[(pool.turn + 1) % 2]];
+    pool.turn += 1;
+    pool.nextAt += SHOT_SECONDS;
+    const turns = this.layout.poolTurns;
+    this.step(waiter, turns[last].wait, now, events);
+    this.step(shooter, turns[shot].shoot, now, events);
+    events.push({ type: 'pool', shot });
+  }
+
+  /** Walks a player straight to another place at the same table (its stay there is unchanged). */
+  private step(key: string, place: HangoutPlace, now: number, events: OfficeEvent[]) {
+    const agent = this.agents.get(key)!;
+    const from = agent.place!;
+    const path = [{ x: from.x, z: from.z }, { x: place.x, z: place.z }];
+    agent.place = place;
+    agent.walk = { path, origin: from.link, startedAt: now };
+    agent.arrivesAt = now + pathLength(path) / WALK_SPEED;
+    events.push({ type: 'walk', key, path, place });
   }
 
   /** Who sits at each desk (their latest record), by seat index. */
@@ -160,7 +279,7 @@ export class OfficeController {
 
   private arrive(key: string, record: AgentRecord, now: number, events: OfficeEvent[]) {
     const seat = this.freeSeat(now, events);
-    const agent: Occupant = { record, seat, place: null, arrivesAt: now, nextAt: null, actAt: now + PLANE_FIRST, reaction: null };
+    const agent: Occupant = { record, seat, place: null, arrivesAt: now, nextAt: null, actAt: now + this.between(PLANE_FIRST), reaction: null };
     this.agents.set(key, agent);
     const path = arrivalPath(this.layout, seat);
     if (this.firstUpdate) {
@@ -168,14 +287,14 @@ export class OfficeController {
       const place = isIdle(record.state) ? this.pick(this.freePlaces().filter((p) => !this.spotOf(p)?.game)) : null;
       if (place) {
         agent.place = place;
-        agent.nextAt = now + this.between(STAY);
+        agent.nextAt = this.setOffTime(now, STAY, agent);
       }
       events.push({ type: 'arrive', key, record, seat, path, walk: false, place });
       return;
     }
     agent.walk = { path, origin: this.layout.doorLink, startedAt: now };
     agent.arrivesAt = now + pathLength(path) / WALK_SPEED;
-    if (isIdle(record.state)) agent.nextAt = agent.arrivesAt + this.between(SET_OFF);
+    if (isIdle(record.state)) agent.nextAt = this.setOffTime(agent.arrivesAt, SET_OFF, agent);
     events.push({ type: 'arrive', key, record, seat, path, walk: true, place: null });
   }
 
@@ -186,10 +305,14 @@ export class OfficeController {
     events.push({ type: 'state', key, state: record.state });
     if (!isIdle(record.state)) {
       agent.nextAt = null;
+      const watched = agent.reaction?.kind === 'watch' ? agent.reaction.target : null;
       const away = agent.place || (agent.walk && now < agent.arrivesAt);
       if (away) this.send(key, agent, null, now, events);
+      // An onlooker called back to work: another idle agent may take its place (#67).
+      const target = watched ? this.agents.get(watched) : undefined;
+      if (target?.record.state === 'needs') this.gatherOnlookers(watched!, target, now, events);
     } else if (!isIdle(was)) {
-      agent.nextAt = now + this.between(SET_OFF);
+      agent.nextAt = this.setOffTime(now, SET_OFF, agent);
     }
     this.react(key, agent, was, now, events);
   }
@@ -199,7 +322,7 @@ export class OfficeController {
     const dog = this.dog;
     if (dog.nextAt > now || dog.arrivesAt > now) return;
     if (this.dogVisitors().length) {
-      dog.nextAt = now + RETRY;
+      dog.nextAt = now + this.between(RETRY);
       return;
     }
     const [bed, ...others] = this.layout.dogSpots;
@@ -251,14 +374,16 @@ export class OfficeController {
 
   /** Up to three idle agents come and look over the shoulder of an agent that needs you; they stay until it doesn't. */
   private gatherOnlookers(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
-    const spots = behindChair(this.layout, agent.seat);
-    const onlookers = this.shuffled(this.helpers(key)).slice(0, spots.length);
-    onlookers.forEach(([k, a], i) => {
-      const place = errandPlace('over-the-shoulder', 'watching', spots[i], [spots[i]], yawTowards(spots[i], agent.seat.desk));
-      this.send(k, a, place, now, events);
-      a.nextAt = null;
-      a.reaction = { kind: 'watch', target: key, done: true };
-    });
+    const watched = [...this.agents.values()].some((a) => a.reaction?.kind === 'watch' && a.reaction.target === key);
+    const onlooker = this.pick(this.helpers(key));
+    if (watched || !onlooker || this.errandSent) return;
+    // One onlooker per desk, off to one side (#67).
+    const [spot] = behindChair(this.layout, agent.seat);
+    const [k, a] = onlooker;
+    this.errandSent = true;
+    this.send(k, a, errandPlace('over-the-shoulder', 'watching', spot, [spot], yawTowards(spot, agent.seat.desk)), now, events);
+    a.nextAt = null;
+    a.reaction = { kind: 'watch', target: key, done: true };
   }
 
   private releaseOnlookers(key: string, now: number, events: OfficeEvent[]) {
@@ -271,19 +396,21 @@ export class OfficeController {
 
   /** The nearest idle agent (by route length) walks over to high-five an agent that just finished; it waits for them. */
   private highFive(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
+    if (this.errandSent) return;
     const place = this.deskSide('high-five', 'high-five', agent.seat);
     const lengths = this.helpers(key).map(([k, a]) => ({ k, a, length: pathLength(route(this.layout, this.whereNow(a, now), place.link)) }));
     if (!lengths.length) return;
     const { k, a } = lengths.reduce((best, c) => (c.length < best.length ? c : best));
     this.errand(k, a, place, { kind: 'high-five', target: key, done: false }, now, events);
-    agent.nextAt = Math.max(agent.nextAt ?? now, a.nextAt!);
+    // It waits for the high five, then moves on just after the high-fiver.
+    agent.nextAt = this.stagger(Math.max(agent.nextAt ?? now, a.nextAt!), { min: 0, max: 0.5 }, [agent]);
   }
 
   /** An idle agent fetches a coffee from the kitchen and leaves it on the desk of an agent that started working. */
   private bringCoffee(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
     const onItsWay = [...this.agents.values()].some((a) => a.reaction?.kind === 'coffee' && a.reaction.target === key);
     const courier = this.pick(this.helpers(key));
-    if (this.mugs.has(key) || onItsWay || !courier) return;
+    if (this.mugs.has(key) || onItsWay || !courier || this.errandSent) return;
     const kitchen = this.layout.hangouts.find((s) => s.name === 'kitchen')!.places[0];
     const place = this.deskSide('coffee-delivery', 'delivering', agent.seat);
     this.errand(courier[0], courier[1], place, { kind: 'coffee', target: key, done: false }, now, events, kitchen);
@@ -298,8 +425,9 @@ export class OfficeController {
 
   /** Sends an agent on an errand for another: it does its part on arrival (see `act`), then moves on. */
   private errand(key: string, agent: Occupant, place: HangoutPlace, reaction: Reaction, now: number, events: OfficeEvent[], via?: HangoutPlace) {
+    this.errandSent = true;
     this.send(key, agent, place, now, events, via);
-    agent.nextAt = agent.arrivesAt + ERRAND_STAY;
+    agent.nextAt = this.stagger(agent.arrivesAt, ERRAND_STAY, [agent]);
     agent.actAt = agent.arrivesAt;
     agent.reaction = reaction;
   }
@@ -316,7 +444,7 @@ export class OfficeController {
   }
 
   private wander(key: string, agent: Occupant, now: number, events: OfficeEvent[]) {
-    if (this.clock.random() < CHAT_CHANCE && this.startTogether(key, agent, now, events)) return;
+    if (this.clock.random() < CHAT_CHANCE && this.togetherAt !== now && this.startTogether(key, agent, now, events)) return;
     if (this.clock.random() < DOG_CHANCE && this.visitDog(key, agent, now, events)) return;
     const here = agent.place?.spot;
     const place = this.pick(this.freePlaces().filter((p) => this.isSolo(p) && p.spot !== here));
@@ -324,8 +452,34 @@ export class OfficeController {
     else if (agent.place && !this.isSolo(agent.place)) {
       // Nowhere free, but a game can't be played alone: wait at the desk instead.
       this.send(key, agent, null, now, events);
-      agent.nextAt = agent.arrivesAt + RETRY;
-    } else agent.nextAt = now + RETRY;
+      agent.nextAt = this.stagger(agent.arrivesAt, RETRY, [agent]);
+    } else agent.nextAt = this.stagger(now, RETRY, [agent]);
+  }
+
+  /**
+   * When an agent that just turned idle (or was found idle on first load) moves: `range` after
+   * `from`, and if others turned idle in the same update, a STAGGER after the last of them (#59).
+   */
+  private setOffTime(from: number, range: { min: number; max: number }, agent: Occupant) {
+    agent.settingOff = true;
+    let t = this.stagger(from, range, [agent]);
+    if (t < this.lastSetOff + STAGGER.min) t = this.stagger(Math.max(from, this.lastSetOff), STAGGER, [agent]);
+    this.lastSetOff = t;
+    return t;
+  }
+
+  /**
+   * `from` plus a random pick from `range`, moved to the nearest moment (in range if it can) that's
+   * at least MOVE_GAP from every other agent's next move, leaving out `except` (#59).
+   */
+  private stagger(from: number, { min, max }: { min: number; max: number }, except: Occupant[]) {
+    const others = [...this.agents.values()].filter((a) => a.nextAt != null && !except.includes(a)).map((a) => a.nextAt!);
+    const want = from + this.between({ min, max });
+    const clear = (t: number) => t >= from + min && others.every((o) => Math.abs(t - o) >= MOVE_GAP - 1e-9);
+    const slots = [want, ...others.flatMap((o) => [o - MOVE_GAP, o + MOVE_GAP])].filter(clear);
+    const inRange = slots.filter((t) => t <= from + max);
+    const nearest = (ts: number[]) => ts.reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a));
+    return nearest(inRange.length ? inRange : slots);
   }
 
   /**
@@ -338,6 +492,7 @@ export class OfficeController {
     if (!spot) return false;
     const partners = this.shuffled(this.freeToJoin(key, now)).slice(0, spot.places.length - 1);
     if (partners.length + 1 < (spot.game?.min ?? spot.places.length)) return false;
+    this.togetherAt = now;
     const players: [string, Occupant][] = [[key, agent], ...partners];
     // Partners first: sending the starter may end its old game, and those players then look for partners too.
     for (let i = players.length - 1; i >= 0; i--) this.send(players[i][0], players[i][1], spot.places[i], now, events);
@@ -345,16 +500,19 @@ export class OfficeController {
       // One end time that keeps every player's stay within STAY (when their arrivals are close enough).
       const arrivals = players.map(([, a]) => a.arrivesAt);
       const earliest = Math.max(...arrivals) + STAY.min, latest = Math.min(...arrivals) + STAY.max;
-      const end = this.between({ min: earliest, max: Math.max(earliest, latest) });
+      const end = this.stagger(0, { min: earliest, max: Math.max(earliest, latest) }, players.map(([, a]) => a));
       for (const [, a] of players) a.nextAt = end;
     }
     return true;
   }
 
-  /** Other idle agents free to join in: arrived, and either at their desk or done with a minimum stay at a solo place. */
+  /**
+   * Other idle agents free to join in: arrived, and either at their desk or done with a minimum stay
+   * at a solo place. Agents that just turned idle set off on their own, staggered (#59).
+   */
   private freeToJoin(key: string, now: number) {
     return [...this.agents].filter(([other, a]) =>
-      other !== key && isIdle(a.record.state) && a.nextAt != null && a.arrivesAt <= now
+      other !== key && isIdle(a.record.state) && a.nextAt != null && a.arrivesAt <= now && !a.settingOff
       && (!a.place || (this.isSolo(a.place) && now - a.arrivesAt >= STAY.min)));
   }
 
@@ -363,6 +521,14 @@ export class OfficeController {
     if (!left || !this.spotOf(left)?.game) return;
     const players = [...this.agents].filter(([, a]) => a.place?.spot === left.spot);
     if (players.length >= 2) return;
+    if (left.spot === 'pool-table' && this.pool) {
+      this.pool = null;
+      events.push({ type: 'pool', shot: null });
+    }
+    if (left.spot === 'ping-pong' && this.pong) {
+      events.push({ type: 'pong', rally: null, players: this.pong.players });
+      this.pong = null;
+    }
     for (const [key, agent] of players) this.wander(key, agent, now, events);
   }
 
@@ -383,13 +549,17 @@ export class OfficeController {
     const to = place ? place.link : agent.seat.link;
     const path = via ? [...route(this.layout, origin, via.link), ...route(this.layout, via.link, to).slice(1)] : route(this.layout, origin, to);
     agent.reaction = null;
+    agent.settingOff = false;
     const left = agent.place;
+    // Afloat in a pool dip, the agent paddles back to the ring's home spot before setting off (#57).
+    const setsOff = left?.pose === 'floating' && agent.arrivesAt <= now ? now + RETURN_SECONDS : now;
     agent.place = place;
-    agent.walk = { path, origin, startedAt: now };
-    agent.arrivesAt = now + pathLength(path) / WALK_SPEED;
-    agent.nextAt = place ? agent.arrivesAt + this.between(STAY) : null;
-    agent.actAt = agent.arrivesAt + PLANE_FIRST;
+    agent.walk = { path, origin, startedAt: setsOff };
+    agent.arrivesAt = setsOff + pathLength(path) / WALK_SPEED;
+    agent.nextAt = place ? this.stagger(agent.arrivesAt, STAY, [agent]) : null;
+    agent.actAt = agent.arrivesAt + this.between(PLANE_FIRST);
     events.push({ type: 'walk', key, path, place });
+    if (place?.pose === 'floating') events.push({ type: 'drift', key, drift: driftParams(this.clock.random) });
     if (left !== place) this.endIfShortHanded(left, now, events);
   }
 
@@ -400,6 +570,13 @@ export class OfficeController {
     if (agent.place?.pose === 'throwing-ball' && this.dog.arrivesAt <= now) {
       this.fetch(key, now, events);
       agent.actAt = now + this.between(FETCH_EVERY);
+      return;
+    }
+    if (agent.place?.pose === 'fishing') {
+      const landing = landingFrom(this.clock.random);
+      const fish = this.clock.random() < CATCH_CHANCE ? Math.floor(this.clock.random() * FISH) : null;
+      events.push({ type: 'cast', key, cast: { landing, fish } });
+      agent.actAt = now + CAST_SECONDS;
       return;
     }
     if (agent.place?.pose !== 'throwing-plane') return;
@@ -482,7 +659,7 @@ export class OfficeController {
       agent.place = agent.place && (moved[places.indexOf(agent.place)] ?? agent.place); // errand places don't move
       agent.walk = undefined;
       agent.arrivesAt = now;
-      if (agent.place && agent.nextAt == null) agent.nextAt = now + this.between(STAY);
+      if (agent.place && agent.nextAt == null) agent.nextAt = this.stagger(now, STAY, [agent]);
       events.push({ type: 'place', key, seat: agent.seat, state: agent.record.state, place: agent.place });
     }
   }

@@ -24,12 +24,11 @@ const walksTo = (events: ReturnType<ReturnType<typeof office>['set']>, spot: str
   ofType(events, 'walk').filter((w) => w.place?.spot === spot);
 
 describe('#33 AC1 over the shoulder', () => {
-  it('#33 AC1 with 5 idle agents, exactly 3 walk to spots behind the chair of an agent that needs you', () => {
+  it('#33 AC1 / #67 AC1 with 5 idle agents, exactly one walks to a spot behind the chair of an agent that needs you', () => {
     const o = withIdle(5, 6);
     const seat = o.c.agents.get(key(6))!.seat;
     const watchers = walksTo(o.set(6, 'needs'), 'over-the-shoulder');
-    expect(watchers).toHaveLength(3);
-    expect(new Set(watchers.map((w) => w.key)).size).toBe(3);
+    expect(watchers).toHaveLength(1);
     const back = { x: -Math.sin(seat.yaw), z: -Math.cos(seat.yaw) };
     for (const w of watchers) {
       expect(n(w.key)).toBeLessThanOrEqual(5);
@@ -37,12 +36,11 @@ describe('#33 AC1 over the shoulder', () => {
       expect((p.x - seat.chair.x) * back.x + (p.z - seat.chair.z) * back.z, 'behind the chair').toBeGreaterThan(0.3);
       expect(distance(p, seat.chair)).toBeLessThan(1.5);
     }
-    expect(new Set(watchers.map((w) => `${w.place!.x},${w.place!.z}`)).size).toBe(3);
   });
 
-  it('#33 AC1 with 2 idle agents, both go', () => {
+  it('#33 AC1 / #67 AC1 with 2 idle agents, one goes', () => {
     const o = withIdle(2, 3);
-    expect(walksTo(o.set(3, 'needs'), 'over-the-shoulder')).toHaveLength(2);
+    expect(walksTo(o.set(3, 'needs'), 'over-the-shoulder')).toHaveLength(1);
   });
 
   it('#33 AC1 they stay while it needs you, and leave in the update it stops', () => {

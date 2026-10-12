@@ -1,0 +1,153 @@
+import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+import { INITIAL_ROWS, officeLayout } from '../src/client/layout.ts';
+import { Character } from '../src/client/character.ts';
+import { lookFor } from '../src/client/look.ts';
+import { BoardDarts } from '../src/client/break-room.ts';
+import { BOARD, COLLECT_FROM, FLIGHT, RELEASE_AT, ROUND, THROWS, THROW_EVERY, dartFlight, dartsAt } from '../src/client/darts.ts';
+
+const START = officeLayout(INITIAL_ROWS);
+const PLACE = START.hangouts.find((s) => s.name === 'darts')!.places[0];
+const board = new THREE.Vector3(BOARD.x, BOARD.y, BOARD.z);
+
+const parts = (root: THREE.Object3D, part: string) => {
+  const out: THREE.Object3D[] = [];
+  root.traverse((o) => { if (o.userData.part === part) out.push(o); });
+  return out;
+};
+const shown = (o: THREE.Object3D) => { for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible) return false; return true; };
+const world = (o: THREE.Object3D) => o.getWorldPosition(new THREE.Vector3());
+
+/** A thrower at the line, `t` seconds after arriving. */
+function thrower(t: number) {
+  const character = new Character(lookFor('session-1'));
+  character.placeAt(START.seats[0], 'done', PLACE);
+  const step = 0.02;
+  for (let s = 0; s < t - 1e-9; s += step) character.update(s, Math.min(step, t - s));
+  character.root.updateMatrixWorld(true);
+  return character;
+}
+
+/** The dart in the thrower's hand, if one is shown: its tip, tail and direction. */
+function heldDart(character: Character) {
+  const [point] = parts(character.root, 'dart-point').filter(shown);
+  if (!point) return null;
+  const dart = point.parent!;
+  const tip = world(point), tail = world(parts(dart, 'dart-flights')[0]);
+  return { dart, tip, tail, dir: tip.clone().sub(tail).normalize() };
+}
+
+describe('#54 AC1 a recognisable dart in hand, pointing at the board', () => {
+  it('#54 AC1 before each throw the hand holds a dart with a point, barrel and flights, aimed at the board', () => {
+    for (let i = 0; i < THROWS; i++) {
+      for (const u of [0.2, 0.7, RELEASE_AT - 0.35]) {
+        const held = heldDart(thrower(i * THROW_EVERY + u));
+        expect(held, `throw ${i + 1} at ${u}`).not.toBeNull();
+        for (const part of ['dart-point', 'dart-barrel', 'dart-flights']) expect(parts(held!.dart, part).length, part).toBeGreaterThan(0);
+        const toBoard = board.clone().sub(held!.tip).normalize();
+        expect(held!.dir.dot(toBoard), `throw ${i + 1} at ${u}`).toBeGreaterThan(0.95);
+      }
+    }
+  });
+});
+
+describe('#54 AC2 the dart flies to the board, point first', () => {
+  it('#54 AC2 on release the dart leaves the hand and arcs to the board face in about half a second', () => {
+    expect(FLIGHT).toBeGreaterThanOrEqual(0.4);
+    expect(FLIGHT).toBeLessThanOrEqual(0.6);
+    for (let i = 0; i < THROWS; i++) {
+      const before = heldDart(thrower(i * THROW_EVERY + RELEASE_AT - 0.001))!;
+      const start = dartFlight(PLACE, i, 0);
+      expect(new THREE.Vector3(start.origin.x, start.origin.y, start.origin.z).distanceTo(world(before.dart)), 'leaves from the hand').toBeLessThan(0.08);
+      expect(heldDart(thrower(i * THROW_EVERY + RELEASE_AT + 0.05)), 'the hand is empty once it\'s thrown').toBeNull();
+      const end = dartFlight(PLACE, i, 1);
+      const tip = { x: end.origin.x + end.dir.x * 0.125 };
+      expect(tip.x).toBeCloseTo(BOARD.x, 3);
+      const mid = dartFlight(PLACE, i, 0.5).origin, straight = (start.origin.y + end.origin.y) / 2;
+      expect(mid.y, 'an arc').toBeGreaterThan(straight + 0.05);
+    }
+  });
+
+  it('#54 AC2 in the air the dart points the way it is moving', () => {
+    for (let i = 0; i < THROWS; i++) {
+      for (let k = 0.05; k < 1; k += 0.05) {
+        const a = dartFlight(PLACE, i, k - 0.02).origin, b = dartFlight(PLACE, i, k + 0.02).origin;
+        const v = new THREE.Vector3(b.x - a.x, b.y - a.y, b.z - a.z).normalize();
+        const { dir } = dartFlight(PLACE, i, k);
+        expect(v.dot(new THREE.Vector3(dir.x, dir.y, dir.z)), `throw ${i + 1}, k ${k.toFixed(2)}`).toBeGreaterThan(0.98);
+      }
+    }
+  });
+
+  it('#54 AC2 the board shows the dart in flight where the script says', () => {
+    const darts = new BoardDarts(new THREE.Scene());
+    const t = 1 * THROW_EVERY + RELEASE_AT + FLIGHT / 2;
+    darts.update({ place: PLACE, t });
+    const flying = darts.darts.filter((d) => d.visible && Math.abs(d.position.x - BOARD.x) > 0.3);
+    expect(flying).toHaveLength(1);
+    const want = dartFlight(PLACE, 1, 0.5).origin;
+    expect(flying[0].position.distanceTo(new THREE.Vector3(want.x, want.y, want.z))).toBeLessThan(1e-6);
+  });
+});
+
+describe('#54 AC3 thrown darts stick in the board', () => {
+  it('#54 AC3 a landed dart stays in the board face, inside its circle, until collected', () => {
+    const darts = new BoardDarts(new THREE.Scene());
+    for (let t = 0; t < ROUND; t += 0.05) {
+      darts.update({ place: PLACE, t });
+      darts.darts[0].updateMatrixWorld(true);
+      const { stuck, flying } = dartsAt(t);
+      expect(darts.darts.filter((d) => d.visible).length).toBe(stuck + (flying ? 1 : 0));
+      for (const d of darts.darts.slice(0, stuck)) {
+        const tip = world(parts(d, 'dart-point')[0]);
+        expect(Math.abs(tip.x - BOARD.x), 'in the face').toBeLessThan(0.03);
+        expect(Math.hypot(tip.y - BOARD.y, tip.z - BOARD.z), 'inside the circle').toBeLessThan(BOARD.r - 0.02);
+      }
+    }
+  });
+});
+
+describe('#54 AC4 a new dart each throw; three per round, then collected', () => {
+  it('#54 AC4 the board fills 0, 1, 2, 3, then is empty before the next round\'s first throw lands', () => {
+    const seen: number[] = [];
+    for (let t = 0; t < 2 * ROUND; t += 0.02) {
+      const n = dartsAt(t).stuck;
+      if (seen.at(-1) !== n) seen.push(n);
+    }
+    expect(seen).toEqual([0, 1, 2, 3, 0, 1, 2, 3, 0]);
+  });
+
+  it('#54 AC4 after each release a new dart is in hand for the next throw', () => {
+    for (let i = 0; i + 1 < THROWS; i++) expect(heldDart(thrower((i + 1) * THROW_EVERY + 0.1)), `before throw ${i + 2}`).not.toBeNull();
+    expect(heldDart(thrower(ROUND + 0.1)), 'first throw of the next round').not.toBeNull();
+  });
+
+  it('#54 AC4 to collect, the thrower walks up to the board and back to the line', () => {
+    let closest = Infinity;
+    const character = thrower(THROWS * THROW_EVERY);
+    for (let t = THROWS * THROW_EVERY; t < ROUND; t += 0.02) {
+      character.update(t, 0.02);
+      closest = Math.min(closest, Math.abs(character.root.position.x - BOARD.x));
+    }
+    expect(closest).toBeLessThan(COLLECT_FROM + 0.1);
+    character.update(ROUND + 0.1, 0.1);
+    expect(character.root.position.x).toBeCloseTo(PLACE.x, 1);
+  });
+});
+
+describe('#54 AC5 leaving clears the board', () => {
+  it('#54 AC5 with no thrower, no darts are shown', () => {
+    const darts = new BoardDarts(new THREE.Scene());
+    darts.update({ place: PLACE, t: 2 * THROW_EVERY + 0.1 });
+    expect(darts.darts.filter((d) => d.visible).length).toBe(2);
+    darts.update(null);
+    expect(darts.darts.filter((d) => d.visible)).toEqual([]);
+  });
+
+  it('#54 AC5 a thrower walking away is no longer at the darts', () => {
+    const character = thrower(2 * THROW_EVERY);
+    expect(character.dartsThrower()).not.toBeNull();
+    character.go([{ x: PLACE.x, z: PLACE.z }, { x: -5.8, z: PLACE.z }], null);
+    expect(character.dartsThrower()).toBeNull();
+  });
+});
