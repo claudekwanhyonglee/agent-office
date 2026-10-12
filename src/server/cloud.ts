@@ -134,14 +134,55 @@ const COORDINATORS = '/v1/code/sessions?limit=100&tags=hearth-overview';
 
 const bareId = (id = '') => id.replace(/^(cse|session)_/, '');
 
+/** A thread's parent never changes and a project's name rarely does, so both are looked up once. */
+const parentOf = new Map<string, string | null>();
+const projectName = new Map<string, string>();
+const coordinatorName = (title?: string) => title?.match(/"(.+)"/)?.[1] ?? title ?? null;
+
 /** Names each Projects thread by its project, via its parent (the project's coordinator). */
 export function nameProjects(sessions: CloudSession[], coordinators: CloudSession[]) {
-  const names = new Map(coordinators.map((c) => [bareId(c.id), c.title?.match(/"(.+)"/)?.[1] ?? c.title ?? 'Project']));
+  for (const c of coordinators) { const name = coordinatorName(c.title); if (name) projectName.set(bareId(c.id), name); }
   for (const s of sessions) {
     if (!s.tags?.includes('hearth-thread')) continue;
-    s.project_name = names.get(bareId(s.parent_session_id)) ?? 'Projects';
+    const parent = s.parent_session_id ?? parentOf.get(s.id);
+    s.project_name = (parent && projectName.get(bareId(parent))) || 'Projects';
   }
   return sessions;
+}
+
+/** One session's full record; the list can leave fields out. */
+async function sessionDetail(id: string, login: Login): Promise<Record<string, unknown> | null> {
+  try {
+    let res = await request(`/v1/code/sessions/${encodeURIComponent(id)}`, login, false);
+    // Parents come as session_…; this endpoint may only know the cse_… form.
+    if (!res.ok && id.startsWith('session_')) res = await request(`/v1/code/sessions/${encodeURIComponent(id.replace(/^session_/, 'cse_'))}`, login, false);
+    if (!res.ok) return null;
+    const body = await res.json() as Record<string, unknown> & { ccr?: Record<string, unknown>; session?: Record<string, unknown> };
+    return body.ccr ?? body.session ?? body;
+  } catch {
+    return null;
+  }
+}
+
+/** Fills in parents and project names the lists didn't give, a few lookups per poll. */
+async function lookUpProjects(sessions: CloudSession[], login: Login) {
+  const threads = sessions.filter((s) => s.tags?.includes('hearth-thread'));
+  const unknown = threads.filter((s) => !s.parent_session_id && !parentOf.has(s.id)).slice(0, 10);
+  await Promise.all(unknown.map(async (s) => {
+    const detail = await sessionDetail(s.id, login);
+    const parent = detail?.parent_session_id ?? detail?.parent_id;
+    parentOf.set(s.id, typeof parent === 'string' ? parent : null);
+  }));
+  const parents = new Set(threads.map((s) => s.parent_session_id ?? parentOf.get(s.id)).filter((p): p is string => !!p));
+  const missing = [...parents].filter((p) => !projectName.has(bareId(p))).slice(0, 10);
+  await Promise.all(missing.map(async (p) => {
+    const detail = await sessionDetail(p, login);
+    const name = coordinatorName(typeof detail?.title === 'string' ? detail.title : undefined);
+    projectName.set(bareId(p), name ?? 'Projects');
+  }));
+  if (unknown.length || missing.length) {
+    console.log(`Projects: ${threads.length} threads, ${parents.size} projects (${[...new Set(projectName.values())].join(', ') || 'no names yet'})`);
+  }
 }
 
 const REFRESH_EVERY = 5 * 60_000;
@@ -194,7 +235,10 @@ export async function listCloudSessions(env: NodeJS.ProcessEnv = process.env): P
   const byId = new Map<string, CloudSession>();
   for (const res of ok) for (const session of sessionsFromResponse(await res.json())) byId.set(session.id, session);
   const coordinators = await request(COORDINATORS, login, false).then((res) => res.ok ? res.json() : null, () => null);
-  return nameProjects([...byId.values()], sessionsFromResponse(coordinators));
+  const sessions = [...byId.values()];
+  nameProjects([], sessionsFromResponse(coordinators));
+  await lookUpProjects(sessions, login);
+  return nameProjects(sessions, []);
 }
 
 /** Each session's updated_at from the last fetch, so a "Got it" lasts only until the session moves on. */
