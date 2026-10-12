@@ -8,6 +8,8 @@ LABEL=com.savvymonkeyfoo.agent-office
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DIR=$(cd "$(dirname "$0")/.." && pwd)
 NODE=$(command -v node)
+# The office runs `claude auth status` to renew your login, so launchd needs claude on its PATH too.
+CLAUDE_DIR=$(dirname "$(command -v claude || echo /usr/bin/claude)")
 LOG="$HOME/Library/Logs/agent-office.log"
 
 case "$1" in
@@ -24,7 +26,7 @@ case "$1" in
   <key>EnvironmentVariables</key><dict>
     <key>CLOUD</key><string>1</string>
     <key>NODE_OPTIONS</key><string>--use-system-ca</string>
-    <key>PATH</key><string>$(dirname "$NODE"):/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PATH</key><string>$(dirname "$NODE"):$CLAUDE_DIR:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

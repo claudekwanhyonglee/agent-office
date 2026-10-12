@@ -55,7 +55,7 @@ export async function readLogin(env: NodeJS.ProcessEnv = process.env): Promise<L
 }
 
 const NO_LOGIN = "Couldn't read your Claude login on this computer. Run `claude` and sign in with your Claude account, then restart Agent Office.";
-const EXPIRED = 'Your Claude login on this computer has expired or can\'t see cloud sessions. In a terminal run `claude`, then `/login` with the account your sessions belong to, and restart the office. (Tokens from `claude setup-token` can\'t list sessions.)';
+const EXPIRED = 'Your Claude login on this computer has expired or can\'t see cloud sessions, and Agent Office couldn\'t renew it. In a terminal run `claude`, then `/login` with the account your sessions belong to; the office picks it up within a minute. (Tokens from `claude setup-token` can\'t list sessions.)';
 
 /** Older and newer session APIs name the state differently; this gives the office one status bucket. */
 const BUCKET_FOR_STATUS: Record<string, string> = {
@@ -129,8 +129,33 @@ function send(path: string, login: Login, beta: boolean) {
  */
 const QUERIES = ['', '&tags=hearth-thread'].map((q) => `/v1/code/sessions?limit=100${q}`);
 
+const REFRESH_EVERY = 5 * 60_000;
+let lastRefresh = 0;
+let refreshNext = false;
+
+/**
+ * claude.ai logins last about 8 hours. Rather than handle the refresh token ourselves (which would leave
+ * `claude` holding a used one), ask the CLI to check its login, which renews it and saves the new one.
+ * Work settings are left out so the check uses your claude.ai login, never an API key or gateway.
+ */
+function askClaudeToRefresh(env: NodeJS.ProcessEnv): Promise<void> {
+  if (Date.now() - lastRefresh < REFRESH_EVERY) return Promise.resolve();
+  lastRefresh = Date.now();
+  const childEnv = { ...env };
+  for (const key of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX']) delete childEnv[key];
+  return new Promise((resolve) => {
+    execFile(env.CLAUDE_BIN || 'claude', ['auth', 'status', '--json'], { env: childEnv, timeout: 60_000 }, () => resolve());
+  });
+}
+
 export async function listCloudSessions(env: NodeJS.ProcessEnv = process.env): Promise<CloudSession[]> {
-  const login = await readLogin(env);
+  let login = await readLogin(env);
+  const expiring = !!login?.expiresAt && login.expiresAt < Date.now() + 5 * 60_000;
+  if (login && !env.CLAUDE_CODE_OAUTH_TOKEN && (expiring || refreshNext)) {
+    refreshNext = false;
+    await askClaudeToRefresh(env);
+    login = (await readLogin(env)) ?? login;
+  }
   if (!login) throw new Error(keychainProblem ? `${NO_LOGIN} (Keychain: ${keychainProblem}. If macOS asks, click Always Allow.)` : NO_LOGIN);
   let responses = await Promise.all(QUERIES.map((path) => request(path, login, false)));
   // ~/.claude.json can name a different organization than the saved login (e.g. a work setup), so retry without it.
@@ -139,6 +164,7 @@ export async function listCloudSessions(env: NodeJS.ProcessEnv = process.env): P
     responses = await Promise.all(QUERIES.map((path) => request(path, bare, false)));
   }
   if (responses.some((res) => res.status === 401)) {
+    refreshNext = true;
     const body = (await responses.find((res) => res.status === 401)!.text()).slice(0, 200);
     console.error(`Anthropic said 401: ${body}`);
     throw new Error(login.expiresAt && login.expiresAt < Date.now() ? EXPIRED : `${EXPIRED} (HTTP 401)`);
