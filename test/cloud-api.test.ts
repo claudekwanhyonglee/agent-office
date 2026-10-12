@@ -23,6 +23,18 @@ describe('cloud mode', () => {
       .toBe('SESSION_STATUS_BUCKET_WORKING');
   });
 
+  it('reads /v1/code/sessions objects', () => {
+    const [s] = sessionsFromResponse({ data: [{
+      id: 'cse_1', status: 'active', status_bucket: 'review_ready', worker_status: 'idle', last_event_at: '2026-10-12T00:00:00Z',
+      external_metadata: { post_turn_summary: { status_detail: 'done the thing' } },
+    }] });
+    expect(mapCloudState(s)).toBe('done');
+    expect(s.updated_at).toBe('2026-10-12T00:00:00Z');
+    expect(s.post_turn_summary?.status_detail).toBe('done the thing');
+    expect(mapCloudState(normaliseSession({ id: 'x', status: 'active', status_bucket: 'working', worker_status: 'requires_action' }))).toBe('needs');
+    expect(mapCloudState(normaliseSession({ id: 'x', status: 'archived', status_bucket: 'completed' }))).toBe('finished');
+  });
+
   it('reads data, sessions or bare lists', () => {
     expect(sessionsFromResponse({ data: [{ id: 'a' }] }).map((s) => s.id)).toEqual(['a']);
     expect(sessionsFromResponse({ sessions: [{ id: 'b' }] }).map((s) => s.id)).toEqual(['b']);

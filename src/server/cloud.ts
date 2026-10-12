@@ -64,12 +64,23 @@ const BUCKET_FOR_STATUS: Record<string, string> = {
 };
 
 export function normaliseSession(raw: Record<string, unknown>): CloudSession {
-  const session = raw as unknown as CloudSession & { status?: string; session_status?: string };
+  const session = raw as unknown as CloudSession & {
+    status?: string; worker_status?: string; last_event_at?: string;
+    config?: CloudSession['session_context'];
+    external_metadata?: CloudSession['external_metadata'] & { post_turn_summary?: CloudSession['post_turn_summary'] };
+  };
   const status = String(session.session_status ?? session.status ?? '').replace(/^SESSION_STATUS_/, '').toLowerCase();
+  // /v1/code/sessions sends lowercase buckets ("working"); a worker waiting on a permission prompt needs you.
+  const bucket = session.worker_status === 'requires_action' ? 'blocked' : session.status_bucket;
   return {
     ...session,
     session_status: status === 'archived' ? 'SESSION_STATUS_ARCHIVED' : session.session_status,
-    status_bucket: session.status_bucket ?? BUCKET_FOR_STATUS[status],
+    status_bucket: bucket
+      ? (bucket.startsWith('SESSION_STATUS_BUCKET_') ? bucket : `SESSION_STATUS_BUCKET_${bucket.toUpperCase()}`)
+      : BUCKET_FOR_STATUS[status],
+    updated_at: session.updated_at ?? session.last_event_at,
+    session_context: session.session_context ?? session.config,
+    post_turn_summary: session.post_turn_summary ?? session.external_metadata?.post_turn_summary,
   };
 }
 

@@ -82,4 +82,5 @@ export function sessionsFromPayload(payload: unknown): CloudSession[] {
   return Array.isArray(list) ? (list as CloudSession[]) : [];
 }
 
-export const sessionUrl = (record: AgentRecord) => `https://claude.ai/code/${encodeURIComponent(record.sessionId)}`;
+/** Code-session ids (cse_…) and session ids (session_…) name the same session; claude.ai links use the latter. */
+export const sessionUrl = (record: AgentRecord) => `https://claude.ai/code/${encodeURIComponent(record.sessionId.replace(/^cse_/, 'session_'))}`;

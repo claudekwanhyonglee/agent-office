@@ -52,8 +52,8 @@ export function boot({ createOffice }: BootOptions = {}) {
       acknowledge,
       expanded,
       toggleMessage: () => { expanded = !expanded; select(selected); },
-      // Cloud sessions (ids like session_…) open on claude.ai instead of `claude attach`.
-      openLink: selected.startsWith('session_') ? sessionUrl : undefined,
+      // Cloud sessions (ids like session_… or cse_…) open on claude.ai instead of `claude attach`.
+      openLink: /^(session|cse)_/.test(selected) ? sessionUrl : undefined,
     });
   }
 
