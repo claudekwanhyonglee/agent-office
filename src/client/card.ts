@@ -17,6 +17,8 @@ interface CardActions {
   /** Whether the last message is shown in full, and how to flip it. */
   expanded: boolean;
   toggleMessage(): void;
+  /** Replaces the `claude attach` command with a link, e.g. to a cloud session on claude.ai. */
+  openLink?: (record: AgentRecord) => string;
 }
 
 const PREVIEW_LINES = 4;
@@ -50,14 +52,16 @@ export function renderCard(card: HTMLElement, record: AgentRecord, actions: Card
     ${messageSection(record.lastMessage, actions.expanded)}
     <div class="section">
       <span class="label">Pick it up</span>
-      <div class="command"><code>${escapeHtml(command)}</code><button class="btn" data-copy>Copy</button></div>
+      ${actions.openLink
+        ? `<div><a class="btn primary" href="${escapeHtml(actions.openLink(record))}" target="_blank" rel="noopener">Open session</a></div>`
+        : `<div class="command"><code>${escapeHtml(command)}</code><button class="btn" data-copy>Copy</button></div>`}
     </div>
     ${canDismiss(record) ? '<div><button class="btn primary" data-ack>Got it</button></div>' : ''}`;
   card.hidden = false;
 
   card.querySelector<HTMLButtonElement>('[data-close]')!.onclick = actions.close;
-  const copy = card.querySelector<HTMLButtonElement>('[data-copy]')!;
-  copy.onclick = () => {
+  const copy = card.querySelector<HTMLButtonElement>('[data-copy]');
+  if (copy) copy.onclick = () => {
     navigator.clipboard?.writeText(command).then(() => { copy.textContent = 'Copied'; }, () => { copy.textContent = 'Copy failed'; });
   };
   const more = card.querySelector<HTMLButtonElement>('[data-more]');

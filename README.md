@@ -34,6 +34,19 @@ Or set `LAN=1`, e.g. `LAN=1 npx github:claudekwanhyonglee/agent-office`. It then
 
 There is no login: anyone on your network can see the office and press **Got it**. Only use it on a network you trust.
 
+## Cloud sessions (claude.ai artifact)
+
+This fork can also run as a private claude.ai artifact that shows your Claude Code **cloud** sessions
+(claude.ai/code, Claude app and Projects) instead of the sessions on one computer.
+It reads them with your own login through the built-in Claude Code Remote connector and refreshes every 30 seconds.
+
+```sh
+npm run build:artifact   # writes dist/agent-office.html
+```
+
+Publish `dist/agent-office.html` as an artifact that declares the `mcp` capability for `Claude Code Remote` → `list_sessions`.
+Click an agent to open its session on claude.ai. Got it is remembered in your browser only, and the usage panel is left out.
+
 ## Requirements
 
 - Node.js 20 or newer

@@ -2,16 +2,10 @@ import './style.css';
 import { createOfficeScene } from './office-scene.ts';
 import { renderCard, showTooltip } from './card.ts';
 import { startUsagePanel } from './usage.ts';
+import { hasWebGL } from './webgl.ts';
 import type { AgentRecord, FeedPayload } from '../shared/agent.ts';
 
-export function hasWebGL() {
-  const probe = document.createElement('canvas');
-  try {
-    return !!(probe.getContext('webgl2') || probe.getContext('webgl'));
-  } catch {
-    return false;
-  }
-}
+export { hasWebGL };
 
 function showStatus(text: string | null, problem = false) {
   const status = document.getElementById('status')!;

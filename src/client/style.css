@@ -113,6 +113,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
 .btn:hover { background: #423B63; }
 .btn.primary { background: var(--blue); border-color: var(--blue); color: #FFFFFF; }
 .btn.primary:hover { background: #3B74F0; }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; box-sizing: border-box; }
 .btn.link { align-self: flex-start; min-height: 28px; padding: 0 10px; }
 .btn.icon { min-width: 36px; padding: 0; font-size: 18px; line-height: 1; }
 .btn:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
