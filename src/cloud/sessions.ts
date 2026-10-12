@@ -62,7 +62,8 @@ export function toCloudRecord(session: CloudSession): AgentRecord {
 /** Live sessions, plus ended ones touched in the last day (like the local office). */
 export function buildCloudList(sessions: CloudSession[], now: number) {
   return sessions.map(toCloudRecord).filter((record, i) => {
-    if (record.state !== 'finished' && record.state !== 'stale') return true;
+    // Idle sessions pile up for weeks; keep only ones working, waiting on you, or touched in the last day.
+    if (record.state === 'working' || record.state === 'needs') return true;
     const updated = Date.parse(sessions[i].updated_at ?? '');
     return Number.isFinite(updated) && now - updated < DAY;
   });

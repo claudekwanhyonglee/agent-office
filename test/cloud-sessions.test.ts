@@ -22,11 +22,12 @@ describe('cloud sessions', () => {
     expect(record).toMatchObject({ project: 'web-app', name: 'Fix login', state: 'needs', lastMessage: 'approve the plan' });
   });
 
-  it('drops ended sessions older than a day', () => {
+  it('drops idle and ended sessions older than a day', () => {
     const list = buildCloudList([
       session({ id: 'a', status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED', session_status: 'SESSION_STATUS_ARCHIVED' }),
       session({ id: 'b', status_bucket: 'SESSION_STATUS_BUCKET_FAILED', updated_at: '2026-10-01T00:00:00Z' }),
       session({ id: 'c', status_bucket: 'SESSION_STATUS_BUCKET_WORKING', updated_at: '2026-10-01T00:00:00Z' }),
+      session({ id: 'd', status_bucket: 'SESSION_STATUS_BUCKET_REVIEW_READY', updated_at: '2026-10-01T00:00:00Z' }),
     ], NOW);
     expect(list.map((r) => r.sessionId)).toEqual(['a', 'c']);
   });
