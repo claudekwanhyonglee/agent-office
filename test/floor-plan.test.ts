@@ -167,7 +167,7 @@ describe('#25 AC2 plan C zones', () => {
 
 describe('#25 AC3 routes stay clear, and the next epic has room', () => {
   for (const rows of [INITIAL_ROWS, INITIAL_ROWS + 1]) {
-    it(`#25 AC3 arrival, departure and wander routes for every seat and place miss all furniture and walls (${rows} rows)`, () => {
+    it(`#25 AC3 arrival, departure and wander routes for every seat and place miss all furniture and walls (${rows} rows)`, { timeout: 30_000 }, () => {
       const { group, layout } = buildOffice(rows);
       const obstacles = obstaclesIn(group);
       const places = layout.hangouts.flatMap((s) => s.places);

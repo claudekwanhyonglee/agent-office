@@ -95,11 +95,11 @@ describe('#57 AC3 inside the water, never touching another ring', () => {
   });
 });
 
-/** Agents in a pool dip, from a seeded office; the drift events sent. */
+/** Agents taking a pool dip (each on its own since #89), from a seeded office, until 3 have; the drift events sent. */
 function dip(seed: number) {
   const o = office(4, seed);
   for (let n = 1; n <= 4; n++) o.set(n, 'done');
-  for (let i = 0; i < 4 * 60 * 60 && !ofType(o.log.map((l) => l.event), 'drift').length; i++) o.run(0.25);
+  for (let i = 0; i < 4 * 60 * 60 && ofType(o.log.map((l) => l.event), 'drift').length < 3; i++) o.run(0.25);
   return { o, drifts: ofType(o.log.map((l) => l.event), 'drift') };
 }
 

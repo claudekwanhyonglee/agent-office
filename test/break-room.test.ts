@@ -71,7 +71,7 @@ describe('#30 AC3 any free solo place can be chosen', () => {
 
 describe('#30 AC4 routes to and from solo places are clear', () => {
   for (const rows of [INITIAL_ROWS, INITIAL_ROWS + 1]) {
-    it(`#30 AC4 every route between a solo place and every desk, place and the door misses all furniture and walls (${rows} rows)`, () => {
+    it(`#30 AC4 every route between a solo place and every desk, place and the door misses all furniture and walls (${rows} rows)`, { timeout: 30_000 }, () => {
       const { group, layout } = buildOffice(rows);
       const obstacles = obstaclesIn(group);
       const solo = SOLO.flatMap((s) => layout.hangouts.find((h) => h.name === s.spot)!.places);

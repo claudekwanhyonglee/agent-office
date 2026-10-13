@@ -83,10 +83,18 @@ export function boot({ createOffice }: BootOptions = {}) {
   return { applyFeed };
 }
 
+/** Dev builds only: `?idle=15` shows that many idle agents wandering, without a server (#89). */
+const idleDemo = import.meta.env.DEV ? Number(new URLSearchParams(location.search).get('idle')) : 0;
+
 if (!import.meta.env.VITEST) {
   startUsagePanel(document.getElementById('usage')!);
   const app = boot();
-  if (app) {
+  if (app && idleDemo) {
+    app.applyFeed(Array.from({ length: idleDemo }, (_, i) => ({
+      id: `idle-${i}`, sessionId: `idle-${i}`, name: `agent ${i + 1}`, project: 'demo', cwd: '/demo',
+      state: 'done' as const, lastMessage: null, branch: null, activity: [],
+    })));
+  } else if (app) {
     const events = new EventSource('/api/events');
     events.onmessage = (e) => app.applyFeed(JSON.parse(e.data));
   }

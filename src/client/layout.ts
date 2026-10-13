@@ -240,7 +240,6 @@ export function officeLayout(rows: number) {
     {
       name: 'pool-dip',
       chat: false,
-      game: { min: 3 },
       places: BREAK_ROOM.pool.rings.map((r) => {
         const edge = { x: r.x, z: 8.8 };
         return { ...r, spot: 'pool-dip', yaw: 0, pose: 'floating' as const, sits: true, link: [{ ...r }, edge, { x: edge.x, z: DECK_Z }] };
