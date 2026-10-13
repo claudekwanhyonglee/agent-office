@@ -1000,11 +1000,11 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
   },
   'shooting-hoops': ({ pivot, head, hands: [hl, hr], feet: [fl, fr], held, placeTime = 0 }) => {
     // Hands either side of the ball, up as the shooter jumps; it lets go at the top and the bin's ball takes over (#73).
-    const { hands, jump, holding } = shotAt(placeTime);
+    const { hands, forward, jump, holding } = shotAt(placeTime);
     pivot.position.y = jump;
     head.rotation.x = -0.25;
-    hl.position.set(-HANDS.apart, hands, HANDS.forward);
-    hr.position.set(HANDS.apart, hands, HANDS.forward);
+    hl.position.set(-HANDS.apart, hands, forward);
+    hr.position.set(HANDS.apart, hands, forward);
     fl.position.set(-0.17, 0.06 + jump, 0.04);
     fr.position.set(0.17, 0.06 + jump, 0.04);
     if (held) {

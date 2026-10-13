@@ -125,3 +125,46 @@ describe('#73 AC3 the ball is always somewhere to be seen', () => {
     expect(ball.mesh.visible).toBe(false);
   });
 });
+
+describe('#123 a natural release and a crisp flight', () => {
+  const H = 1e-3;
+  const flightAt = (s: number) => vec(ballFlight(PLACE, s / FLIGHT));
+
+  it('#123 AC1 across the release, the ball\'s velocity changes by less than 20% of its launch speed', () => {
+    for (const shot of [1, 2]) {
+      const { at } = shooter();
+      const release = shot * SHOT_EVERY + RELEASE_AT;
+      const held = (t: number) => world(heldBall(at(t))!);
+      const a = held(release - 2 * FRAME), b = held(release - FRAME);
+      const before = b.clone().sub(a).divideScalar(FRAME);
+      const after = flightAt(H).sub(flightAt(0)).divideScalar(H);
+      expect(after.length(), 'it is thrown, not dropped').toBeGreaterThan(1);
+      expect(before.distanceTo(after), `shot ${shot}: in hands ${before.toArray().map((n) => n.toFixed(2))}, in flight ${after.toArray().map((n) => n.toFixed(2))}`)
+        .toBeLessThan(0.2 * after.length());
+    }
+  });
+
+  it('#123 AC2 in flight, horizontal velocity is constant and vertical acceleration is constant and downward', () => {
+    const N = 20, dt = FLIGHT / N;
+    const p = Array.from({ length: N + 1 }, (_, i) => flightAt(i * dt));
+    const accel = (i: number) => p[i + 1].clone().add(p[i - 1]).sub(p[i].clone().multiplyScalar(2)).divideScalar(dt * dt);
+    const g = accel(1).y;
+    expect(g).toBeLessThan(-1);
+    for (let i = 1; i < N; i++) {
+      const a = accel(i);
+      expect(Math.hypot(a.x, a.z), `horizontal acceleration at step ${i}`).toBeLessThan(1e-6);
+      expect(a.y, `vertical acceleration at step ${i}`).toBeCloseTo(g, 6);
+    }
+  });
+
+  it('#123 AC3 from release to resting in the bin takes at most 0.7 s', () => {
+    expect(FLIGHT).toBeLessThanOrEqual(0.7);
+    const ball = new BinBall(new THREE.Scene());
+    const rest = vec(ballFlight(PLACE, 1));
+    for (const s of [0.7, 0.9, 1.2]) {
+      ball.update({ place: PLACE, t: SHOT_EVERY + RELEASE_AT + s });
+      expect(ball.mesh.position.distanceTo(rest), `${s} s after release`).toBeLessThan(1e-6);
+    }
+    expect(rest.y).toBeLessThan(BIN.rim);
+  });
+});
