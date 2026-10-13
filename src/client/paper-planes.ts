@@ -5,7 +5,8 @@ import { paperPlane } from './character.ts';
 const FLIGHT_SECONDS = 1.4;
 /** How long a landed plane lies on the desk. */
 const LANDED_SECONDS = 12;
-const DESK_TOP = 0.82;
+/** Where a landed plane's middle lies: on the desk top (0.82 m), as it always did. */
+const LANDED_Y = 0.82 + 0.12;
 
 /** Paper planes flying in an arc from a thrower's hand to a desk, where they lie for a while. */
 export class PaperPlanes {
@@ -13,13 +14,20 @@ export class PaperPlanes {
 
   constructor(private scene: THREE.Scene) {}
 
+  /** A plane leaving from `from` (the held plane's place in the world, #74) for desk `desk`. */
   throw(from: THREE.Vector3, desk: Point) {
     const plane = new THREE.Group().add(paperPlane());
-    const start = new THREE.Vector3(from.x, 1.4, from.z), to = new THREE.Vector3(desk.x, DESK_TOP, desk.z);
+    plane.children[0].position.set(0, 0, 0);
+    const start = from.clone(), to = new THREE.Vector3(desk.x, LANDED_Y, desk.z);
     plane.position.copy(start);
     plane.lookAt(to.x, start.y, to.z);
     this.scene.add(plane);
     this.flights.push({ plane, from: start, to, age: 0 });
+  }
+
+  /** The planes in the air or lying on desks. */
+  planes() {
+    return this.flights.map((f) => f.plane);
   }
 
   update(dt: number) {

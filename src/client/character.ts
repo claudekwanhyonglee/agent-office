@@ -78,6 +78,8 @@ export class Character {
   private returning: { from: Afloat; k: number; then: () => void } | null = null;
   /** The cast this angler is making (#58), and seconds into it. */
   private casting: { cast: Cast; t: number } | null = null;
+  /** The paper plane being thrown (#74): seconds in, where the held plane last was, and who launches it. */
+  private planeThrow: PlaneThrow | null = null;
   /** Seconds since the agent got to its hangout place. */
   private placeTime = 0;
   /** Seconds since the agent started leaving; its bubble pops, then stays gone (#49). */
@@ -214,6 +216,11 @@ export class Character {
     this.casting = { cast, t: 0 };
   }
 
+  /** Throw a paper plane now (#74); `release` launches it from where the held plane was, as the arm lets go. */
+  throwPlane(release: (from: THREE.Vector3) => void) {
+    this.planeThrow = { t: 0, from: null, release };
+  }
+
   /** Fishing from the jetty (#58). */
   fishing() {
     return this.mode === 'hanging' && this.place?.pose === 'fishing';
@@ -265,6 +272,7 @@ export class Character {
     this.place = null;
     this.rally = null;
     this.casting = null;
+    this.planeThrow = null;
   }
 
   private hangAt(place: HangoutPlace) {
@@ -425,7 +433,10 @@ export class Character {
       if (held) held.visible = true;
       if (this.rally) this.rally.t += dt;
       if (this.casting) this.casting.t += dt;
-      return activity({ casting: this.casting, pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally, placeTime: this.placeTime }, tt);
+      if (this.planeThrow) this.planeThrow.t += dt;
+      const bubbleY = activity({ casting: this.casting, pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally, placeTime: this.placeTime, planeThrow: this.planeThrow }, tt);
+      if (place.pose === 'throwing-plane') this.letGoOfPlane(held!);
+      return bubbleY;
     }
     if (place.pose === 'chatting') {
       const talk = Math.sin(tt * 6);
@@ -444,6 +455,18 @@ export class Character {
       (eating ? this.snack : this.mug).visible = true;
     }
     return 2.2 + Math.sin(tt * 1.6) * 0.04 * motion;
+  }
+
+  /** Paper planes (#74): note where the held plane is until the arm lets go, then launch it from there. */
+  private letGoOfPlane(held: THREE.Object3D) {
+    const thrown = this.planeThrow;
+    if (!thrown) return;
+    if (thrown.t < PLANE_ARM.release) thrown.from = held.getWorldPosition(new THREE.Vector3());
+    else if (thrown.release) {
+      thrown.release(thrown.from ?? held.getWorldPosition(new THREE.Vector3()));
+      thrown.release = null;
+    }
+    if (thrown.t >= PLANE_ARM.end) this.planeThrow = null;
   }
 
   /** Pool dip (#57): the ring carries the rider about, turning and bobbing; or paddles it home before climbing out. */
@@ -568,6 +591,27 @@ interface Body {
   /** Seconds since arriving at the place. */
   placeTime?: number;
   casting?: { cast: Cast; t: number } | null;
+  planeThrow?: PlaneThrow | null;
+}
+
+interface PlaneThrow { t: number; from: THREE.Vector3 | null; release: ((from: THREE.Vector3) => void) | null }
+
+/** Paper planes (#74): the throwing hand and body twist at moments of a throw, eased between; it lets go at `release`. */
+const PLANE_KEYS = [
+  { t: 0, hand: new THREE.Vector3(0.35, 1.15, 0.2), twist: 0 },
+  { t: 0.45, hand: new THREE.Vector3(0.35, 1.3, -0.1), twist: -0.2 },
+  { t: 0.65, hand: new THREE.Vector3(0.25, 1.35, 0.55), twist: 0.1 },
+  { t: 1.3, hand: new THREE.Vector3(0.35, 1.15, 0.2), twist: 0 },
+];
+const PLANE_ARM = { release: PLANE_KEYS[2].t, end: PLANE_KEYS[3].t };
+
+/** The throwing hand and twist `t` seconds into a paper-plane throw. */
+function planeArm(t: number) {
+  const i = PLANE_KEYS.findIndex((key) => key.t > t);
+  if (i <= 0) return PLANE_KEYS[i < 0 ? PLANE_KEYS.length - 1 : 0];
+  const a = PLANE_KEYS[i - 1], b = PLANE_KEYS[i];
+  const k = (t - a.t) / (b.t - a.t), ease = k * k * (3 - 2 * k);
+  return { hand: a.hand.clone().lerp(b.hand, ease), twist: a.twist + (b.twist - a.twist) * ease };
 }
 
 /** Darts (#54): the throwing hand while aiming, drawn back just before the release, and at the release. */
@@ -710,14 +754,14 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     if (held) held.visible = k < 0.8;
     return 2.2 + jump;
   },
-  'throwing-plane': ({ pivot, head, hands: [hl, hr], held }, tt) => {
-    const k = throwPhase(tt, 5);
-    const windUp = k < 0.6;
-    pivot.rotation.y = windUp ? -0.2 : 0.1;
+  'throwing-plane': ({ pivot, head, hands: [hl, hr], held, planeThrow }) => {
+    // Holding a plane until the controller says throw (#74): wind up, let go, follow through, pick up the next.
+    const t = planeThrow?.t ?? Infinity, { hand, twist } = planeArm(t);
+    pivot.rotation.y = twist;
     head.rotation.x = -0.15;
     hl.position.set(-0.4, 0.75, 0.25);
-    hr.position.copy(windUp ? new THREE.Vector3(0.35, 1.3, -0.1) : new THREE.Vector3(0.25, 1.35, 0.55));
-    if (held) held.visible = windUp;
+    hr.position.copy(hand);
+    if (held) held.visible = t < PLANE_ARM.release || t >= PLANE_ARM.end;
     return 2.2;
   },
   'cue-shot': ({ pivot, head, hands: [hl, hr], held }, tt) => {
@@ -890,5 +934,6 @@ export function paperPlane() {
   plane.rotation.x = Math.PI / 2;
   plane.scale.set(1, 1, 0.25);
   plane.position.set(0, 0.12, 0.08);
+  plane.userData.part = 'paper-plane';
   return plane;
 }

@@ -72,8 +72,8 @@ export function createOfficeScene(host: HTMLElement) {
       } else if (event.type === 'state') {
         characters.get(event.key)?.setState(event.state);
       } else if (event.type === 'plane') {
-        const thrower = characters.get(event.key);
-        if (thrower) planes.throw(thrower.root.position, office.seats[event.desk].desk);
+        const desk = office.seats[event.desk].desk;
+        characters.get(event.key)?.throwPlane((from) => planes.throw(from, desk));
       } else if (event.type === 'high-five') {
         characters.get(event.key)?.highFive();
         characters.get(event.to)?.highFive();
