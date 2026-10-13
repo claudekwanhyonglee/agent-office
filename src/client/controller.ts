@@ -715,13 +715,24 @@ export class OfficeController {
       agent.seat = this.layout.seats[agent.seat.index];
       const walking = agent.walk && now < agent.arrivesAt;
       if (!agent.place && !walking) continue;
-      agent.place = agent.place && (moved[places.indexOf(agent.place)] ?? agent.place); // errand places don't move
+      // Errand places by a desk stay put (seats don't move); one by the dog moves with its spot.
+      agent.place = agent.place && (moved[places.indexOf(agent.place)] ?? this.movedDogVisit(agent.place, old) ?? agent.place);
       agent.walk = undefined;
       agent.queued = undefined;
       agent.arrivesAt = now;
       if (agent.place && agent.nextAt == null) agent.nextAt = this.stagger(now, STAY, [agent]);
       events.push({ type: 'place', key, seat: agent.seat, state: agent.record.state, place: agent.place });
     }
+  }
+
+  /** Where a visit to the dog at `place` in layout `old` is now (the lounge moves back with a new tier); null if it isn't one. */
+  private movedDogVisit(place: HangoutPlace, old: OfficeLayout) {
+    if (place.spot !== 'dog') return null;
+    const at = (v: { at: Point }) => v.at.x === place.x && v.at.z === place.z;
+    const spot = old.dogSpots.findIndex((d) => d.visitors.some(at));
+    if (spot < 0) return null;
+    const visit = this.layout.dogSpots[spot].visitors[old.dogSpots[spot].visitors.findIndex(at)];
+    return errandPlace('dog', place.pose, visit.at, visit.link, yawTowards(visit.at, this.layout.dogSpots[spot].dog));
   }
 }
 

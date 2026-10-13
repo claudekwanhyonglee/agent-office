@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { OfficeState } from '../shared/agent.ts';
 import { at, ball, cyl, mesh, tag } from './toon.ts';
 import type { Look, HatKind } from './look.ts';
-import { BREAK_ROOM, WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
+import { BREAK_ROOM, WALK_SPEED, rejoin, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
 import { HIT, hitTimes, hitter, rallySeconds, type Rally, type Side } from './pong.ts';
@@ -70,6 +70,8 @@ export class Character {
   private held = heldProps();
   readonly bubble: THREE.Sprite;
   private path: THREE.Vector3[] = [];
+  /** Where the current walk started and the points it has passed since. */
+  private trail: Point[] = [];
   private onArrive?: () => void;
   private hopTween?: { from: THREE.Vector3; to: THREE.Vector3; fromYaw: number; yaw: number; k: number; then: () => void };
   private blinkAt = 1 + Math.random() * 3;
@@ -303,6 +305,7 @@ export class Character {
     if (offFurniture) this.hop(this.above(path[1] ?? path[0]), this.root.rotation.y, () => walkFrom(2));
     else if (this.mode === 'hanging') walkFrom(1);
     else if (this.mode === 'hopping') this.hopTween!.then = () => walkFrom(0);
+    else if (this.mode === 'walking') this.walk(rejoin(this.root.position, this.trail, this.path, path.slice(0, end)), then);
     else walkFrom(0);
     this.place = null;
     this.rally = null;
@@ -346,6 +349,7 @@ export class Character {
 
   private walk(points: Point[], then: () => void) {
     this.mode = 'walking';
+    this.trail = [{ x: this.root.position.x, z: this.root.position.z }];
     this.path = points.map((p) => vec(p));
     this.onArrive = then;
   }
@@ -568,7 +572,7 @@ export class Character {
     const dx = target.x - pos.x, dz = target.z - pos.z;
     const dist = Math.hypot(dx, dz);
     if (dist < 0.05) {
-      this.path.shift();
+      this.trail.push(this.path.shift()!);
       return;
     }
     const step = Math.min(dist, WALK_SPEED * dt);

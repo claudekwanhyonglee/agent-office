@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildOffice, updateScreens } from '../src/client/office.ts';
 import { arrivalPath, departurePath, fetchRun, route, type Point } from '../src/client/layout.ts';
-import type { ControlRoomLayout } from '../src/client/control-room.ts';
+import { heightAt, type ControlRoomLayout } from '../src/client/control-room.ts';
 import { DOOR_REACH, STATUS_COLORS, STATUS_OFF, doorsOpen } from '../src/client/control-room-3d.ts';
 import { allOnScreen, floorCorners, frameFloor, goHome, initialOrbit } from '../src/client/camera.ts';
 import type { OfficeState } from '../src/shared/agent.ts';
@@ -97,7 +97,7 @@ describe('#101 AC1 screen wall, tiered consoles with status lights, crew lounge,
       expect(boxOf(r).min.y).toBeGreaterThanOrEqual(layout.crewLounge.height - 0.01);
       expect(Math.abs((boxOf(r).min.z + boxOf(r).max.z) / 2 - layout.crewLounge.z0)).toBeLessThan(0.1);
     }
-    // Steps in the centre aisle and down the right, each one lower than the lounge.
+    // A staircase up each end of the tiers, each step lower than the lounge.
     const steps = parts(group, 'steps');
     for (const area of layout.steps) {
       const inside = steps.filter((s) => { const c = boxOf(s).getCenter(new THREE.Vector3()); return c.x > area.x0 && c.x < area.x1 && c.z > area.z0 && c.z < area.z1; });
@@ -231,7 +231,7 @@ describe('#101 AC3 no furniture blocks any route', () => {
   for (const tiers of [3, 4]) {
     it(`#101 AC3 arrivals, departures, and walks between seats, places and dog spots miss every piece (${tiers} tiers)`, { timeout: 60_000 }, () => {
       const { group, layout } = build(tiers);
-      const obstacles = obstaclesIn(group);
+      const obstacles = obstaclesIn(group, (p) => heightAt(layout, p));
       expect(obstacles.length).toBeGreaterThan(50);
       for (const seat of layout.seats) {
         expect(routeCollisions(arrivalPath(layout, seat), obstacles), `arrive seat ${seat.index}`).toEqual([]);
@@ -249,13 +249,50 @@ describe('#101 AC3 no furniture blocks any route', () => {
           expect(routeCollisions(route(layout, from.link, to.link), obstacles), `${from.name} → ${to.name}`).toEqual([]);
         }
       }
+      // From every seat, along its tier to the staircases, out to every place and to the other seats.
+      for (const seat of layout.seats) {
+        for (const to of [...places, ...layout.seats.filter((s) => s !== seat).map((s) => ({ name: `seat ${s.index}`, link: s.link }))]) {
+          expect(routeCollisions(route(layout, seat.link, to.link), obstacles), `seat ${seat.index} → ${to.name}`).toEqual([]);
+        }
+      }
       for (const spot of layout.dogSpots) expect(routeCollisions(fetchRun(layout, spot), obstacles), `dog ${spot.name}`).toEqual([]);
+      // Pool players step straight between turns: the shooter back to wait, the other up to the next shot.
+      const turns = layout.poolTurns, line = (a: Point, b: Point) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }];
+      turns.forEach((turn, k) => {
+        const next = turns[(k + 1) % turns.length], before = turns[(k + turns.length - 1) % turns.length];
+        expect(routeCollisions(line(turn.shoot, turn.wait), obstacles), `pool ${k} back to wait`).toEqual([]);
+        expect(routeCollisions(line(before.wait, next.shoot), obstacles), `pool up to shot ${(k + 1) % turns.length}`).toEqual([]);
+      });
     });
   }
 
+  it('#101 AC3 each console as built fits the footprint the plan routes round, and fills most of it', () => {
+    for (const tiers of [3, 4]) {
+      const { group, layout } = build(tiers);
+      const consoles = find(group, 'console');
+      expect(consoles).toHaveLength(layout.consoles.length);
+      for (const plan of layout.consoles) {
+        const built = consoles.find((o) => Math.hypot(worldOf(o).x - plan.x, worldOf(o).z - plan.z) < 1e-6)!;
+        expect(built.rotation.y).toBeCloseTo(plan.yaw, 9);
+        // Its solid parts (not the status light's glow) in its own frame: x across the console, z front to back.
+        const local = new THREE.Box3();
+        const toLocal = new THREE.Matrix4().copy(built.matrixWorld).invert();
+        built.traverse((o) => {
+          if (!(o instanceof THREE.Mesh)) return;
+          o.geometry.computeBoundingBox();
+          local.union(o.geometry.boundingBox!.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(toLocal, o.matrixWorld)));
+        });
+        expect(Math.max(-local.min.x, local.max.x), 'half its width').toBeLessThanOrEqual(plan.w / 2 + 0.02);
+        expect(Math.max(-local.min.z, local.max.z), 'half its depth').toBeLessThanOrEqual(plan.d / 2 + 0.02);
+        expect(local.max.x - local.min.x).toBeGreaterThan(plan.w * 0.9);
+        expect(local.max.z - local.min.z).toBeGreaterThan(plan.d * 0.9);
+      }
+    }
+  });
+
   it('#101 AC3 the checker catches a walk through a console and through the rail', () => {
     const { group, layout } = build();
-    const obstacles = obstaclesIn(group);
+    const obstacles = obstaclesIn(group, (p) => heightAt(layout, p));
     const seat = layout.seats[0];
     expect(routeCollisions([{ x: seat.desk.x, z: seat.desk.z + 1.5 }, { x: seat.desk.x, z: seat.desk.z - 1.5 }], obstacles)).not.toEqual([]);
     expect(routeCollisions([{ x: -5, z: layout.crewLounge.z0 - 1 }, { x: -5, z: layout.crewLounge.z0 + 1 }], obstacles)).not.toEqual([]);

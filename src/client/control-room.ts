@@ -1,7 +1,7 @@
 // The Control room preset's floor plan (#100), in plain numbers like layout.ts. Tiers of consoles
-// curve round a point behind the screen wall (-z) and face it; a stair aisle runs up their middle
-// from the pit to the crew lounge, a raised mezzanine behind the top tier with a rail along its
-// front. The entrance is in the left wall beside the pit; the side door in the right wall opens
+// curve round a point behind the screen wall (-z) and face it, each an unbroken row; a staircase
+// runs up each end of the tiers, like a cinema's side aisles, from the pit to the crew lounge, a
+// raised mezzanine behind the top tier with a rail along its front. The entrance is in the left wall beside the pit; the side door in the right wall opens
 // onto the deck. A new tier goes in behind the last and pushes the lounge back; the deck stays.
 import {
   BREAK_ROOM, CHAT_GAP, DARTS_LINE, HOOPS_LINE, turnsAround, yawTowards,
@@ -10,7 +10,7 @@ import {
 import { PLAYER_X } from './pong.ts';
 
 export const INITIAL_TIERS = 3;
-const SEATS_PER_SIDE = 3;
+const SEATS_PER_TIER = 6;
 
 const ROOM = { left: -11, right: 11, back: -8.6 };
 /** Every console faces this point, behind the screen wall. */
@@ -22,32 +22,27 @@ export const TIER_RISE = 0.4;
 const SCREEN_WALL_HEIGHT = 6.4;
 /** A tier's floor runs from this far in front of its consoles back to the next tier. */
 const TIER_FRONT = 0.8;
-/** Half a tier's width, as an arc at its consoles. */
-export const TIER_HALF_ARC = 6.0;
 const CONSOLE = { w: 1.48, d: 0.7 };
 /** Console centre to centre along the arc. */
 const SEAT_SPACING = 1.55;
-/** Half the stair aisle up the middle of the tiers. */
-const AISLE_HALF = 0.7;
+/** The side staircases: one up each end of the tiers, between these distances from the middle. */
+export const STAIRS = { x0: 5.2, x1: 6.6 };
+const STAIRS_X = (STAIRS.x0 + STAIRS.x1) / 2;
 const CHAIR_BEHIND = 1.0;
 const APPROACH = 0.7;
 /** Each tier's walkway, behind its chairs. */
 const LANE_BEHIND = 1.9;
 /** The walkway across the pit, from the entrance to the side door. */
-const PIT_Z = -6.3;
+const PIT_Z = -7.1;
 const LOUNGE_DEPTH = 6.2;
 /** The lounge walkway, this far behind the rail. */
 const PROMENADE = 1.0;
-/** Steps from the lounge down to the floor at the right, towards the side door. */
-const RIGHT_STEPS = { x0: 8.2, x1: 10.2, length: 3.0 };
-/** The right steps' flight has this many treads; each tier's front has a half step this deep in the centre aisle. */
-export const FLIGHT = 8;
+/** On the staircases, each tier's front (and the lounge's) has a half step this deep. */
 export const HALF_STEP = 0.36;
-/** Walkers go up and down only inside the steps' areas, so their heights start this far in. */
-const STEP_EDGE = 0.05;
+/** The steps' areas reach this far beyond the bottom and top treads, so walkers go up and down inside them. */
+const STEP_MARGIN = 0.4;
 /** Paper planes thrown from the lounge rail land this far from the focus, across the pit (#103). */
 const PLANE_LANDING_RADIUS = 4.4;
-const RIGHT_AISLE_X = (RIGHT_STEPS.x0 + RIGHT_STEPS.x1) / 2;
 const DECK = { x0: ROOM.right + 0.3, x1: 22.5, z0: ROOM.back, z1: 8.5 };
 /** Deck walkways: one from the side door along the house, two across the deck. */
 const SPINE_X = 12.6;
@@ -58,12 +53,10 @@ const DECK_END_X = 21.4;
 const onArc = (radius: number, angle: number): Point =>
   ({ x: FOCUS.x + radius * Math.sin(angle), z: FOCUS.z + radius * Math.cos(angle) });
 const tierRadius = (tier: number) => FIRST_RADIUS + tier * TIER_GAP;
-/** Arc offsets of a tier's consoles from the aisle's centre line, left to right. */
-const OFFSETS = (() => {
-  const right = Array.from({ length: SEATS_PER_SIDE }, (_, i) => AISLE_HALF + CONSOLE.w / 2 + 0.035 + i * SEAT_SPACING);
-  return [...right.map((s) => -s).reverse(), ...right];
-})();
-const LANE_END = OFFSETS.at(-1)! + 0.9;
+/** Arc offsets of a tier's consoles from its middle, left to right: one unbroken row. */
+const OFFSETS = Array.from({ length: SEATS_PER_TIER }, (_, i) => (i - (SEATS_PER_TIER - 1) / 2) * SEAT_SPACING);
+/** Where a circle round the focus meets the staircases' inner edge. */
+const stairsZ = (radius: number) => FOCUS.z + Math.sqrt(radius ** 2 - STAIRS.x0 ** 2);
 
 export type ControlRoomLayout = ReturnType<typeof controlRoomLayout>;
 
@@ -72,9 +65,13 @@ export function controlRoomLayout(rows: number) {
   const tierCount = Math.max(rows, INITIAL_TIERS);
   const tiers = Array.from({ length: tierCount }, (_, t) => {
     const radius = tierRadius(t);
-    return { radius, inner: radius - TIER_FRONT, outer: radius - TIER_FRONT + TIER_GAP, height: (t + 1) * TIER_RISE };
+    const inner = radius - TIER_FRONT;
+    /** `stairs`: where the tier's front meets the staircases; it has a landing on them from there. */
+    return { radius, inner, outer: inner + TIER_GAP, height: (t + 1) * TIER_RISE, stairs: stairsZ(inner) };
   });
   const loungeFront = FOCUS.z + tiers.at(-1)!.outer;
+  /** The middle of each tier's landing on the staircases, short of the half step up to the next. */
+  const landings = tiers.map((t, i) => (t.stairs + (tiers[i + 1]?.stairs ?? loungeFront) - HALF_STEP) / 2);
   const crewLounge = {
     name: 'crew lounge', x0: ROOM.left, x1: ROOM.right, z0: loungeFront, z1: loungeFront + LOUNGE_DEPTH, height: (tierCount + 1) * TIER_RISE,
     /** Its side walls rise this far above its floor (the dart board hangs on the left one). */
@@ -86,7 +83,7 @@ export function controlRoomLayout(rows: number) {
   const toPromenade = (p: Point): Point[] => [p, { x: p.x, z: promenadeZ }];
 
   const seats = seatsFor(tiers);
-  const lanes = tiers.map((t) => lane(t.radius));
+  const lanes = tiers.map((t, i) => lane(t.radius, landings[i]));
   const props = propsFor(inLounge);
   const lounge = { tv: { ...inLounge(3.2, 5.98), w: 2.6 }, sofa: { ...inLounge(3.2, 3.5), w: 2.8 }, rug: inLounge(3.2, 4.4) };
   const poolTurns = turnsAround(props.poolTable, (z) => [{ x: -1.8, z }, { x: -1.8, z: promenadeZ }]);
@@ -95,8 +92,8 @@ export function controlRoomLayout(rows: number) {
   const sideDoor: Point = { x: ROOM.right, z: PIT_Z };
   const walkways: Point[][] = [
     [{ x: -9.8, z: PIT_Z }, { x: SPINE_X, z: PIT_Z }],
-    [{ x: 0, z: PIT_Z }, { x: 0, z: promenadeZ }],
-    [{ x: RIGHT_AISLE_X, z: PIT_Z }, { x: RIGHT_AISLE_X, z: promenadeZ }],
+    [{ x: -STAIRS_X, z: PIT_Z }, { x: -STAIRS_X, z: promenadeZ }],
+    [{ x: STAIRS_X, z: PIT_Z }, { x: STAIRS_X, z: promenadeZ }],
     [{ x: -10.2, z: promenadeZ }, { x: 10.2, z: promenadeZ }],
     [{ x: SPINE_X, z: -7.8 }, { x: SPINE_X, z: 7.6 }],
     [{ x: SPINE_X, z: DECK_BACK_Z }, { x: DECK_END_X, z: DECK_BACK_Z }],
@@ -141,42 +138,40 @@ export function controlRoomLayout(rows: number) {
     crewLounge,
     deck: { name: 'deck', ...DECK } as Area,
     sideDoor,
-    /** Where walks may go up or down: the stair aisle up the middle, and the lounge's steps down to the right. */
-    steps: [
-      { name: 'centre steps', x0: -AISLE_HALF, x1: AISLE_HALF, z0: FOCUS.z + tiers[0].inner - 0.4, z1: loungeFront + 0.4 },
-      { name: 'right steps', x0: RIGHT_STEPS.x0, x1: RIGHT_STEPS.x1, z0: loungeFront - RIGHT_STEPS.length, z1: loungeFront + 0.4 },
-    ] as Area[],
-    /** The glass rail along the lounge's front, open at the steps. */
+    /** Where walks may go up or down: the staircases up each end of the tiers, from the pit to the lounge. */
+    steps: [-1, 1].map((side) => ({
+      name: side < 0 ? 'left stairs' : 'right stairs',
+      x0: side < 0 ? -STAIRS.x1 : STAIRS.x0, x1: side < 0 ? -STAIRS.x0 : STAIRS.x1,
+      z0: tiers[0].stairs - HALF_STEP - STEP_MARGIN, z1: loungeFront + STEP_MARGIN,
+    })) as Area[],
+    /** The glass rail along the lounge's front, open where the staircases meet it. */
     rail: [
-      [{ x: ROOM.left, z: loungeFront }, { x: -AISLE_HALF, z: loungeFront }],
-      [{ x: AISLE_HALF, z: loungeFront }, { x: RIGHT_STEPS.x0, z: loungeFront }],
-      [{ x: RIGHT_STEPS.x1, z: loungeFront }, { x: ROOM.right, z: loungeFront }],
+      [{ x: ROOM.left, z: loungeFront }, { x: -STAIRS.x1, z: loungeFront }],
+      [{ x: -STAIRS.x0, z: loungeFront }, { x: STAIRS.x0, z: loungeFront }],
+      [{ x: STAIRS.x1, z: loungeFront }, { x: ROOM.right, z: loungeFront }],
     ] as Point[][],
   };
 }
 
-/** Floor height at `p`: the pit, side aisles and deck are 0; tiers, their steps and the lounge are raised. */
+/** Floor height at `p`: the pit, the floor beside the tiers and the deck are 0; tiers, staircases and the lounge are raised. */
 export function heightAt(layout: ControlRoomLayout, p: Point): number {
   const { tiers, crewLounge } = layout;
   if (p.x > ROOM.right) return 0;
   if (p.z >= crewLounge.z0) return crewLounge.height;
-  const d = Math.hypot(p.x - FOCUS.x, p.z - FOCUS.z), angle = Math.atan2(p.x - FOCUS.x, p.z - FOCUS.z);
-  const tier = tiers.find((t, i) => d >= t.inner && (d < t.outer || i === tiers.length - 1));
-  const onTier = tier && Math.abs(angle) <= TIER_HALF_ARC / tier.radius ? tier.height : 0;
-  return Math.max(onTier, stepHeightAt(layout, p));
+  const across = Math.abs(p.x - FOCUS.x);
+  if (across > STAIRS.x1) return 0;
+  if (across >= STAIRS.x0) return stairsHeightAt(layout, p.z);
+  const d = Math.hypot(p.x - FOCUS.x, p.z - FOCUS.z);
+  return tiers.find((t, i) => d >= t.inner && (d < t.outer || i === tiers.length - 1))?.height ?? 0;
 }
 
-/** On the steps (as control-room-3d builds them), a little inside their areas: a tread of the right flight, or a half step in the centre aisle; else 0. */
-function stepHeightAt({ tiers, crewLounge, steps: [centre, right] }: ControlRoomLayout, p: Point): number {
-  const inside = (a: Area) => p.x > a.x0 + STEP_EDGE && p.x < a.x1 - STEP_EDGE && p.z > a.z0 + STEP_EDGE && p.z < a.z1 - STEP_EDGE;
-  if (inside(right)) {
-    const tread = Math.floor(((p.z - right.z0) / (crewLounge.z0 - right.z0)) * FLIGHT);
-    return ((tread + 1) * crewLounge.height) / (FLIGHT + 1);
-  }
-  if (!inside(centre)) return 0;
-  const fronts = [...tiers.map((t) => ({ z: FOCUS.z + t.inner, h: t.height })), { z: crewLounge.z0, h: crewLounge.height }];
-  const front = fronts.find(({ z }) => p.z >= z - HALF_STEP && p.z < z);
-  return front ? front.h - TIER_RISE / 2 : 0;
+/** On a staircase (as control-room-3d builds them): each tier's landing, with a half step up to it from the one below; the pit below the first. */
+export function stairsHeightAt({ tiers, crewLounge }: ControlRoomLayout, z: number): number {
+  const fronts = [...tiers.map((t) => ({ z: t.stairs, h: t.height })), { z: crewLounge.z0, h: crewLounge.height }];
+  const next = fronts.findIndex((f) => z < f.z);
+  if (next < 0) return crewLounge.height;
+  if (z >= fronts[next].z - HALF_STEP) return fronts[next].h - TIER_RISE / 2;
+  return next ? fronts[next - 1].h : 0;
 }
 
 /** Where a paper plane aimed at `seat` lands: on the pit floor in front of its console (#103). */
@@ -194,11 +189,10 @@ function seatsFor(tiers: { radius: number }[]): SeatSpot[] {
   }));
 }
 
-/** A tier's walkway behind its chairs, through the stair aisle in the middle. */
-function lane(radius: number): Point[] {
-  const r = radius + LANE_BEHIND;
-  return [-LANE_END / radius, ...OFFSETS.slice(0, SEATS_PER_SIDE).map((s) => s / radius), 0, ...OFFSETS.slice(SEATS_PER_SIDE).map((s) => s / radius), LANE_END / radius]
-    .map((a) => onArc(r, a));
+/** A tier's walkway behind its chairs, out at both ends onto its landing on the staircases at `landingZ`. */
+function lane(radius: number, landingZ: number): Point[] {
+  const behind = OFFSETS.map((s) => onArc(radius + LANE_BEHIND, s / radius));
+  return [{ x: FOCUS.x - STAIRS_X, z: landingZ }, ...behind, { x: FOCUS.x + STAIRS_X, z: landingZ }];
 }
 
 /** Lounge props move back with the lounge; deck props stay. */
@@ -291,7 +285,7 @@ function hangoutsFor({ props, lounge, kitchen, cooler, poolTurns, inLounge, toPr
     solo('darts', 'throwing-darts', { x: dartboard.x + DARTS_LINE, z: dartboard.z }, left, toPromenade({ x: dartboard.x + DARTS_LINE, z: dartboard.z }).slice(1)),
     solo('hoops', 'shooting-hoops', { x: bin.x + HOOPS_LINE, z: bin.z }, left, toPromenade({ x: bin.x + HOOPS_LINE, z: bin.z }).slice(1)),
     // Thrown from the rail, out over the pit.
-    { name: 'planes', chat: false, places: [-6.0, -3.0, 3.0, 6.0].map((x) => standing('planes', inLounge(x, 0.4), 'throwing-plane', Math.PI)) },
+    { name: 'planes', chat: false, places: [-7.8, -3.0, 3.0, 7.8].map((x) => standing('planes', inLounge(x, 0.4), 'throwing-plane', Math.PI)) },
     { name: 'pool-table', chat: false, game: { min: 2 }, places: [poolTurns[0].shoot, poolTurns[1].wait] },
     { name: 'ping-pong', chat: false, game: { min: 2 }, places: [pongEnd(pong.x - PLAYER_X), pongEnd(pong.x + PLAYER_X)] },
     {

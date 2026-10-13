@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { at, box, cyl, mesh, part, tag, toon, toonRamp } from './toon.ts';
 import type { Area, Point } from './layout.ts';
-import { FLIGHT, HALF_STEP, TIER_HALF_ARC, TIER_RISE, heightAt, type ControlRoomLayout } from './control-room.ts';
+import { HALF_STEP, STAIRS, TIER_RISE, heightAt, stairsHeightAt, type ControlRoomLayout } from './control-room.ts';
 import type { OfficeState } from '../shared/agent.ts';
 import { DeskScreen, newCanvas } from './screen.ts';
 import { STATUS_COLORS, ScreenWall } from './screen-wall.ts';
@@ -127,7 +127,7 @@ function addRoom(group: THREE.Group, { room, door, sideDoor, crewLounge, screenW
   group.add(tag(at(box(width, 0.3, depth, C.floor, { outline: 0, shadow: false }), 0, -0.15, (room.back + room.front) / 2), 'floor'));
 
   // The pit: a darker floor between the screens and the first tier, with glow lines running to the screens.
-  const span = TIER_HALF_ARC / tiers[0].radius;
+  const span = Math.asin(STAIRS.x1 / tiers[0].inner);
   const pit = new THREE.Mesh(new THREE.RingGeometry(screenWall.z - screenWall.focus.z + 0.3, tiers[0].inner, 48, 1, -Math.PI / 2 - span, 2 * span), toon(C.pit));
   pit.rotation.x = -Math.PI / 2;
   pit.receiveShadow = true;
@@ -201,43 +201,58 @@ function addScreenWall(group: THREE.Group, { room, screenWall }: ControlRoomLayo
   return { backWall, board };
 }
 
-/** The tiers: each an arc of floor stepped up from the one in front; the top one runs back to the lounge. */
+/** The tiers: each an arc of floor stepped up from the one in front, out to the staircases; the top one runs back to the lounge. */
 function addTiers(group: THREE.Group, layout: ControlRoomLayout) {
   const { tiers, screenWall: { focus }, crewLounge } = layout;
   const onArc = (r: number, a: number): Point => ({ x: focus.x + r * Math.sin(a), z: focus.z + r * Math.cos(a) });
-  const arc = (r: number, span: number, steps = 32) => Array.from({ length: steps + 1 }, (_, i) => onArc(r, -span + (2 * span * i) / steps));
+  /** An arc of radius `r` from the left staircase to the right one. */
+  const arc = (r: number, steps = 32) => {
+    const span = Math.asin(STAIRS.x0 / r);
+    return Array.from({ length: steps + 1 }, (_, i) => onArc(r, -span + (2 * span * i) / steps));
+  };
   tiers.forEach((tier, t) => {
-    const span = TIER_HALF_ARC / tier.radius;
     const last = t === tiers.length - 1;
-    const toLounge = (a: number) => onArc((crewLounge.z0 - focus.z) / Math.cos(a), a);
-    const back = last ? [toLounge(span), toLounge(-span)] : arc(tier.outer, span).reverse();
-    const platform = slab(flat([...arc(tier.inner, span), ...back]), tier.height, C.tierTop, C.tierSide);
-    group.add(tag(platform, 'floor'));
+    const back = last ? [{ x: focus.x + STAIRS.x0, z: crewLounge.z0 }, { x: focus.x - STAIRS.x0, z: crewLounge.z0 }] : arc(tier.outer).reverse();
+    group.add(tag(slab(flat([...arc(tier.inner), ...back]), tier.height, C.tierTop, C.tierSide), 'floor'));
     // A glow strip along the tier's front edge.
-    const edge = arc(tier.inner + 0.02, span, 40).map((p) => new THREE.Vector3(p.x, tier.height + 0.012, p.z));
+    const edge = arc(tier.inner + 0.02, 40).map((p) => new THREE.Vector3(p.x, tier.height + 0.012, p.z));
     group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(edge), 80, 0.022, 6), glowing(C.glow)));
   });
+  for (const side of [-1, 1]) addStaircase(group, layout, side);
+}
 
-  // Steps: a half step up to each tier in the centre aisle, and a flight from the floor up to the lounge on the right.
-  const [centre, right] = layout.steps;
-  const step = (x0: number, x1: number, z: number, d: number, h: number) =>
-    part(tag(at(box(x1 - x0, h, d, C.tierTop, { outline: 0.01 }), (x0 + x1) / 2, h / 2, z), 'floor'), 'steps');
-  [...tiers.map((t) => ({ z: focus.z + t.inner, h: t.height })), { z: crewLounge.z0, h: crewLounge.height }]
-    .forEach(({ z, h }) => group.add(step(centre.x0, centre.x1, z - HALF_STEP / 2, HALF_STEP, h - TIER_RISE / 2)));
-  const flight = FLIGHT, length = crewLounge.z0 - right.z0, tread = length / flight;
-  for (let k = 0; k < flight; k++) group.add(step(right.x0, right.x1, right.z0 + (k + 0.5) * tread, tread, ((k + 1) * crewLounge.height) / (flight + 1)));
-  // A handrail up the flight's inner side.
-  const rail = tag(new THREE.Group(), 'handrail');
-  const railX = right.x0 - 0.06;
-  for (let k = 0; k <= flight; k += 2) {
-    const h = (Math.min(k + 1, flight) * crewLounge.height) / (flight + 1);
-    rail.add(at(cyl(0.03, 0.03, 0.9, C.frame, { outline: 0 }), railX, h + 0.45, right.z0 + k * tread));
+/**
+ * A staircase up one end of the tiers (`side` -1 left, 1 right), from the pit to the lounge: a
+ * landing at each tier's height, a half step up to each, glow on the nosings and a handrail on the outside.
+ */
+function addStaircase(group: THREE.Group, layout: ControlRoomLayout, side: number) {
+  const { tiers, crewLounge, screenWall: { focus } } = layout;
+  const width = STAIRS.x1 - STAIRS.x0, x = focus.x + side * (STAIRS.x0 + STAIRS.x1) / 2;
+  const fronts = [...tiers.map((t) => t.stairs), crewLounge.z0];
+  // Treads from the first half step up to the lounge, each from one change of height to the next.
+  const edges = fronts.flatMap((z) => [z - HALF_STEP, z]);
+  const bottom = edges[0], top = crewLounge.z0;
+  const stairs = part(tag(new THREE.Group(), 'floor'), 'staircase');
+  for (let i = 0; i + 1 < edges.length; i++) {
+    const z0 = edges[i], z1 = edges[i + 1], h = stairsHeightAt(layout, (z0 + z1) / 2);
+    stairs.add(part(tag(at(box(width, h, z1 - z0, C.tierTop, { outline: 0.01 }), x, h / 2, (z0 + z1) / 2), 'floor'), 'steps'));
+    stairs.add(at(new THREE.Mesh(new THREE.PlaneGeometry(width, 0.04), glowing(C.glow)), x, h + 0.003, z0 + 0.03).rotateX(-Math.PI / 2));
   }
-  const [from, to] = [new THREE.Vector3(railX, 0.95 + crewLounge.height / (flight + 1), right.z0), new THREE.Vector3(railX, 0.95 + crewLounge.height, crewLounge.z0)];
-  const bar = cyl(0.04, 0.04, from.distanceTo(to), C.rail, { outline: 0.03 });
-  bar.position.copy(from).add(to).multiplyScalar(0.5);
-  bar.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
-  rail.add(bar);
+  group.add(stairs);
+  // A handrail on the outer side, on posts that follow the steps up.
+  const rail = tag(new THREE.Group(), 'handrail');
+  const railX = focus.x + side * (STAIRS.x1 + 0.06);
+  const posts = Math.ceil((top - bottom) / 1.4) + 1;
+  const zs = Array.from({ length: posts }, (_, k) => bottom + 0.1 + ((top - bottom - 0.2) * k) / (posts - 1));
+  const tops = zs.map((z) => new THREE.Vector3(railX, stairsHeightAt(layout, z) + 0.9, z));
+  for (const top of tops) rail.add(at(cyl(0.03, 0.03, 0.9, C.frame, { outline: 0 }), top.x, top.y - 0.45, top.z));
+  tops.slice(1).forEach((to, k) => {
+    const from = tops[k];
+    const bar = cyl(0.04, 0.04, from.distanceTo(to), C.rail, { outline: 0.03 });
+    bar.position.copy(from).add(to).multiplyScalar(0.5);
+    bar.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
+    rail.add(bar);
+  });
   group.add(rail);
 }
 

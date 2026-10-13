@@ -471,6 +471,26 @@ export function withoutLoops(points: Point[]): Point[] {
   return out;
 }
 
+/**
+ * A walker sent along `next` while still on its way: it has passed `behind` (in order) and has
+ * `ahead` to go, and is at `at`, between the two. It sticks to legs it knows are clear: back the
+ * way it came or on along its walk, whichever is shorter, to where it meets `next`, then along
+ * `next`. Its own idea of where it is can lag the controller's (frames are capped), so heading
+ * straight for `next`'s first point could cut across a rail or a console. No meeting point: `next`.
+ */
+export function rejoin(at: Point, behind: Point[], ahead: Point[], next: Point[]): Point[] {
+  // It joins `next` as early as it can, so it skips none of it (a walk may pass a point twice, going via the kitchen).
+  const ways = [[...behind].reverse(), ahead].flatMap((way) => {
+    const i = next.findIndex((q) => way.some((p) => same(p, q)));
+    if (i < 0) return [];
+    const k = way.findIndex((p) => same(p, next[i]));
+    return [{ i, way: [...way.slice(0, k + 1), ...next.slice(i + 1)] }];
+  });
+  const length = (way: Point[]) => pathLength([at, ...way]);
+  const better = (a: typeof ways[number], b: typeof ways[number]) => a.i < b.i || (a.i === b.i && length(a.way) < length(b.way));
+  return ways.reduce<typeof ways[number] | null>((best, w) => (!best || better(w, best) ? w : best), null)?.way ?? next;
+}
+
 /** The point at distance `d` along `path`, and the index of the leg it's on. */
 export function along(path: Point[], d: number): { leg: number; done: boolean } {
   for (let i = 0; i < path.length - 1; i++) {
