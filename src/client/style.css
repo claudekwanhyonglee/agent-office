@@ -46,6 +46,19 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* Classic / Control room: the current layout is filled in. */
+.layout-picker {
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; box-sizing: border-box; max-width: 100%;
+  border-radius: 14px; background: var(--panel); border: 1px solid var(--line);
+}
+.chip {
+  min-height: 32px; padding: 0 11px; border-radius: 10px; border: 1px solid var(--line);
+  background: transparent; color: var(--ink); font: 700 13px var(--body); cursor: pointer;
+}
+.chip:hover { background: var(--chip); }
+.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #2B2545; }
+.chip:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+
 .usage {
   width: 260px; max-width: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 10px 14px;
   border-radius: 14px; background: var(--panel); border: 1px solid var(--line); font-size: 13px;
@@ -137,6 +150,11 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; box-si
 
 .home {
   position: absolute; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
+  min-width: 44px; min-height: 44px; display: grid; place-items: center;
+}
+/* The sky/plain toggle, just left of the camera button. */
+.background {
+  position: absolute; right: 68px; top: calc(16px + env(safe-area-inset-top, 0px));
   min-width: 44px; min-height: 44px; display: grid; place-items: center;
 }
 

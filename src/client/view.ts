@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { buildOffice } from './office.ts';
+import { createSky, createSunClock } from './sky.ts';
+import { bindBackgroundToggle } from './background-toggle.ts';
 import {
   bindHomeKey, blockContextMenu, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
-  placeCamera, wheelRadius, zoomToward, type Pointer,
+  placeCamera, wheelRadius, zoomToward, type Orbit, type Pointer,
 } from './camera.ts';
 
 /** Renderer, lights, orbit camera and the office. Agents are layered on by callers. */
@@ -14,7 +16,11 @@ export function createView(host: HTMLElement) {
   host.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#2B2545');
+  const sky = createSky();
+  const sunClock = createSunClock(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+  const backgroundButton = document.getElementById('background');
+  if (backgroundButton) bindBackgroundToggle(backgroundButton, scene, sky.texture);
+  else scene.background = sky.texture;
   // Prototype intensities were tuned for legacy lighting; physical lights need ×π.
   scene.add(new THREE.HemisphereLight('#FFF1DC', '#5A4E7A', 0.55 * Math.PI));
   const sun = new THREE.DirectionalLight('#FFF4E2', 0.6 * Math.PI);
@@ -25,24 +31,39 @@ export function createView(host: HTMLElement) {
 
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 150);
   const orbit = initialOrbit();
+  // Dev hook: aim the camera from the console or a capture script, e.g. __aim({ theta: Math.PI / 2 }, [-9, 1, 1.5]).
+  if (import.meta.env.DEV) {
+    Object.assign(window, {
+      __aim: (angles: Partial<Pick<Orbit, 'theta' | 'phi' | 'radius'>>, target?: [number, number, number]) => {
+        Object.assign(orbit, angles);
+        if (target) orbit.target.set(...target);
+        placeCamera(camera, orbit);
+      },
+      // Set to a local hour (e.g. 6.2) to hold the sky there; undefined follows the clock.
+      __skyHour: undefined as number | undefined,
+    });
+  }
 
   let office: ReturnType<typeof buildOffice> | undefined;
   let rows = 0;
+  let preset = 'classic';
 
-  function setRows(count: number) {
-    if (count === rows) return office!;
+  /** The office with `count` rows of desks, for layout preset `layoutPreset`; rebuilt only when either changes. */
+  function setRows(count: number, layoutPreset = 'classic') {
+    if (count === rows && layoutPreset === preset) return office!;
     if (office) scene.remove(office.group);
     rows = count;
-    office = buildOffice(count);
+    preset = layoutPreset;
+    office = buildOffice(count, preset);
     scene.add(office.group);
     // Frame the whole floor and stretch the sun's shadow box over it.
     const { left, right, back, front } = office.layout.bounds;
-    const depth = front - back, centerZ = (back + front) / 2, width = right - left;
+    const depth = front - back, centerZ = (back + front) / 2, width = right - left, centerX = (left + right) / 2;
     const half = Math.max(width, depth) / 2 + 2;
     Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 40 });
     sun.shadow.camera.updateProjectionMatrix();
-    sun.position.set(5, 14, 8 + centerZ);
-    sun.target.position.set(0, 0, centerZ);
+    sun.position.set(5 + centerX, 14, 8 + centerZ);
+    sun.target.position.set(centerX, 0, centerZ);
     resize();
     return office;
   }
@@ -50,8 +71,19 @@ export function createView(host: HTMLElement) {
   function resize() {
     const w = host.clientWidth || innerWidth, h = host.clientHeight || innerHeight;
     renderer.setSize(w, h);
+    sky.resize(w, h);
     camera.aspect = w / h;
-    frameFloor(camera, orbit, rows);
+    frameFloor(camera, orbit, rows, preset);
+    devFocus();
+  }
+
+  /** Dev builds: `?focus=x,z,radius` opens the view close up on one spot, for checking a prop by eye. */
+  function devFocus() {
+    const focus = import.meta.env.DEV && new URLSearchParams(location.search).get('focus')?.split(',').map(Number);
+    if (!focus || focus.length !== 3 || focus.some(Number.isNaN)) return;
+    focusOn(orbit, new THREE.Vector3(focus[0], 1, focus[1]));
+    orbit.radius = focus[2];
+    placeCamera(camera, orbit);
   }
 
   // Map-style: drag to pan, right- or Shift-drag to orbit (touch: one finger orbits, two pan); pinch or scroll to zoom
@@ -106,7 +138,7 @@ export function createView(host: HTMLElement) {
     placeCamera(camera, orbit);
   }, { passive: false });
 
-  const home = () => goHome(camera, orbit, rows);
+  const home = () => goHome(camera, orbit, rows, preset);
   document.getElementById('home')?.addEventListener('click', home);
   bindHomeKey(window, home);
 
@@ -115,6 +147,9 @@ export function createView(host: HTMLElement) {
   renderer.setAnimationLoop(() => {
     const dt = Math.min(timer.getDelta(), 0.05);
     frameHandlers.forEach((handle) => handle(timer.elapsedTime, dt));
+    const { hour, today } = sunClock.at(new Date());
+    const devHour = import.meta.env.DEV ? (window as { __skyHour?: number }).__skyHour : undefined;
+    if (scene.background === sky.texture) sky.draw(devHour ?? hour, today, timer.elapsedTime);
     renderer.render(scene, camera);
   });
   addEventListener('resize', resize);
