@@ -16,6 +16,12 @@ describe('nameProjects', () => {
     expect(thread.project_name).toBe('Agent Office');
     expect(other.project_name).toBeUndefined();
   });
+
+  it('shows a coordinator as its project\'s chat', () => {
+    const [chat] = nameProjects([{ id: 'cse_c', tags: ['hearth-overview'], title: 'Project coordinator ("McD App")' }], []);
+    expect(chat.project_name).toBe('McD App');
+    expect(chat.title).toBe('Project chat');
+  });
 });
 
 describe('mountProjectFilter', () => {

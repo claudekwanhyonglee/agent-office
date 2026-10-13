@@ -143,6 +143,12 @@ const coordinatorName = (title?: string) => title?.match(/"(.+)"/)?.[1] ?? title
 export function nameProjects(sessions: CloudSession[], coordinators: CloudSession[]) {
   for (const c of coordinators) { const name = coordinatorName(c.title); if (name) projectName.set(bareId(c.id), name); }
   for (const s of sessions) {
+    // The coordinator is the agent you talk to in the project chat; show it as that project's "Project chat".
+    if (s.tags?.includes('hearth-overview')) {
+      s.project_name = coordinatorName(s.title) ?? 'Projects';
+      s.title = 'Project chat';
+      continue;
+    }
     if (!s.tags?.includes('hearth-thread')) continue;
     const parent = s.parent_session_id ?? parentOf.get(s.id);
     s.project_name = (parent && projectName.get(bareId(parent))) || 'Projects';
@@ -303,8 +309,10 @@ export async function listCloudSessions(env: NodeJS.ProcessEnv = process.env): P
   const byId = new Map<string, CloudSession>();
   for (const res of ok) for (const session of sessionsFromResponse(await res.json())) byId.set(session.id, session);
   const coordinators = await request(COORDINATORS, login, false).then((res) => res.ok ? res.json() : null, () => null);
+  const coordinatorSessions = sessionsFromResponse(coordinators);
+  nameProjects([], coordinatorSessions);
+  for (const session of coordinatorSessions) byId.set(session.id, session);
   const sessions = [...byId.values()];
-  nameProjects([], sessionsFromResponse(coordinators));
   await lookUpProjects(sessions, login);
   return nameProjects(sessions, []);
 }
