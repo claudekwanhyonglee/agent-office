@@ -24,12 +24,14 @@ export interface SeatSpot {
   link: Point[];
 }
 
-export type HangoutPose =
-  | 'eating' | 'drinking' | 'lounging' | 'chatting'
-  | 'lounging-sun' | 'fishing' | 'swinging' | 'yoga' | 'bouncing' | 'throwing-darts' | 'shooting-hoops' | 'throwing-plane'
-  | 'cue-shot' | 'cue-wait' | 'paddle' | 'floating' | 'gaming'
-  | 'watching' | 'high-five' | 'delivering'
-  | 'petting' | 'feeding' | 'throwing-ball';
+export const HANGOUT_POSES = [
+  'eating', 'drinking', 'lounging', 'chatting',
+  'lounging-sun', 'fishing', 'swinging', 'yoga', 'bouncing', 'throwing-darts', 'shooting-hoops', 'throwing-plane',
+  'cue-shot', 'cue-wait', 'paddle', 'floating', 'gaming',
+  'watching', 'high-five', 'delivering',
+  'petting', 'feeding', 'throwing-ball',
+] as const;
+export type HangoutPose = (typeof HANGOUT_POSES)[number];
 
 export interface HangoutPlace extends Point {
   spot: string;

@@ -5,12 +5,12 @@ import type { Look, HatKind } from './look.ts';
 import { BREAK_ROOM, WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
-import { HIT, hitTimes, type Rally, type Side } from './pong.ts';
+import { HIT, hitTimes, hitter, rallySeconds, type Rally, type Side } from './pong.ts';
 import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
 import { ROD_HAND, ROD_LENGTH, rodPitch, type Cast } from './fishing.ts';
 import { HANDS, shotAt } from './hoops.ts';
 import { STRIKE_AT } from './pool.ts';
-import { BOARD, COLLECT_FROM, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, dartsAt } from './darts.ts';
+import { BOARD, COLLECT_FROM, PULL as DARTS_PULL, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, WALK as DARTS_WALK, dartsAt } from './darts.ts';
 import { RELEASE_AT as BALL_RELEASE_AT } from './fetch.ts';
 
 const SEAT_Y = 0.38;
@@ -520,11 +520,10 @@ export class Character {
 
   /** Darts (#54): after a round, walk up to the board to pull the darts out, then back to the line. */
   private collectDarts(place: HangoutPlace) {
-    const walk = dartsAt(this.placeTime).walk;
-    const back = dartsAt(this.placeTime + 0.05).walk < walk;
+    const { walk, turn } = dartsAt(this.placeTime);
     const to = BOARD.x + COLLECT_FROM;
     this.root.position.set(place.x + (to - place.x) * walk, 0, place.z);
-    if (walk > 0) this.root.rotation.y = back ? place.yaw + Math.PI : place.yaw;
+    this.root.rotation.y = place.yaw + Math.PI * turn;
   }
 
   private locomote(dt: number) {
@@ -659,6 +658,9 @@ function planeArm(t: number) {
 const AIM_HAND = new THREE.Vector3(0.25, 1.45, 0.15);
 const DRAWN_HAND = new THREE.Vector3(0.25, 1.5, -0.05);
 const THROWN_HAND = new THREE.Vector3(RELEASE_HAND.x, RELEASE_HAND.y, RELEASE_HAND.z);
+/** Collecting (#80): the hand at its side while walking, and reaching up to the board. */
+const DART_LOW = new THREE.Vector3(0.3, 0.6, 0.06);
+const DART_REACH = new THREE.Vector3(0.3, 1.55, 0.4);
 
 /** The throwing hand `u` seconds into a throw: aim, draw back, snap forward to let go, follow through, back to aim. */
 function dartHand(u: number) {
@@ -695,10 +697,14 @@ const WIND = 0.25;
 const CONTACT = new THREE.Vector3(HIT.side, HIT.y, HIT.reach).sub(BLADE);
 const READY = new THREE.Vector3(0.35, 0.8, 0.05);
 
-/** The bat hand during a rally: ready, then back, forward through the ball at each hit, and back to ready. */
+/**
+ * The bat hand during a rally: ready, then back, forward through the ball at each hit, and back to ready.
+ * Whoever missed serves the next rally as this one ends, so they wind up for it in time (#80).
+ */
 function batHand({ rally, side, t }: { rally: Rally; side: Side; t: number }) {
   const back = CONTACT.clone().setZ(CONTACT.z - WIND), through = CONTACT.clone().setZ(CONTACT.z + WIND);
-  const d = hitTimes(rally, side).map((h) => t - h).reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a), Infinity);
+  const serves = -hitter(rally, rally.hits) === side ? [rallySeconds(rally)] : [];
+  const d = [...hitTimes(rally, side), ...serves].map((h) => t - h).reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a), Infinity);
   const smooth = (k: number) => k * k * (3 - 2 * k);
   if (Math.abs(d) <= SWING / 2) return back.lerp(through, d / SWING + 0.5);
   if (d < 0 && d > -SWING / 2 - 0.25) return READY.clone().lerp(back, smooth((d + SWING / 2 + 0.25) / 0.25));
@@ -818,13 +824,18 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     if (held) held.visible = round.holding;
     if (r < THROWS * THROW_EVERY) {
       hr.position.copy(dartHand(r % THROW_EVERY));
+      // Back from collecting, the hand comes up from its side to aim (#80).
+      if (placeTime >= ROUND) hr.position.lerpVectors(DART_LOW, hr.position, smooth(Math.min(1, r / 0.6)));
       return 2.2;
     }
-    // Collecting: walking up to the board and back, reaching up to pull the darts out.
-    const step = round.walk > 0 && round.walk < 1 ? Math.sin(placeTime * 11) : 0;
+    // Collecting: walking up to the board and back, reaching up to pull the darts out; every move eased (#80).
+    const c = r - THROWS * THROW_EVERY;
+    const step = Math.sin(round.walk * Math.PI * 4);
     fl.position.set(-0.17, 0.06 + Math.max(0, step) * 0.1, 0.04 + step * 0.16);
     fr.position.set(0.17, 0.06 + Math.max(0, -step) * 0.1, 0.04 - step * 0.16);
-    hr.position.set(0.3, round.walk === 1 ? 1.55 : 0.6, round.walk === 1 ? 0.4 : 0.06);
+    const eased = (k: number) => smooth(Math.min(1, Math.max(0, k)));
+    const reach = Math.min(eased((c - DARTS_WALK + 0.4) / 0.4), 1 - eased((c - DARTS_WALK - DARTS_PULL + 0.4) / 0.4));
+    hr.position.lerpVectors(AIM_HAND, DART_LOW, eased(c / 0.4)).lerp(DART_REACH, reach);
     return 2.2;
   },
   'shooting-hoops': ({ pivot, head, hands: [hl, hr], feet: [fl, fr], held, placeTime = 0 }) => {
