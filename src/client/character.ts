@@ -105,6 +105,9 @@ export class Character {
   private casting: { cast: Cast; t: number } | null = null;
   /** The paper plane being thrown (#74): seconds in, where the held plane last was, and who launches it. */
   private planeThrow: PlaneThrow | null = null;
+  /** What a plane thrower is watching (#116): the target desk, then the plane in the air; and where the head points, in the world. */
+  private watching: { target: THREE.Vector3; plane: (() => THREE.Vector3 | null) | null } | null = null;
+  private gaze: THREE.Vector3 | null = null;
   /** Seconds since this agent last threw the dog's ball (#75). */
   private fetchThrow: number | null = null;
   /** Where the fetch ball is being thrown (#114). */
@@ -253,9 +256,13 @@ export class Character {
     this.casting = { cast, t: 0 };
   }
 
-  /** Throw a paper plane now (#74); `release` launches it from where the held plane was, as the arm lets go. */
-  throwPlane(release: (from: THREE.Vector3) => void) {
+  /**
+   * Throw a paper plane now (#74); `release` launches it from where the held plane was, as the arm lets go,
+   * and may return where the plane is while it flies. The thrower eyes `target` and then watches the plane (#116).
+   */
+  throwPlane(release: PlaneRelease, target?: THREE.Vector3) {
     this.planeThrow = { t: 0, from: null, release };
+    this.watching = target ? { target, plane: null } : null;
   }
 
   /** A fetch starts now: throw the dog's ball (#75) towards `to`, turning to face it first (#114). */
@@ -347,6 +354,8 @@ export class Character {
     this.rally = null;
     this.casting = null;
     this.planeThrow = null;
+    this.watching = null;
+    this.gaze = null;
     this.fetchThrow = null;
     this.fetchTo = null;
     this.shotTime = null;
@@ -526,7 +535,10 @@ export class Character {
       if (this.planeThrow) this.planeThrow.t += dt;
       if (this.fetchThrow != null) this.fetchThrow += dt;
       const bubbleY = activity({ fetchThrow: this.fetchThrow, casting: this.casting, pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally, placeTime: this.placeTime, planeThrow: this.planeThrow, shotTime: this.shotTime }, tt);
-      if (place.pose === 'throwing-plane') this.letGoOfPlane(held!);
+      if (place.pose === 'throwing-plane') {
+        this.letGoOfPlane(held!);
+        this.watchPlane(dt);
+      }
       return bubbleY;
     }
     if (place.pose === 'chatting') {
@@ -569,10 +581,38 @@ export class Character {
     if (!thrown) return;
     if (thrown.t < PLANE_ARM.release) thrown.from = held.getWorldPosition(new THREE.Vector3());
     else if (thrown.release) {
-      thrown.release(thrown.from ?? held.getWorldPosition(new THREE.Vector3()));
+      const flying = thrown.release(thrown.from ?? held.getWorldPosition(new THREE.Vector3()));
+      if (this.watching && flying) this.watching.plane = flying;
       thrown.release = null;
     }
     if (thrown.t >= PLANE_ARM.end) this.planeThrow = null;
+  }
+
+  /**
+   * Paper planes (#116): turn the head toward the target desk, then the plane while it flies, then back to the usual pose.
+   * The head turns at most HEAD_TURN from the body; the upper body twists for the rest.
+   */
+  private watchPlane(dt: number) {
+    const flying = this.watching?.plane?.() ?? null;
+    if (this.watching?.plane && !flying) this.watching = null;
+    const eye = this.head.getWorldPosition(new THREE.Vector3());
+    const usual = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(this.head.rotation.x, this.root.rotation.y + this.pivot.rotation.y, 0, 'YXZ'));
+    const wanted = this.watching ? (flying ?? this.watching.target).clone().sub(eye).normalize() : usual;
+    if (!this.gaze) {
+      if (!this.watching) return;
+      this.gaze = usual;
+    }
+    const gaze = this.gaze;
+    turnToward(gaze, wanted, 1 - Math.exp(-dt * GAZE_RATE));
+    if (flying && gaze.angleTo(wanted) > GAZE_LAG) turnToward(gaze, wanted, 1 - GAZE_LAG / gaze.angleTo(wanted));
+    if (!this.watching && gaze.angleTo(usual) < 0.002) {
+      this.gaze = null;
+      return;
+    }
+    const turn = lerpAngle(0, Math.atan2(gaze.x, gaze.z) - this.root.rotation.y, 1);
+    const headTurn = THREE.MathUtils.clamp(lerpAngle(0, turn - this.pivot.rotation.y, 1), -HEAD_TURN, HEAD_TURN);
+    this.pivot.rotation.y = turn - headTurn;
+    this.head.quaternion.setFromEuler(new THREE.Euler(-Math.asin(THREE.MathUtils.clamp(gaze.y, -1, 1)), headTurn, 0, 'YXZ'));
   }
 
   /** Pool dip (#57): the ring carries the rider about, turning and bobbing; or paddles it home before climbing out. */
@@ -702,7 +742,20 @@ interface Body {
   shotTime?: number | null;
 }
 
-interface PlaneThrow { t: number; from: THREE.Vector3 | null; release: ((from: THREE.Vector3) => void) | null }
+/** Launches a paper plane from `from`; may return where it is while it flies, null once landed (#116). */
+type PlaneRelease = (from: THREE.Vector3) => (() => THREE.Vector3 | null) | void;
+interface PlaneThrow { t: number; from: THREE.Vector3 | null; release: PlaneRelease | null }
+
+/** A plane thrower's gaze (#116): how fast it turns toward what it watches, how far behind a flying plane it may trail, and the head's furthest turn from the body. */
+const GAZE_RATE = 9;
+const GAZE_LAG = 12 * (Math.PI / 180);
+const HEAD_TURN = 75 * (Math.PI / 180);
+
+/** Turns unit vector `v` a fraction `k` of the way toward unit vector `to`. */
+function turnToward(v: THREE.Vector3, to: THREE.Vector3, k: number) {
+  const q = new THREE.Quaternion().setFromUnitVectors(v, to);
+  v.applyQuaternion(new THREE.Quaternion().slerp(q, k)).normalize();
+}
 
 /** Paper planes (#74): the throwing hand and body twist at moments of a throw, eased between; it lets go at `release`. */
 const PLANE_KEYS = [

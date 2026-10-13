@@ -52,7 +52,7 @@ describe('#74 AC1 the throw is driven by the plane event', () => {
   it('#74 AC1 a plane event throws the arm once and launches exactly one plane, at the release', () => {
     const character = thrower();
     const launches: THREE.Vector3[] = [];
-    character.throwPlane((at) => launches.push(at.clone()));
+    character.throwPlane((at) => { launches.push(at.clone()); });
     let releasedAt = -1;
     const hands: THREE.Vector3[] = [];
     for (let i = 0; i < 6 / FRAME; i++) {
@@ -76,7 +76,7 @@ describe('#74 AC1 the throw is driven by the plane event', () => {
   it('#74 AC1 a thrower who walks off mid wind-up launches nothing', () => {
     const character = thrower();
     const launches: THREE.Vector3[] = [];
-    character.throwPlane((at) => launches.push(at));
+    character.throwPlane((at) => { launches.push(at); });
     character.update(1, 0.1);
     character.go([{ x: PLACE.x, z: PLACE.z }, { x: PLACE.x + 2, z: PLACE.z }], null);
     for (let t = 1.1; t < 4; t += FRAME) character.update(t, FRAME);

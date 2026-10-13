@@ -3,7 +3,7 @@ import type { AgentRecord } from '../shared/agent.ts';
 import { createView } from './view.ts';
 import { OfficeController, type OfficeEvent } from './controller.ts';
 import { Character } from './character.ts';
-import { PaperPlanes } from './paper-planes.ts';
+import { PaperPlanes, landingPoint } from './paper-planes.ts';
 import { BinBall, BoardDarts, DeskMugs, FishingGear, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
 import { PondFish, updateWater } from './water.ts';
 import { Dog } from './dog.ts';
@@ -66,7 +66,7 @@ export function createOfficeScene(host: HTMLElement) {
   /** `character` throws a paper plane at desk `desk` (it lands where the layout says, #103). */
   const throwPlane = (character: Character, desk: number) => {
     const { at, onFloor } = planeLanding(office.layout, office.seats[desk]);
-    character.throwPlane((from) => planes.throw(from, at, onFloor));
+    character.throwPlane((from) => planes.throw(from, at, onFloor), landingPoint(at, onFloor));
   };
 
   const ring = new THREE.Mesh(
@@ -282,6 +282,12 @@ export function createOfficeScene(host: HTMLElement) {
       characters.set(`planes-${i}`, character);
       setInterval(() => throwPlane(character, (i * 5) % office.seats.length), 2500 + i * 300);
     });
+    // Over the first thrower's shoulder, to see its head follow the plane (#116).
+    const place = office.layout.hangouts.find((s) => s.name === 'planes')!.places[0];
+    const forward = new THREE.Vector3(Math.sin(place.yaw), 0, Math.cos(place.yaw)), right = new THREE.Vector3(forward.z, 0, -forward.x);
+    const head = new THREE.Vector3(place.x, floor(place) + 1.3, place.z);
+    view.camera.position.copy(head).addScaledVector(forward, -2.5).addScaledVector(right, 2).setY(head.y + 2);
+    view.camera.lookAt(head.addScaledVector(forward, 2.5));
   }
   /** Dev only (#114): `?activity=fetch` plays fetch in the hall, where the ball goes behind the thrower; `throwBall()` throws. */
   function playFetch() {
