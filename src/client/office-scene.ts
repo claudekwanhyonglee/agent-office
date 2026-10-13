@@ -12,6 +12,7 @@ import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
 import { doorsOpen } from './control-room-3d.ts';
 import { CAST_SECONDS, landingFrom } from './fishing.ts';
+import { bindLayoutPicker, savedLayout } from './layout-picker.ts';
 
 /** The agent a picked mesh belongs to, if any. */
 export function agentKeyOf(object: THREE.Object3D | null | undefined): string | null {
@@ -23,9 +24,11 @@ export function agentKeyOf(object: THREE.Object3D | null | undefined): string | 
 /** The live office: the 3D view plus a character for every listed agent. */
 export function createOfficeScene(host: HTMLElement) {
   const view = createView(host);
-  /** Dev builds: `?layout=control-room` opens that layout preset (#101; the picker comes in #104). */
-  const preset = (import.meta.env.DEV && new URLSearchParams(location.search).get('layout')) || 'classic';
-  const controller = new OfficeController({}, preset);
+  const picker = document.getElementById('layout-picker');
+  let preset = picker ? bindLayoutPicker(picker, switchLayout) : savedLayout();
+  let controller = new OfficeController({}, preset);
+  /** The feed as last shown, to place everyone again when the layout changes. */
+  let records: AgentRecord[] = [];
   const characters = new Map<string, Character>();
   /** Walking out; kept until they're through the door. */
   const leaving = new Set<Character>();
@@ -56,8 +59,23 @@ export function createOfficeScene(host: HTMLElement) {
 
   const debugActivity = import.meta.env.DEV ? new URLSearchParams(location.search).get('activity') : null;
 
-  function show(records: AgentRecord[]) {
+  function show(latest: AgentRecord[]) {
+    records = latest;
     if (debugActivity) return; // the dev scene stays as set up, whatever the feed says
+    apply(controller.update(records));
+  }
+
+  /** Rebuilds the office as preset `next` and seats everyone there afresh, as if the page had just opened (#104). */
+  function switchLayout(next: string) {
+    preset = next;
+    for (const character of [...characters.values(), ...leaving]) view.scene.remove(character.root);
+    characters.clear();
+    leaving.clear();
+    mugs.clear();
+    fishingGear.stop();
+    controller = new OfficeController({}, preset);
+    office = view.setRows(controller.rows, preset);
+    dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
     apply(controller.update(records));
   }
 

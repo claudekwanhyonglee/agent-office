@@ -31,6 +31,11 @@ export class DeskMugs {
     this.parent.add(at(mug, seat.desk.x + right.x * 0.42, 0.85, seat.desk.z + right.z * 0.42));
     this.mugs.set(seat.index, mug);
   }
+
+  clear() {
+    this.mugs.forEach((mug) => this.parent.remove(mug));
+    this.mugs.clear();
+  }
 }
 
 const INK = '#3A3150';
