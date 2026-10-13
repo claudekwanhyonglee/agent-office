@@ -1,7 +1,11 @@
 // Break-room props (#29), at their plan C positions. Each is tagged so route tests treat it as furniture.
 import * as THREE from 'three';
 import { at, ball, box, cyl, mesh, part, tag } from './toon.ts';
-import { BREAK_ROOM, DARTS_LINE, type HangoutPlace, type Props, type SeatSpot } from './layout.ts';
+import { BREAK_ROOM, DARTS_LINE, type HangoutPlace, type Point, type Props, type SeatSpot } from './layout.ts';
+
+/** The floor's height under a point; the pieces below sit or fly above it (#103). */
+type Floor = (p: Point) => number;
+const flat: Floor = () => 0;
 import { dartModel, hoopsBall } from './character.ts';
 import { ballFlight, shotAt } from './hoops.ts';
 import { THROWS, dartFlight, dartsAt } from './darts.ts';
@@ -16,7 +20,7 @@ import { BALL_R as PONG_BALL_R, NET_TOP, pongBallAt, type Rally } from './pong.t
 export class DeskMugs {
   private mugs = new Map<number, THREE.Object3D>();
 
-  constructor(private parent: THREE.Object3D) {}
+  constructor(private parent: THREE.Object3D, private floor: Floor = flat) {}
 
   set(seat: SeatSpot, on: boolean) {
     const old = this.mugs.get(seat.index);
@@ -28,7 +32,7 @@ export class DeskMugs {
     mug.add(at(cyl(0.05, 0.05, 0.01, '#6B4226', { outline: 0, shadow: false }), 0, 0.055, 0));
     // On the desk's corner by the sitter's right hand.
     const right = { x: -Math.cos(seat.yaw), z: Math.sin(seat.yaw) };
-    this.parent.add(at(mug, seat.desk.x + right.x * 0.42, 0.85, seat.desk.z + right.z * 0.42));
+    this.parent.add(at(mug, seat.desk.x + right.x * 0.42, this.floor(seat.desk) + 0.85, seat.desk.z + right.z * 0.42));
     this.mugs.set(seat.index, mug);
   }
 
@@ -165,7 +169,7 @@ export class PoolBalls {
   /** Seconds into the rack; null while nobody plays. */
   private t: number | null = null;
 
-  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM) {
+  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM, private floor: Floor = flat) {
     parent.add(...this.meshes);
     this.place(0);
   }
@@ -185,7 +189,7 @@ export class PoolBalls {
   private place(t: number) {
     const { poolTable: table } = this.props();
     ballsAt(t).forEach((b, i) => {
-      this.meshes[i].position.set(table.x + b.x, FELT_TOP + BALL_R, table.z + b.z);
+      this.meshes[i].position.set(table.x + b.x, this.floor(table) + FELT_TOP + BALL_R, table.z + b.z);
       this.meshes[i].visible = !b.potted;
     });
   }
@@ -197,7 +201,7 @@ export class PongBallMesh {
   private rally: Rally | null = null;
   private t = 0;
 
-  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM) {
+  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM, private floor: Floor = flat) {
     parent.add(this.mesh);
     this.mesh.visible = false;
   }
@@ -213,7 +217,7 @@ export class PongBallMesh {
     const at = this.rally && pongBallAt(this.rally, this.t);
     this.mesh.visible = !!at?.visible;
     const { pingPong } = this.props();
-    if (at) this.mesh.position.set(pingPong.x + at.x, at.y, pingPong.z + at.z);
+    if (at) this.mesh.position.set(pingPong.x + at.x, this.floor(pingPong) + at.y, pingPong.z + at.z);
   }
 }
 
@@ -221,7 +225,7 @@ export class PongBallMesh {
 export class BoardDarts {
   readonly darts = Array.from({ length: THROWS }, () => dartModel());
 
-  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM) {
+  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM, private floor: Floor = flat) {
     parent.add(...this.darts);
     this.update(null);
   }
@@ -233,8 +237,8 @@ export class BoardDarts {
       dart.visible = k != null;
       if (k == null) return;
       const { origin, dir } = dartFlight(thrower!.place, i, k, this.props().dartboard);
-      dart.position.set(origin.x, origin.y, origin.z);
-      dart.lookAt(origin.x + dir.x, origin.y + dir.y, origin.z + dir.z);
+      dart.position.set(origin.x, origin.y + this.floor(origin), origin.z);
+      dart.lookAt(origin.x + dir.x, dart.position.y + dir.y, origin.z + dir.z);
     });
   }
 }
@@ -243,7 +247,7 @@ export class BoardDarts {
 export class BinBall {
   readonly mesh = hoopsBall();
 
-  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM) {
+  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM, private floor: Floor = flat) {
     parent.add(this.mesh);
     this.update(null);
   }
@@ -254,7 +258,7 @@ export class BinBall {
     this.mesh.visible = k != null;
     if (k == null) return;
     const p = ballFlight(shooter!.place, k, this.props().bin);
-    this.mesh.position.set(p.x, p.y, p.z);
+    this.mesh.position.set(p.x, this.floor(p) + p.y, p.z);
   }
 }
 
@@ -276,7 +280,7 @@ export class FishingGear {
   private cast: { cast: Cast; place: HangoutPlace; start: number; t: number } | null = null;
   private now: CastFrame | null = null;
 
-  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM) {
+  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM, private floor: Floor = flat) {
     this.float.add(at(ball(0.04, '#FF5A5A', { outline: 0.08, shadow: false }), 0, 0.02, 0));
     this.float.add(at(ball(0.03, '#FFFFFF', { outline: 0.08, shadow: false }), 0, 0.06, 0));
     this.ripple.rotation.x = -Math.PI / 2;

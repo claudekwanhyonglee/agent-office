@@ -1,7 +1,7 @@
 // Office floor plan in plain numbers (no three.js), so seating and routes are testable.
 import { SHOT_COUNT, shotSetup } from './pool.ts';
 import { PLAYER_X } from './pong.ts';
-import { controlRoomLayout, type ControlRoomLayout } from './control-room.ts';
+import { controlRoomLayout, heightAt, pitLanding, type ControlRoomLayout } from './control-room.ts';
 
 // Plan C, "Mission Control Bay": curved rows of desks face the camera (+z) around a point on the
 // front deck. Kitchen, big board, TV and the door line the back wall (-z); a glass wall with two
@@ -306,6 +306,13 @@ export function classicLayout(rows: number, props: Props = BREAK_ROOM) {
 }
 
 export type OfficeLayout = ReturnType<typeof classicLayout> | ControlRoomLayout;
+
+/** The floor's height at `p`: classic is flat; the Control room has tiers, steps and a raised lounge (#103). */
+export const floorAt = (layout: OfficeLayout, p: Point) => (layout.preset === 'control-room' ? heightAt(layout, p) : 0);
+
+/** Where a paper plane aimed at `seat` lands: on its desk, or in the Control room on the pit floor (#103). */
+export const planeLanding = (layout: OfficeLayout, seat: SeatSpot): { at: Point; onFloor: boolean } =>
+  layout.preset === 'control-room' ? { at: pitLanding(seat), onFloor: true } : { at: seat.desk, onFloor: false };
 
 /** Between the loungers and the ping-pong table: the way from the deck walkway to the right of the deck. */
 const RIGHT_DECK_X = 4.95;

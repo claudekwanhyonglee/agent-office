@@ -40,6 +40,13 @@ const LOUNGE_DEPTH = 6.2;
 const PROMENADE = 1.0;
 /** Steps from the lounge down to the floor at the right, towards the side door. */
 const RIGHT_STEPS = { x0: 8.2, x1: 10.2, length: 3.0 };
+/** The right steps' flight has this many treads; each tier's front has a half step this deep in the centre aisle. */
+export const FLIGHT = 8;
+export const HALF_STEP = 0.36;
+/** Walkers go up and down only inside the steps' areas, so their heights start this far in. */
+const STEP_EDGE = 0.05;
+/** Paper planes thrown from the lounge rail land this far from the focus, across the pit (#103). */
+const PLANE_LANDING_RADIUS = 4.4;
 const RIGHT_AISLE_X = (RIGHT_STEPS.x0 + RIGHT_STEPS.x1) / 2;
 const DECK = { x0: ROOM.right + 0.3, x1: 22.5, z0: ROOM.back, z1: 8.5 };
 /** Deck walkways: one from the side door along the house, two across the deck. */
@@ -148,15 +155,33 @@ export function controlRoomLayout(rows: number) {
   };
 }
 
-/** Floor height at `p`: the pit, side aisles and deck are 0; tiers and the lounge are raised. */
+/** Floor height at `p`: the pit, side aisles and deck are 0; tiers, their steps and the lounge are raised. */
 export function heightAt(layout: ControlRoomLayout, p: Point): number {
   const { tiers, crewLounge } = layout;
   if (p.x > ROOM.right) return 0;
   if (p.z >= crewLounge.z0) return crewLounge.height;
   const d = Math.hypot(p.x - FOCUS.x, p.z - FOCUS.z), angle = Math.atan2(p.x - FOCUS.x, p.z - FOCUS.z);
   const tier = tiers.find((t, i) => d >= t.inner && (d < t.outer || i === tiers.length - 1));
-  return tier && Math.abs(angle) <= TIER_HALF_ARC / tier.radius ? tier.height : 0;
+  const onTier = tier && Math.abs(angle) <= TIER_HALF_ARC / tier.radius ? tier.height : 0;
+  return Math.max(onTier, stepHeightAt(layout, p));
 }
+
+/** On the steps (as control-room-3d builds them), a little inside their areas: a tread of the right flight, or a half step in the centre aisle; else 0. */
+function stepHeightAt({ tiers, crewLounge, steps: [centre, right] }: ControlRoomLayout, p: Point): number {
+  const inside = (a: Area) => p.x > a.x0 + STEP_EDGE && p.x < a.x1 - STEP_EDGE && p.z > a.z0 + STEP_EDGE && p.z < a.z1 - STEP_EDGE;
+  if (inside(right)) {
+    const tread = Math.floor(((p.z - right.z0) / (crewLounge.z0 - right.z0)) * FLIGHT);
+    return ((tread + 1) * crewLounge.height) / (FLIGHT + 1);
+  }
+  if (!inside(centre)) return 0;
+  const fronts = [...tiers.map((t) => ({ z: FOCUS.z + t.inner, h: t.height })), { z: crewLounge.z0, h: crewLounge.height }];
+  const front = fronts.find(({ z }) => p.z >= z - HALF_STEP && p.z < z);
+  return front ? front.h - TIER_RISE / 2 : 0;
+}
+
+/** Where a paper plane aimed at `seat` lands: on the pit floor in front of its console (#103). */
+export const pitLanding = (seat: SeatSpot): Point =>
+  onArc(PLANE_LANDING_RADIUS, Math.atan2(seat.desk.x - FOCUS.x, seat.desk.z - FOCUS.z));
 
 function seatsFor(tiers: { radius: number }[]): SeatSpot[] {
   return tiers.flatMap(({ radius: r }, row) => OFFSETS.map((offset, i) => {

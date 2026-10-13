@@ -46,9 +46,12 @@ export class Dog {
     });
   }
 
+  /** The floor's height under a point (#103). */
+  ground: (p: Point) => number = () => 0;
+
   /** Put straight at `p`. */
   placeAt(p: Point, lie: boolean) {
-    this.root.position.set(p.x, 0, p.z);
+    this.root.position.set(p.x, this.ground(p), p.z);
     this.path = [];
     this.lying = lie;
   }
@@ -89,6 +92,7 @@ export class Dog {
         const step = Math.min(dist, DOG_SPEED * dt);
         pos.x += (dx / dist) * step;
         pos.z += (dz / dist) * step;
+        pos.y = this.ground(pos);
         this.turnTowards(Math.atan2(dx, dz), dt);
       }
       this.phase += dt * 16;

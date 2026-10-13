@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { at, box, cyl, mesh, part, tag, toon, toonRamp } from './toon.ts';
 import type { Point } from './layout.ts';
-import { TIER_HALF_ARC, TIER_RISE, heightAt, type ControlRoomLayout } from './control-room.ts';
+import { FLIGHT, HALF_STEP, TIER_HALF_ARC, TIER_RISE, heightAt, type ControlRoomLayout } from './control-room.ts';
 import type { OfficeState } from '../shared/agent.ts';
 import { DeskScreen, newCanvas } from './screen.ts';
 import { STATUS_COLORS, ScreenWall } from './screen-wall.ts';
@@ -221,8 +221,8 @@ function addTiers(group: THREE.Group, layout: ControlRoomLayout) {
   const step = (x0: number, x1: number, z: number, d: number, h: number) =>
     part(tag(at(box(x1 - x0, h, d, C.tierTop, { outline: 0.01 }), (x0 + x1) / 2, h / 2, z), 'floor'), 'steps');
   [...tiers.map((t) => ({ z: focus.z + t.inner, h: t.height })), { z: crewLounge.z0, h: crewLounge.height }]
-    .forEach(({ z, h }) => group.add(step(centre.x0, centre.x1, z - 0.18, 0.36, h - TIER_RISE / 2)));
-  const flight = 8, length = crewLounge.z0 - right.z0, tread = length / flight;
+    .forEach(({ z, h }) => group.add(step(centre.x0, centre.x1, z - HALF_STEP / 2, HALF_STEP, h - TIER_RISE / 2)));
+  const flight = FLIGHT, length = crewLounge.z0 - right.z0, tread = length / flight;
   for (let k = 0; k < flight; k++) group.add(step(right.x0, right.x1, right.z0 + (k + 0.5) * tread, tread, ((k + 1) * crewLounge.height) / (flight + 1)));
   // A handrail up the flight's inner side.
   const rail = tag(new THREE.Group(), 'handrail');
