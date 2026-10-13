@@ -11,6 +11,7 @@ import { Dog } from './dog.ts';
 import { FetchBall } from './fetch.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
+import { CAST_SECONDS, landingFrom } from './fishing.ts';
 
 /** The agent a picked mesh belongs to, if any. */
 export function agentKeyOf(object: THREE.Object3D | null | undefined): string | null {
@@ -50,7 +51,10 @@ export function createOfficeScene(host: HTMLElement) {
   ring.visible = false;
   view.scene.add(ring);
 
+  const debugActivity = import.meta.env.DEV ? new URLSearchParams(location.search).get('activity') : null;
+
   function show(records: AgentRecord[]) {
+    if (debugActivity) return; // the dev scene stays as set up, whatever the feed says
     apply(controller.update(records));
   }
 
@@ -172,6 +176,58 @@ export function createOfficeScene(host: HTMLElement) {
       ring.scale.setScalar(1 + Math.sin(t * 4) * 0.05);
     }
   });
+
+  // Dev only: lets a visual check frame a desk and throw a plane at it.
+  if (import.meta.env.DEV) Object.assign(window, { officeDebug: { camera: view.camera, planes, seats: () => office.seats } });
+  /** Dev only (#84): `?activity=fishing` puts an angler on the jetty, casting over and over, with the camera on the pond. */
+  function fishForever() {
+    const place = office.layout.hangouts.find((s) => s.name === 'fishing')!.places[0];
+    const angler = new Character(lookFor('debug-angler'));
+    angler.placeAt(office.seats[0], 'done', place);
+    view.scene.add(angler.root);
+    characters.set('debug-angler', angler);
+    let next = 0;
+    const cast = () => {
+      const c = { landing: landingFrom(Math.random), fish: null };
+      angler.fish(c);
+      fishingGear.start(c, place, pondTime);
+      clearTimeout(next);
+      next = window.setTimeout(cast, CAST_SECONDS * 1000);
+    };
+    cast();
+    Object.assign(window, { cast });
+    const ahead = { x: place.x + 1.5 * Math.sin(place.yaw), z: place.z + 1.5 * Math.cos(place.yaw) };
+    view.camera.position.set(ahead.x + 6 * Math.cos(place.yaw), 2, ahead.z - 6 * Math.sin(place.yaw));
+    view.camera.lookAt(ahead.x, 1, ahead.z);
+  }
+
+  /** Dev only (#87): `?activity=darts` puts a stand-in agent at that hangout and looks over its right shoulder. */
+  function showActivity(name: string | null) {
+    const place = office.layout.hangouts.find((s) => s.name === name)?.places[0];
+    if (!place) return;
+    const character = new Character(lookFor('stand-in'));
+    character.placeAt(office.seats[0], 'done', place);
+    view.scene.add(character.root);
+    characters.set('stand-in', character);
+    const forward = new THREE.Vector3(Math.sin(place.yaw), 0, Math.cos(place.yaw)), right = new THREE.Vector3(forward.z, 0, -forward.x);
+    const ahead = new THREE.Vector3(place.x, 1.3, place.z).addScaledVector(forward, 1);
+    view.camera.position.copy(ahead).addScaledVector(right, 3).addScaledVector(forward, -3.5).setY(2.6);
+    view.camera.lookAt(ahead);
+  }
+  /** Dev only (#86): `?activity=planes` puts a thrower at every paper-plane place, each throwing every few seconds. */
+  function showPlaneThrowers() {
+    office.layout.hangouts.find((s) => s.name === 'planes')!.places.forEach((place, i) => {
+      const character = new Character(lookFor(`planes-${i}`));
+      character.placeAt(office.seats[0], 'done', place);
+      view.scene.add(character.root);
+      characters.set(`planes-${i}`, character);
+      const desk = office.seats[(i * 5) % office.seats.length].desk;
+      setInterval(() => character.throwPlane((from) => planes.throw(from, desk)), 2500 + i * 300);
+    });
+  }
+  if (debugActivity === 'fishing') fishForever();
+  else if (debugActivity === 'planes') showPlaneThrowers();
+  else if (debugActivity) showActivity(debugActivity);
 
   return { show, onPick, onHover, select: (key: string | null) => { selected = key; } };
 }

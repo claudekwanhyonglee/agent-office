@@ -101,8 +101,9 @@ describe('#76 the controller says who shoots each turn', () => {
     for (const turn of turns) {
       const event = turn.event as { shot: number; shooter: string };
       const walk = ofType(log.filter((l) => l.t === turn.t).map((l) => l.event), 'walk').find((w) => w.place === TURNS[event.shot].shoot);
-      // The break is played from where the shooter arrived.
-      const shooter = walk?.key ?? [...o.c.agents].find(([, a]) => a.place?.pose === 'cue-shot')![0];
+      // The break is played from where the shooter arrived: the last walk onto a shooting place before it (#89 staggers arrivals).
+      const arrival = ofType(o.log.filter((l) => l.t <= turn.t).map((l) => l.event), 'walk').filter((w) => w.place?.pose === 'cue-shot').at(-1);
+      const shooter = walk?.key ?? arrival!.key;
       expect(event.shooter).toBe(shooter);
     }
   });

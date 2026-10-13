@@ -10,7 +10,7 @@ import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
 import { ROD_HAND, ROD_LENGTH, rodPitch, type Cast } from './fishing.ts';
 import { HANDS, shotAt } from './hoops.ts';
 import { STRIKE_AT } from './pool.ts';
-import { BOARD, COLLECT_FROM, PULL as DARTS_PULL, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, WALK as DARTS_WALK, dartsAt } from './darts.ts';
+import { BOARD, COLLECT_FROM, DART, PULL as DARTS_PULL, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, WALK as DARTS_WALK, dartsAt } from './darts.ts';
 import { RELEASE_AT as BALL_RELEASE_AT } from './fetch.ts';
 
 const SEAT_Y = 0.38;
@@ -654,9 +654,9 @@ function planeArm(t: number) {
   return { hand: a.hand.clone().lerp(b.hand, ease), twist: a.twist + (b.twist - a.twist) * ease };
 }
 
-/** Darts (#54): the throwing hand while aiming, drawn back just before the release, and at the release. */
-const AIM_HAND = new THREE.Vector3(0.25, 1.45, 0.15);
-const DRAWN_HAND = new THREE.Vector3(0.25, 1.5, -0.05);
+/** Darts (#54): the throwing hand while aiming, drawn back just before the release, and at the release; beside the head, never in it (#87). */
+const AIM_HAND = new THREE.Vector3(0.5, 1.55, 0.2);
+const DRAWN_HAND = new THREE.Vector3(0.5, 1.6, -0.05);
 const THROWN_HAND = new THREE.Vector3(RELEASE_HAND.x, RELEASE_HAND.y, RELEASE_HAND.z);
 /** Collecting (#80): the hand at its side while walking, and reaching up to the board. */
 const DART_LOW = new THREE.Vector3(0.3, 0.6, 0.06);
@@ -1021,17 +1021,17 @@ export function dartModel() {
     if (part) o.userData.part = part;
     return dart.add(o);
   };
-  along(cyl(0.001, 0.005, 0.05, '#C9C0E3', { outline: 0, shadow: false }), 0.1, 'dart-point');
-  along(cyl(0.011, 0.011, 0.06, '#FF5A5A', { outline: 0.05, shadow: false }), 0.045, 'dart-barrel');
-  along(cyl(0.004, 0.004, 0.06, INK_DARK, { outline: 0, shadow: false }), -0.015);
+  along(cyl(0.002, 0.01, 0.05, '#C9C0E3', { outline: 0, shadow: false }), DART.tip - 0.025, 'dart-point');
+  along(cyl(0.022, 0.022, 0.19, '#FF5A5A', { outline: 0.05, shadow: false }), 0.065, 'dart-barrel');
+  along(cyl(0.008, 0.008, 0.12, INK_DARK, { outline: 0, shadow: false }), -0.09);
   const flights = new THREE.Group();
   flights.userData.part = 'dart-flights';
   for (const turn of [0, Math.PI / 2]) {
-    const fin = mesh(new THREE.BoxGeometry(0.05, 0.002, 0.045), '#4D86FF', { outline: 0, shadow: false });
+    const fin = mesh(new THREE.BoxGeometry(0.1, 0.004, 0.08), '#4D86FF', { outline: 0, shadow: false });
     fin.rotation.z = turn;
     flights.add(fin);
   }
-  flights.position.z = -0.045;
+  flights.position.z = 0.04 - DART.tail;
   dart.add(flights);
   return dart;
 }

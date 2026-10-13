@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { buildOffice } from './office.ts';
 import {
   bindHomeKey, blockContextMenu, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
-  placeCamera, wheelRadius, zoomToward, type Pointer,
+  placeCamera, wheelRadius, zoomToward, type Orbit, type Pointer,
 } from './camera.ts';
 
 /** Renderer, lights, orbit camera and the office. Agents are layered on by callers. */
@@ -25,6 +25,16 @@ export function createView(host: HTMLElement) {
 
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 150);
   const orbit = initialOrbit();
+  // Dev hook: aim the camera from the console or a capture script, e.g. __aim({ theta: Math.PI / 2 }, [-9, 1, 1.5]).
+  if (import.meta.env.DEV) {
+    Object.assign(window, {
+      __aim: (angles: Partial<Pick<Orbit, 'theta' | 'phi' | 'radius'>>, target?: [number, number, number]) => {
+        Object.assign(orbit, angles);
+        if (target) orbit.target.set(...target);
+        placeCamera(camera, orbit);
+      },
+    });
+  }
 
   let office: ReturnType<typeof buildOffice> | undefined;
   let rows = 0;
@@ -52,6 +62,16 @@ export function createView(host: HTMLElement) {
     renderer.setSize(w, h);
     camera.aspect = w / h;
     frameFloor(camera, orbit, rows);
+    devFocus();
+  }
+
+  /** Dev builds: `?focus=x,z,radius` opens the view close up on one spot, for checking a prop by eye. */
+  function devFocus() {
+    const focus = import.meta.env.DEV && new URLSearchParams(location.search).get('focus')?.split(',').map(Number);
+    if (!focus || focus.length !== 3 || focus.some(Number.isNaN)) return;
+    focusOn(orbit, new THREE.Vector3(focus[0], 1, focus[1]));
+    orbit.radius = focus[2];
+    placeCamera(camera, orbit);
   }
 
   // Map-style: drag to pan, right- or Shift-drag to orbit (touch: one finger orbits, two pan); pinch or scroll to zoom

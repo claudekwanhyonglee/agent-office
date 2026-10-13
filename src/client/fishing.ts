@@ -15,8 +15,8 @@ export const ROD_LENGTH = 1.6;
 const SURFACE = 0.03;
 const LINE_DROP = 0.5;
 
-/** Timeline of a cast, in seconds. */
-export const T = { back: 0.6, forward: 0.9, release: 0.85, landed: 1.6, ripple: 1.5, alert: 3, reached: 5, lift: 5.6, lifted: 6.2, drop: 7.4, back_in: 8.4, reel: 8.4 };
+/** Timeline of a cast, in seconds. The float lets go as the rod comes over the top, its tip still rising (#84). */
+export const T = { back: 0.6, forward: 0.9, release: 0.66, landed: 1.6, ripple: 1.5, alert: 3, reached: 5, lift: 5.6, lifted: 6.2, drop: 7.4, back_in: 8.4, reel: 8.4 };
 /** Rod angle above level: resting, drawn back over the shoulder, and lifted with a fish. */
 const PITCH = { rest: 0.5, back: 1.9, lift: 1.66 };
 
@@ -61,10 +61,7 @@ export function castAt(cast: Cast, t: number, place: HangoutPlace, start = 0): C
   const bobbing = { ...landing, y: SURFACE + Math.sin((t - T.landed) * 3) * 0.015 };
   let float: Vec | null;
   if (t < T.release) float = hanging(tip);
-  else if (t < T.landed) {
-    const from = hanging(rodTip(place, rodPitch(cast, T.release))), k = (t - T.release) / (T.landed - T.release);
-    float = { ...mix(from, landing, k), y: lerp(from.y, landing.y, k) + 4 * 0.8 * k * (1 - k) };
-  } else if (cast.fish == null) float = t < T.reel ? bobbing : mix(landing, hanging(tip), smooth((t - T.reel) / (CAST_SECONDS - T.reel)));
+  else if (t < T.landed) float = flight(cast, place, landing, t - T.release); else if (cast.fish == null) float = t < T.reel ? bobbing : mix(landing, hanging(tip), smooth((t - T.reel) / (CAST_SECONDS - T.reel)));
   else if (t < T.reached) float = bobbing;
   else if (t < T.lift) float = { ...landing, y: SURFACE - 0.06 - Math.abs(Math.sin(t * 12)) * 0.03 }; // the bite: the float dips
   else if (t < T.drop) float = null; // hooked: the line runs to the fish
@@ -99,6 +96,19 @@ export function castAt(cast: Cast, t: number, place: HangoutPlace, start = 0): C
     ? { x: landing.x, z: landing.z, radius: 0.08 + 0.5 * ((t - T.landed) / T.ripple), opacity: 0.8 * (1 - (t - T.landed) / T.ripple) }
     : null;
   return { tip, float, lineEnd: float ?? fish!.at, ripple, fish };
+}
+
+/**
+ * The float `s` seconds after release (#84): it leaves with the rod tip's vertical speed and falls
+ * under the one constant gravity that brings it down on the landing point at T.landed; across, it
+ * goes straight there at a steady speed.
+ */
+function flight(cast: Cast, place: HangoutPlace, landing: Vec, s: number): Vec {
+  const tipY = (t: number) => rodTip(place, rodPitch(cast, t)).y;
+  const from = { ...rodTip(place, rodPitch(cast, T.release)), y: tipY(T.release) - LINE_DROP };
+  const vy = (tipY(T.release) - tipY(T.release - 1e-3)) / 1e-3, d = T.landed - T.release;
+  const gravity = (2 * (from.y + vy * d - landing.y)) / (d * d);
+  return { ...mix(from, landing, s / d), y: from.y + vy * s - (gravity / 2) * s * s };
 }
 
 /** Landing points stay in the pond, beyond the jetty's end and in the rod's reach. */
