@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { at, ball, box, cyl, mesh, tag, toonRamp } from './toon.ts';
+import { at, ball, box, cyl, mesh, part, tag, toonRamp } from './toon.ts';
 import {
   BREAK_ROOM, DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, MEETING_ROOM, MEETING_TABLE, WALL_HEIGHT, officeLayout, type OfficeLayout, type SeatSpot,
 } from './layout.ts';
@@ -237,10 +237,10 @@ function addLounge(group: THREE.Group, layout: OfficeLayout) {
   const w = sofaAt.w;
   const sofa = tag(new THREE.Group(), 'sofa');
   sofa.add(at(box(w, 0.38, 0.85, '#5B7DB1'), 0, 0.27, 0));
-  sofa.add(at(box(w, 0.55, 0.25, '#4C6B9C'), 0, 0.6, -0.3));
+  sofa.add(part(at(box(w, 0.55, 0.25, '#4C6B9C'), 0, 0.6, -0.3), 'backrest'));
   sofa.add(at(box(0.25, 0.5, 0.85, '#4C6B9C'), -w / 2 + 0.125, 0.4, 0));
   sofa.add(at(box(0.25, 0.5, 0.85, '#4C6B9C'), w / 2 - 0.125, 0.4, 0));
-  for (const dx of [-0.75, 0, 0.75]) sofa.add(at(box(0.7, 0.12, 0.6, '#6E90C4'), dx, 0.5, 0.05));
+  for (const dx of [-0.75, 0, 0.75]) sofa.add(part(at(box(0.7, 0.12, 0.6, '#6E90C4'), dx, 0.5, 0.05), 'cushion'));
   lounge.add(turned(at(sofa, sofaAt.x, 0, sofaAt.z), Math.PI)); // faces the TV
   group.add(lounge);
   return new LoungeTv(picture);

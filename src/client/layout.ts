@@ -24,12 +24,14 @@ export interface SeatSpot {
   link: Point[];
 }
 
-export type HangoutPose =
-  | 'eating' | 'drinking' | 'lounging' | 'chatting'
-  | 'lounging-sun' | 'fishing' | 'swinging' | 'yoga' | 'bouncing' | 'throwing-darts' | 'shooting-hoops' | 'throwing-plane'
-  | 'cue-shot' | 'cue-wait' | 'paddle' | 'floating' | 'gaming'
-  | 'watching' | 'high-five' | 'delivering'
-  | 'petting' | 'feeding' | 'throwing-ball';
+export const HANGOUT_POSES = [
+  'eating', 'drinking', 'lounging', 'chatting',
+  'lounging-sun', 'fishing', 'swinging', 'yoga', 'bouncing', 'throwing-darts', 'shooting-hoops', 'throwing-plane',
+  'cue-shot', 'cue-wait', 'paddle', 'floating', 'gaming',
+  'watching', 'high-five', 'delivering',
+  'petting', 'feeding', 'throwing-ball',
+] as const;
+export type HangoutPose = (typeof HANGOUT_POSES)[number];
 
 export interface HangoutPlace extends Point {
   spot: string;
@@ -194,9 +196,11 @@ export function officeLayout(rows: number) {
   const toHall = (p: Point): Point[] => [p, { x: p.x, z: hallZ }];
   const toDeck = (p: Point): Point[] => [p, { x: p.x, z: DECK_Z }];
   const sofaFront = lounge.sofa.z - 0.95;
+  /** Sitters sit forward of the sofa's middle, so their backs stay clear of the backrest (#77). */
+  const seatZ = lounge.sofa.z - 0.25;
   const sofaSeat = (x: number, spot = 'lounge', pose: HangoutPose = 'lounging'): HangoutPlace => ({
-    x, z: lounge.sofa.z, spot, yaw: Math.PI, pose, sits: true,
-    link: [{ x, z: lounge.sofa.z }, { x, z: sofaFront }, { x: 4.75, z: sofaFront }, { x: 4.75, z: hallZ }],
+    x, z: seatZ, spot, yaw: Math.PI, pose, sits: true,
+    link: [{ x, z: seatZ }, { x, z: sofaFront }, { x: 4.75, z: sofaFront }, { x: 4.75, z: hallZ }],
   });
   const standing = (spot: string, p: Point, pose: HangoutPose, yaw = Math.PI): HangoutPlace =>
     ({ ...p, spot, yaw, pose, link: toHall(p) });
@@ -299,7 +303,7 @@ function soloSpots(): HangoutSpot[] {
     },
     solo('fishing', 'fishing', { x: -4.4, z: 11.0 }, left, [{ x: -3.2, z: 11.0 }, { x: -3.2, z: DECK_Z }]),
     solo('hammock', 'swinging', hammock, right, [{ x: hammock.x, z: 11.7 }, { x: RIGHT_DECK_X, z: 11.7 }, { x: RIGHT_DECK_X, z: DECK_Z }], true),
-    solo('yoga', 'yoga', yogaMat, 0, [{ x: -6.4, z: yogaMat.z }, { x: -AISLE_X, z: DECK_Z }]),
+    solo('yoga', 'yoga', yogaMat, right, [{ x: -6.4, z: yogaMat.z }, { x: -AISLE_X, z: DECK_Z }]),
     solo('trampoline', 'bouncing', trampoline, 0, [{ x: 6.5, z: trampoline.z }, { x: RIGHT_DECK_X, z: trampoline.z }, { x: RIGHT_DECK_X, z: DECK_Z }], true),
     solo('darts', 'throwing-darts', { x: -6.6, z: BREAK_ROOM.dartboard.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.dartboard.z }]),
     solo('hoops', 'shooting-hoops', { x: -6.8, z: BREAK_ROOM.bin.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.bin.z }]),
@@ -423,6 +427,12 @@ export function along(path: Point[], d: number): { leg: number; done: boolean } 
 
 export const pathLength = (path: Point[]) => path.slice(1).reduce((sum, p, i) => sum + distance(path[i], p), 0);
 
+/** The dog's run from `spot` out to where a thrown ball lands, and back. */
+export function fetchRun(layout: OfficeLayout, spot: DogSpot): Point[] {
+  const out = route(layout, spot.link, [spot.fetch]);
+  return [...out, ...out.slice(0, -1).reverse()];
+}
+
 /** The dog's bed (first: it starts there), a spot on the deck, one in the hall and one in the left aisle. */
 function dogSpots(hallZ: number): DogSpot[] {
   const play: HangoutPose[] = ['petting', 'throwing-ball'];
@@ -472,6 +482,12 @@ export function behindChair(layout: OfficeLayout, seat: SeatSpot): Point[] {
   const side = distance(behind, next) < ONLOOKER_SIDE + 0.1 ? prev : next;
   const k = ONLOOKER_SIDE / distance(behind, side);
   return [{ x: behind.x + (side.x - behind.x) * k, z: behind.z + (side.z - behind.z) * k }];
+}
+
+/** An onlooker's place behind `seat`'s chair, watching its screen. */
+export function overTheShoulder(layout: OfficeLayout, seat: SeatSpot): HangoutPlace {
+  const [spot] = behindChair(layout, seat);
+  return { ...spot, spot: 'over-the-shoulder', pose: 'watching', yaw: yawTowards(spot, seat.desk), link: [spot] };
 }
 
 /** Door → hall → aisle → lane behind the row → into the chair. */

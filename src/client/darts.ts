@@ -8,8 +8,10 @@ export const THROW_EVERY = 2.6;
 export const RELEASE_AT = 1.4;
 export const FLIGHT = 0.5;
 /** After the third throw: walk to the board, pull the darts out, walk back. */
-const WALK = 1.0;
-const PULL = 0.6;
+export const WALK = 1.0;
+export const PULL = 0.6;
+/** Seconds to turn round: away from the board to walk back, and to face it again as the next round starts (#80). */
+const TURN = 0.5;
 export const ROUND = THROWS * THROW_EVERY + 2 * WALK + PULL;
 
 /** The board's face (it faces +x, into the room) and how close the thrower walks up to it. */
@@ -31,7 +33,11 @@ export interface Round {
   stuck: number;
   /** 0 at the throwing line, 1 up at the board (collecting). */
   walk: number;
+  /** 0 facing the board, 1 turned round to walk back to the line (#80). */
+  turn: number;
 }
+
+const smooth = (k: number) => { const c = Math.min(1, Math.max(0, k)); return c * c * (3 - 2 * c); };
 
 export function dartsAt(t: number): Round {
   const r = ((t % ROUND) + ROUND) % ROUND;
@@ -39,11 +45,12 @@ export function dartsAt(t: number): Round {
   if (r >= throwing) {
     const c = r - throwing;
     const walk = c < WALK ? c / WALK : c < WALK + PULL ? 1 : Math.max(0, 1 - (c - WALK - PULL) / WALK);
-    return { holding: false, flying: null, stuck: c < WALK + PULL / 2 ? THROWS : 0, walk };
+    return { holding: false, flying: null, stuck: c < WALK + PULL / 2 ? THROWS : 0, walk, turn: smooth((c - WALK - PULL) / TURN) };
   }
+  const turn = t >= ROUND ? 1 - smooth(r / TURN) : 0;
   const index = Math.floor(r / THROW_EVERY), u = r - index * THROW_EVERY;
   const flying = u >= RELEASE_AT && u < RELEASE_AT + FLIGHT ? { index, k: (u - RELEASE_AT) / FLIGHT } : null;
-  return { holding: u < RELEASE_AT, flying, stuck: index + (u >= RELEASE_AT + FLIGHT ? 1 : 0), walk: 0 };
+  return { holding: u < RELEASE_AT, flying, stuck: index + (u >= RELEASE_AT + FLIGHT ? 1 : 0), walk: 0, turn };
 }
 
 type Vec = { x: number; y: number; z: number };

@@ -1,6 +1,6 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
 import {
-  DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, behindChair, officeLayout, pathLength, route, withoutLoops, yawTowards,
+  DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, fetchRun, officeLayout, overTheShoulder, pathLength, route, withoutLoops, yawTowards,
   type DogSpot, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
 } from './layout.ts';
 import { SHOT_COUNT, SHOT_SECONDS } from './pool.ts';
@@ -8,6 +8,7 @@ import { hitter, rallySeconds, type Rally, type Side } from './pong.ts';
 import { RETURN_SECONDS, driftParams, type Drift } from './float.ts';
 import { CAST_SECONDS, landingFrom, type Cast } from './fishing.ts';
 import { FISH } from './water.ts';
+import { RELEASE_AT } from './fetch.ts';
 
 /** Seconds an idle agent waits at its desk before wandering off (AC: within 3 s). */
 const SET_OFF = { min: 1, max: 2.5 };
@@ -93,12 +94,13 @@ export type OfficeEvent =
   | { type: 'high-five'; key: string; to: string }
   /** A coffee mug appears on (or is cleared from) desk `desk`. */
   | { type: 'mug'; desk: number; on: boolean }
-  /** The dog runs along `path`, then lies down (in its bed) or stands. */
-  | { type: 'dog'; path: Point[]; lie: boolean }
-  /** Agent `key` throws a ball for the dog (the dog's run follows). */
-  | { type: 'fetch'; key: string }
-  /** Turn `shot` of the pool rack starts (#53); null: play stopped, the balls go back in the rack. */
-  | { type: 'pool'; shot: number | null }
+  /** The dog runs along `path` (setting off after `wait` seconds), then lies down (in its bed) or stands. */
+  | { type: 'dog'; path: Point[]; lie: boolean; wait?: number }
+  /** Agent `key` throws a ball for the dog to `to` (the dog's run follows). */
+  | { type: 'fetch'; key: string; to: Point }
+  /** Turn `shot` of the pool rack starts (#53), played by `shooter` (#76); null: play stopped, the balls go back in the rack. */
+  | { type: 'pool'; shot: number; shooter: string }
+  | { type: 'pool'; shot: null }
   /** A table-tennis rally starts (#70) between `players` (at the -x end, then the +x end); null: play stopped. */
   | { type: 'pong'; rally: Rally | null; players: [string, string] }
   /** How agent `key`'s ring will drift once it's afloat in the pool dip it's walking to (#57). */
@@ -246,7 +248,7 @@ export class OfficeController {
       const breaker = players.find(([, a]) => a.place!.pose === 'cue-shot') ?? players[0];
       const other = players.find((p) => p !== breaker)!;
       this.pool = { players: [breaker[0], other[0]], turn: 0, nextAt: now + SHOT_SECONDS };
-      events.push({ type: 'pool', shot: 0 });
+      events.push({ type: 'pool', shot: 0, shooter: breaker[0] });
       return;
     }
     const pool = this.pool;
@@ -258,7 +260,7 @@ export class OfficeController {
     const turns = this.layout.poolTurns;
     this.step(waiter, turns[last].wait, now, events);
     this.step(shooter, turns[shot].shoot, now, events);
-    events.push({ type: 'pool', shot });
+    events.push({ type: 'pool', shot, shooter });
   }
 
   /** Walks a player straight to another place at the same table (its stay there is unchanged). */
@@ -355,11 +357,11 @@ export class OfficeController {
   /** The dog runs to where the ball lands and back. */
   private fetch(key: string, now: number, events: OfficeEvent[]) {
     const dog = this.dog;
-    const out = route(this.layout, dog.spot.link, [dog.spot.fetch]);
-    const path = [...out, ...out.slice(0, -1).reverse()];
+    const path = fetchRun(this.layout, dog.spot);
     dog.lying = false;
-    dog.arrivesAt = now + pathLength(path) / DOG_SPEED;
-    events.push({ type: 'fetch', key }, { type: 'dog', path, lie: false });
+    // It sets off as the ball leaves the hand (#75).
+    dog.arrivesAt = now + RELEASE_AT + pathLength(path) / DOG_SPEED;
+    events.push({ type: 'fetch', key, to: dog.spot.fetch }, { type: 'dog', path, lie: false, wait: RELEASE_AT });
   }
 
   /** Idle agents react to another agent's state change (#33). */
@@ -378,10 +380,9 @@ export class OfficeController {
     const onlooker = this.pick(this.helpers(key));
     if (watched || !onlooker || this.errandSent) return;
     // One onlooker per desk, off to one side (#67).
-    const [spot] = behindChair(this.layout, agent.seat);
     const [k, a] = onlooker;
     this.errandSent = true;
-    this.send(k, a, errandPlace('over-the-shoulder', 'watching', spot, [spot], yawTowards(spot, agent.seat.desk)), now, events);
+    this.send(k, a, overTheShoulder(this.layout, agent.seat), now, events);
     a.nextAt = null;
     a.reaction = { kind: 'watch', target: key, done: true };
   }

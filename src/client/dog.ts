@@ -4,6 +4,9 @@ import { DOG_SPEED, type Point } from './layout.ts';
 
 const FUR = '#D9A066';
 const DARK = '#8C5A3A';
+const UP = new THREE.Vector3(0, 1, 0);
+/** Radians per second. */
+const TURN_SPEED = 10;
 
 /** The office dog (#34). It runs along the paths the controller gives it, then stands wagging or lies down. */
 export class Dog {
@@ -14,6 +17,8 @@ export class Dog {
   private legs: THREE.Object3D[];
   private path: THREE.Vector3[] = [];
   private lieOnArrival = false;
+  /** Seconds left before it sets off along `path`. */
+  private wait = 0;
   private phase = 0;
 
   constructor() {
@@ -48,15 +53,33 @@ export class Dog {
     this.lying = lie;
   }
 
-  /** Run along `path` (from where it is), then lie down or stand. */
-  go(path: Point[], lie: boolean) {
+  /** After `wait` seconds, run along `path` (from where it is), then lie down or stand. */
+  go(path: Point[], lie: boolean, wait = 0) {
     this.path = path.map((p) => new THREE.Vector3(p.x, 0, p.z));
     this.lieOnArrival = lie;
     this.lying = false;
+    this.wait = wait;
+  }
+
+  /** On its way somewhere (or about to set off). */
+  get running() {
+    return this.path.length > 0;
+  }
+
+  /** Where it carries a ball (#75), in the world. */
+  mouth() {
+    return new THREE.Vector3(0, 0.42 + this.body.position.y, 0.47).applyAxisAngle(UP, this.root.rotation.y).add(this.root.position);
+  }
+
+  /** Turns at most TURN_SPEED, so whatever it carries in its mouth swings round rather than jumping (#75). */
+  private turnTowards(heading: number, dt: number) {
+    const d = Math.atan2(Math.sin(heading - this.root.rotation.y), Math.cos(heading - this.root.rotation.y));
+    this.root.rotation.y += Math.sign(d) * Math.min(Math.abs(d), TURN_SPEED * dt);
   }
 
   update(t: number, dt: number) {
-    const pos = this.root.position, target = this.path[0];
+    this.wait = Math.max(0, this.wait - dt);
+    const pos = this.root.position, target = this.wait ? undefined : this.path[0];
     this.body.position.y = 0;
     this.body.rotation.z = 0;
     if (target) {
@@ -66,7 +89,7 @@ export class Dog {
         const step = Math.min(dist, DOG_SPEED * dt);
         pos.x += (dx / dist) * step;
         pos.z += (dz / dist) * step;
-        this.root.rotation.y = Math.atan2(dx, dz);
+        this.turnTowards(Math.atan2(dx, dz), dt);
       }
       this.phase += dt * 16;
       this.body.position.y = Math.abs(Math.sin(this.phase)) * 0.05;

@@ -5,10 +5,13 @@ import type { Look, HatKind } from './look.ts';
 import { BREAK_ROOM, WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
-import { HIT, hitTimes, type Rally, type Side } from './pong.ts';
+import { HIT, hitTimes, hitter, rallySeconds, type Rally, type Side } from './pong.ts';
 import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
 import { ROD_HAND, ROD_LENGTH, rodPitch, type Cast } from './fishing.ts';
-import { BOARD, COLLECT_FROM, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, dartsAt } from './darts.ts';
+import { HANDS, shotAt } from './hoops.ts';
+import { STRIKE_AT } from './pool.ts';
+import { BOARD, COLLECT_FROM, PULL as DARTS_PULL, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, WALK as DARTS_WALK, dartsAt } from './darts.ts';
+import { RELEASE_AT as BALL_RELEASE_AT } from './fetch.ts';
 
 const SEAT_Y = 0.38;
 const WOOD_DARK = '#8C6A4A';
@@ -18,11 +21,17 @@ const HOP_SECONDS = 0.45;
 /** A sofa cheer (#61): both fists up, pumping. */
 const CHEER_SECONDS = 1.5;
 const SOFA_SPOTS = ['lounge', 'couch-co-op'];
+/** On the sofa the body is lifted onto the cushions, 0.56 m up, from the usual seat height (#77). */
+const SOFA_LIFT = 0.17;
 /** A leaving agent's bubble grows for this long, then vanishes (#49). */
 const POP_SECONDS = 0.2;
 /** Pool (#53): the cue is held level this high, over the playing surface (0.835 m); the bridge hand stops short of the table's edge, 0.85 m ahead. */
 const CUE_Y = 0.9;
 const BRIDGE = 0.62;
+/** Pool (#76): the cue hand's distance from the strike (tip at the ball): at rest, and drawn back. */
+const CUE_HAND_STRIKE = 0.16;
+const CUE_REST = 0.05;
+const CUE_DRAWN = 0.3;
 const UP = new THREE.Vector3(0, 1, 0);
 const BUBBLE_SIZE = 0.72;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -52,7 +61,7 @@ export class Character {
   readonly head = new THREE.Group();
   private eyes: THREE.Mesh[];
   readonly hands: THREE.Mesh[];
-  private feet: THREE.Mesh[];
+  readonly feet: THREE.Mesh[];
   private mug = new THREE.Group();
   private snack: THREE.Mesh;
   /** Things held in the right hand for one pose: a fishing rod, dart, ball or paper plane. */
@@ -78,6 +87,12 @@ export class Character {
   private returning: { from: Afloat; k: number; then: () => void } | null = null;
   /** The cast this angler is making (#58), and seconds into it. */
   private casting: { cast: Cast; t: number } | null = null;
+  /** The paper plane being thrown (#74): seconds in, where the held plane last was, and who launches it. */
+  private planeThrow: PlaneThrow | null = null;
+  /** Seconds since this agent last threw the dog's ball (#75). */
+  private fetchThrow: number | null = null;
+  /** Seconds into the pool turn this agent is shooting (#76). */
+  private shotTime: number | null = null;
   /** Seconds since the agent got to its hangout place. */
   private placeTime = 0;
   /** Seconds since the agent started leaving; its bubble pops, then stays gone (#49). */
@@ -193,6 +208,11 @@ export class Character {
     this.rally = rally && { rally, side, t: 0 };
   }
 
+  /** This agent's pool turn starts now (#76): it strikes at STRIKE_AT. */
+  takeShot() {
+    this.shotTime = 0;
+  }
+
   /** How its ring will drift once this agent is afloat in a pool dip (#57). */
   float(drift: Drift) {
     this.drift = drift;
@@ -214,6 +234,21 @@ export class Character {
     this.casting = { cast, t: 0 };
   }
 
+  /** Throw a paper plane now (#74); `release` launches it from where the held plane was, as the arm lets go. */
+  throwPlane(release: (from: THREE.Vector3) => void) {
+    this.planeThrow = { t: 0, from: null, release };
+  }
+
+  /** A fetch starts now: throw the dog's ball (#75). */
+  throwBall() {
+    this.fetchThrow = 0;
+  }
+
+  /** Playing fetch with the dog (#75). */
+  throwingBall() {
+    return this.mode === 'hanging' && this.place?.pose === 'throwing-ball';
+  }
+
   /** Fishing from the jetty (#58). */
   fishing() {
     return this.mode === 'hanging' && this.place?.pose === 'fishing';
@@ -222,6 +257,11 @@ export class Character {
   /** At the darts line (#54): where, and seconds since arriving there (the board's darts follow it). */
   dartsThrower() {
     return this.mode === 'hanging' && this.place?.pose === 'throwing-darts' ? { place: this.place, t: this.placeTime } : null;
+  }
+
+  /** At the hoops line (#73): where, and seconds since arriving there (the ball in the air follows it). */
+  hoopsShooter() {
+    return this.mode === 'hanging' && this.place?.pose === 'shooting-hoops' ? { place: this.place, t: this.placeTime } : null;
   }
 
   /** Sitting on the lounge sofa, watching TV or playing (#61). */
@@ -265,6 +305,9 @@ export class Character {
     this.place = null;
     this.rally = null;
     this.casting = null;
+    this.planeThrow = null;
+    this.fetchThrow = null;
+    this.shotTime = null;
   }
 
   private hangAt(place: HangoutPlace) {
@@ -313,6 +356,7 @@ export class Character {
     for (const prop of Object.values(this.held)) prop.visible = false;
     // Every agent keeps its state's bubble, wherever it is, until it pops on leaving.
     if (this.leftFor != null) this.leftFor += dt;
+    if (this.shotTime != null) this.shotTime += dt;
     const popping = this.leftFor != null && this.leftFor < POP_SECONDS;
     const bubble: BubbleKind | null = this.leftFor == null || popping ? POSES[this.state].bubble : null;
     this.bubble.scale.setScalar(BUBBLE_SIZE * (popping ? 1 + (this.leftFor! / POP_SECONDS) * 0.5 : 1));
@@ -347,7 +391,7 @@ export class Character {
         hr.position.set(0.44 + Math.sin(tt * 10) * 0.09 * motion, 1.62 + Math.abs(Math.sin(tt * 10)) * 0.04, 0.12);
         bubbleY = 2.3 + Math.abs(Math.sin(tt * 3.2)) * 0.12 * motion;
       } else if (pose === 'sipping') {
-        p.rotation.x = -0.2;
+        p.rotation.x = -0.15;
         const sipping = (tt % 6) / 6 < 0.22;
         head.rotation.x = sipping ? -0.28 : -0.05;
         hl.position.set(-0.32, 0.45, 0.28);
@@ -410,7 +454,8 @@ export class Character {
     if (place.pose === 'lounging') {
       fl.position.set(-0.16, -0.24, 0.34);
       fr.position.set(0.16, -0.24, 0.34);
-      p.rotation.x = -0.28;
+      p.position.y = SOFA_LIFT;
+      p.rotation.x = -0.15;
       head.rotation.x = -0.1 + Math.sin(tt * 0.8) * 0.05 * motion;
       hl.position.set(-0.4, 0.42, 0.2);
       hr.position.set(0.34, 0.62, 0.36);
@@ -425,7 +470,11 @@ export class Character {
       if (held) held.visible = true;
       if (this.rally) this.rally.t += dt;
       if (this.casting) this.casting.t += dt;
-      return activity({ casting: this.casting, pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally, placeTime: this.placeTime }, tt);
+      if (this.planeThrow) this.planeThrow.t += dt;
+      if (this.fetchThrow != null) this.fetchThrow += dt;
+      const bubbleY = activity({ fetchThrow: this.fetchThrow, casting: this.casting, pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally, placeTime: this.placeTime, planeThrow: this.planeThrow, shotTime: this.shotTime }, tt);
+      if (place.pose === 'throwing-plane') this.letGoOfPlane(held!);
+      return bubbleY;
     }
     if (place.pose === 'chatting') {
       const talk = Math.sin(tt * 6);
@@ -446,6 +495,18 @@ export class Character {
     return 2.2 + Math.sin(tt * 1.6) * 0.04 * motion;
   }
 
+  /** Paper planes (#74): note where the held plane is until the arm lets go, then launch it from there. */
+  private letGoOfPlane(held: THREE.Object3D) {
+    const thrown = this.planeThrow;
+    if (!thrown) return;
+    if (thrown.t < PLANE_ARM.release) thrown.from = held.getWorldPosition(new THREE.Vector3());
+    else if (thrown.release) {
+      thrown.release(thrown.from ?? held.getWorldPosition(new THREE.Vector3()));
+      thrown.release = null;
+    }
+    if (thrown.t >= PLANE_ARM.end) this.planeThrow = null;
+  }
+
   /** Pool dip (#57): the ring carries the rider about, turning and bobbing; or paddles it home before climbing out. */
   private drifting(place: HangoutPlace, dt: number) {
     if (this.returning) {
@@ -459,11 +520,10 @@ export class Character {
 
   /** Darts (#54): after a round, walk up to the board to pull the darts out, then back to the line. */
   private collectDarts(place: HangoutPlace) {
-    const walk = dartsAt(this.placeTime).walk;
-    const back = dartsAt(this.placeTime + 0.05).walk < walk;
+    const { walk, turn } = dartsAt(this.placeTime);
     const to = BOARD.x + COLLECT_FROM;
     this.root.position.set(place.x + (to - place.x) * walk, 0, place.z);
-    if (walk > 0) this.root.rotation.y = back ? place.yaw + Math.PI : place.yaw;
+    this.root.rotation.y = place.yaw + Math.PI * turn;
   }
 
   private locomote(dt: number) {
@@ -568,12 +628,39 @@ interface Body {
   /** Seconds since arriving at the place. */
   placeTime?: number;
   casting?: { cast: Cast; t: number } | null;
+  planeThrow?: PlaneThrow | null;
+  fetchThrow?: number | null;
+  /** Seconds into this agent's pool turn (#76). */
+  shotTime?: number | null;
+}
+
+interface PlaneThrow { t: number; from: THREE.Vector3 | null; release: ((from: THREE.Vector3) => void) | null }
+
+/** Paper planes (#74): the throwing hand and body twist at moments of a throw, eased between; it lets go at `release`. */
+const PLANE_KEYS = [
+  { t: 0, hand: new THREE.Vector3(0.35, 1.15, 0.2), twist: 0 },
+  { t: 0.45, hand: new THREE.Vector3(0.35, 1.3, -0.1), twist: -0.2 },
+  { t: 0.65, hand: new THREE.Vector3(0.25, 1.35, 0.55), twist: 0.1 },
+  { t: 1.3, hand: new THREE.Vector3(0.35, 1.15, 0.2), twist: 0 },
+];
+const PLANE_ARM = { release: PLANE_KEYS[2].t, end: PLANE_KEYS[3].t };
+
+/** The throwing hand and twist `t` seconds into a paper-plane throw. */
+function planeArm(t: number) {
+  const i = PLANE_KEYS.findIndex((key) => key.t > t);
+  if (i <= 0) return PLANE_KEYS[i < 0 ? PLANE_KEYS.length - 1 : 0];
+  const a = PLANE_KEYS[i - 1], b = PLANE_KEYS[i];
+  const k = (t - a.t) / (b.t - a.t), ease = k * k * (3 - 2 * k);
+  return { hand: a.hand.clone().lerp(b.hand, ease), twist: a.twist + (b.twist - a.twist) * ease };
 }
 
 /** Darts (#54): the throwing hand while aiming, drawn back just before the release, and at the release. */
 const AIM_HAND = new THREE.Vector3(0.25, 1.45, 0.15);
 const DRAWN_HAND = new THREE.Vector3(0.25, 1.5, -0.05);
 const THROWN_HAND = new THREE.Vector3(RELEASE_HAND.x, RELEASE_HAND.y, RELEASE_HAND.z);
+/** Collecting (#80): the hand at its side while walking, and reaching up to the board. */
+const DART_LOW = new THREE.Vector3(0.3, 0.6, 0.06);
+const DART_REACH = new THREE.Vector3(0.3, 1.55, 0.4);
 
 /** The throwing hand `u` seconds into a throw: aim, draw back, snap forward to let go, follow through, back to aim. */
 function dartHand(u: number) {
@@ -586,6 +673,22 @@ function dartHand(u: number) {
   return from(THROWN_HAND, AIM_HAND, (u - RELEASE_AT - 0.4) / 0.4);
 }
 
+/** Fetch (#75): the ball hand waiting, drawn back, and at the release. */
+const BALL_READY = new THREE.Vector3(0.35, 1.0, 0.25);
+const BALL_DRAWN = new THREE.Vector3(0.35, 1.45, -0.15);
+const BALL_THROWN = new THREE.Vector3(0.25, 1.45, 0.6);
+const BALL_SNAP = 0.15;
+
+/** The ball hand `u` seconds into a throw (null: none): draw back, snap forward to let go, follow through, back to ready. */
+function ballHand(u: number | null) {
+  const ease = (k: number) => { const c = Math.min(1, Math.max(0, k)); return c * c * (3 - 2 * c); };
+  if (u == null) return BALL_READY.clone();
+  const snapAt = BALL_RELEASE_AT - BALL_SNAP;
+  if (u < snapAt) return BALL_READY.clone().lerp(BALL_DRAWN, ease(u / snapAt));
+  if (u < BALL_RELEASE_AT) return BALL_DRAWN.clone().lerp(BALL_THROWN, (u - snapAt) / BALL_SNAP);
+  return BALL_THROWN.clone().lerp(BALL_READY, ease((u - BALL_RELEASE_AT - 0.3) / 0.5));
+}
+
 /** Table tennis (#70): the bat's blade sits this far from the hand; a swing takes SWING seconds, centred on the hit. */
 const BLADE = new THREE.Vector3(0, 0.2, 0.05);
 const SWING = 0.3;
@@ -594,19 +697,20 @@ const WIND = 0.25;
 const CONTACT = new THREE.Vector3(HIT.side, HIT.y, HIT.reach).sub(BLADE);
 const READY = new THREE.Vector3(0.35, 0.8, 0.05);
 
-/** The bat hand during a rally: ready, then back, forward through the ball at each hit, and back to ready. */
+/**
+ * The bat hand during a rally: ready, then back, forward through the ball at each hit, and back to ready.
+ * Whoever missed serves the next rally as this one ends, so they wind up for it in time (#80).
+ */
 function batHand({ rally, side, t }: { rally: Rally; side: Side; t: number }) {
   const back = CONTACT.clone().setZ(CONTACT.z - WIND), through = CONTACT.clone().setZ(CONTACT.z + WIND);
-  const d = hitTimes(rally, side).map((h) => t - h).reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a), Infinity);
+  const serves = -hitter(rally, rally.hits) === side ? [rallySeconds(rally)] : [];
+  const d = [...hitTimes(rally, side), ...serves].map((h) => t - h).reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a), Infinity);
   const smooth = (k: number) => k * k * (3 - 2 * k);
   if (Math.abs(d) <= SWING / 2) return back.lerp(through, d / SWING + 0.5);
   if (d < 0 && d > -SWING / 2 - 0.25) return READY.clone().lerp(back, smooth((d + SWING / 2 + 0.25) / 0.25));
   if (d > 0 && d < SWING / 2 + 0.25) return through.lerp(READY, smooth((d - SWING / 2) / 0.25));
   return READY.clone();
 }
-
-/** A throw every `period` seconds: 0 → 1 while winding up and letting go, then 0 while waiting. */
-const throwPhase = (tt: number, period: number) => Math.min(1, ((tt % period) / period) * 3);
 
 /** Trampoline (#60): on the mat for CONTACT seconds, squashing and springing back, then a FLIGHT up and down. */
 const BOUNCE = { low: 0.12, height: 0.55, contact: 0.18, flight: 0.75 };
@@ -622,6 +726,36 @@ export function bounceAt(t: number) {
   if (u < contact) return { y: low, squash: 1 - 0.1 * motion * Math.sin((Math.PI * u) / contact), k: 0, period, flight };
   const f = (u - contact) / flight, rise = 4 * f * (1 - f);
   return { y: low + top * rise, squash: 1, k: rise, period, flight };
+}
+
+/** Yoga (#79): facing along the mat, the yogi holds each pose for HOLD seconds, then eases into the next over EASE. */
+const YOGA = { hold: 4, ease: 1.5 };
+const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+const YOGA_POSES = [
+  // Tree: one foot on the other knee, palms together overhead.
+  { body: { y: 0, z: 0, tip: 0 }, twist: 0, look: -0.05, hands: [v(-0.07, 1.85, 0.05), v(0.07, 1.85, 0.05)], feet: [v(-0.05, 0.1, 0.04), v(0.12, 0.42, 0.12)] },
+  // Warrior II: side on, feet wide along the mat, arms out along it, looking ahead.
+  { body: { y: -0.08, z: 0, tip: 0 }, twist: Math.PI / 2, look: 0, hands: [v(0, 0.95, 0.85), v(0, 0.95, -0.85)], feet: [v(-0.05, 0.1, 0.55), v(0.05, 0.1, -0.55)] },
+  // Downward dog: hips high, hands and feet planted far apart.
+  { body: { y: 0.45, z: -0.35, tip: 1.25 }, twist: 0, look: 0.3, hands: [v(-0.25, 0.18, 0.75), v(0.25, 0.18, 0.75)], feet: [v(-0.2, 0.1, -0.7), v(0.2, 0.1, -0.7)] },
+  // Forward fold: feet together, folded over, palms on the mat.
+  { body: { y: 0.35, z: -0.1, tip: 1.5 }, twist: 0, look: 0.4, hands: [v(-0.2, 0.18, 0.45), v(0.2, 0.18, 0.45)], feet: [v(-0.15, 0.1, -0.1), v(0.15, 0.1, -0.1)] },
+];
+
+/** The yogi's body, twist, head and limbs `t` seconds onto the mat. */
+function yogaAt(t: number) {
+  const { hold, ease } = YOGA, each = hold + ease, n = YOGA_POSES.length;
+  const i = Math.floor(t / each) % n, u = t % each;
+  const a = YOGA_POSES[i], b = YOGA_POSES[(i + 1) % n];
+  const k = u < hold ? 0 : (u - hold) / ease, s = k * k * (3 - 2 * k);
+  const mix = (x: number, y: number) => x + (y - x) * s;
+  return {
+    body: { y: mix(a.body.y, b.body.y), z: mix(a.body.z, b.body.z), tip: mix(a.body.tip, b.body.tip) },
+    twist: mix(a.twist, b.twist),
+    look: mix(a.look, b.look),
+    hands: a.hands.map((h, j) => h.clone().lerp(b.hands[j], s)),
+    feet: a.feet.map((f, j) => f.clone().lerp(b.feet[j], s)),
+  };
 }
 
 /** Break-room poses (#30); each sets the body and returns the bubble height. */
@@ -662,14 +796,16 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     fr.position.set(0.17, 0.08 + y, 0.04);
     return 2.3 + y;
   },
-  yoga: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
-    // Tree pose: one foot on the other knee, palms together overhead, a slow sway.
-    pivot.rotation.z = Math.sin(tt * 0.7) * 0.04 * motion;
-    head.rotation.x = -0.05;
-    hl.position.set(-0.07, 1.85, 0.05);
-    hr.position.set(0.07, 1.85, 0.05);
-    fl.position.set(-0.05, 0.06, 0.04);
-    fr.position.set(0.12, 0.42, 0.12);
+  yoga: ({ pivot, head, hands: [hl, hr], feet: [fl, fr], placeTime = 0 }) => {
+    // A flow (#79): each pose held, then eased into the next, looping.
+    const { body, twist, look, hands, feet } = yogaAt(placeTime);
+    pivot.position.set(0, body.y, body.z);
+    pivot.rotation.set(body.tip, twist, 0);
+    head.rotation.set(look, -twist, 0);
+    hl.position.copy(hands[0]);
+    hr.position.copy(hands[1]);
+    fl.position.copy(feet[0]);
+    fr.position.copy(feet[1]);
     return 2.4;
   },
   fishing: ({ head, hands: [hl, hr], held, casting }) => {
@@ -688,45 +824,51 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     if (held) held.visible = round.holding;
     if (r < THROWS * THROW_EVERY) {
       hr.position.copy(dartHand(r % THROW_EVERY));
+      // Back from collecting, the hand comes up from its side to aim (#80).
+      if (placeTime >= ROUND) hr.position.lerpVectors(DART_LOW, hr.position, smooth(Math.min(1, r / 0.6)));
       return 2.2;
     }
-    // Collecting: walking up to the board and back, reaching up to pull the darts out.
-    const step = round.walk > 0 && round.walk < 1 ? Math.sin(placeTime * 11) : 0;
+    // Collecting: walking up to the board and back, reaching up to pull the darts out; every move eased (#80).
+    const c = r - THROWS * THROW_EVERY;
+    const step = Math.sin(round.walk * Math.PI * 4);
     fl.position.set(-0.17, 0.06 + Math.max(0, step) * 0.1, 0.04 + step * 0.16);
     fr.position.set(0.17, 0.06 + Math.max(0, -step) * 0.1, 0.04 - step * 0.16);
-    hr.position.set(0.3, round.walk === 1 ? 1.55 : 0.6, round.walk === 1 ? 0.4 : 0.06);
+    const eased = (k: number) => smooth(Math.min(1, Math.max(0, k)));
+    const reach = Math.min(eased((c - DARTS_WALK + 0.4) / 0.4), 1 - eased((c - DARTS_WALK - DARTS_PULL + 0.4) / 0.4));
+    hr.position.lerpVectors(AIM_HAND, DART_LOW, eased(c / 0.4)).lerp(DART_REACH, reach);
     return 2.2;
   },
-  'shooting-hoops': ({ pivot, head, hands: [hl, hr], feet: [fl, fr], held }, tt) => {
-    const k = throwPhase(tt, 3);
-    const jump = k > 0.3 && k < 1 ? Math.sin(((k - 0.3) / 0.7) * Math.PI) * 0.25 * motion : 0;
+  'shooting-hoops': ({ pivot, head, hands: [hl, hr], feet: [fl, fr], held, placeTime = 0 }) => {
+    // Hands either side of the ball, up as the shooter jumps; it lets go at the top and the bin's ball takes over (#73).
+    const { hands, jump, holding } = shotAt(placeTime);
     pivot.position.y = jump;
     head.rotation.x = -0.25;
-    const handY = k < 0.3 ? 0.85 : 1.75;
-    hl.position.set(-0.15, handY + jump, 0.3);
-    hr.position.set(0.15, handY + jump, 0.3);
+    hl.position.set(-HANDS.apart, hands, HANDS.forward);
+    hr.position.set(HANDS.apart, hands, HANDS.forward);
     fl.position.set(-0.17, 0.06 + jump, 0.04);
     fr.position.set(0.17, 0.06 + jump, 0.04);
-    if (held) held.visible = k < 0.8;
+    if (held) {
+      held.visible = holding;
+      held.position.set(-HANDS.apart, HANDS.under, 0);
+    }
     return 2.2 + jump;
   },
-  'throwing-plane': ({ pivot, head, hands: [hl, hr], held }, tt) => {
-    const k = throwPhase(tt, 5);
-    const windUp = k < 0.6;
-    pivot.rotation.y = windUp ? -0.2 : 0.1;
+  'throwing-plane': ({ pivot, head, hands: [hl, hr], held, planeThrow }) => {
+    // Holding a plane until the controller says throw (#74): wind up, let go, follow through, pick up the next.
+    const t = planeThrow?.t ?? Infinity, { hand, twist } = planeArm(t);
+    pivot.rotation.y = twist;
     head.rotation.x = -0.15;
     hl.position.set(-0.4, 0.75, 0.25);
-    hr.position.copy(windUp ? new THREE.Vector3(0.35, 1.3, -0.1) : new THREE.Vector3(0.25, 1.35, 0.55));
-    if (held) held.visible = windUp;
+    hr.position.copy(hand);
+    if (held) held.visible = t < PLANE_ARM.release || t >= PLANE_ARM.end;
     return 2.2;
   },
-  'cue-shot': ({ pivot, head, hands: [hl, hr], held }, tt) => {
-    // Leaning in at the end of the table, drawing the cue back and striking along it.
-    const drawBack = (1 - Math.sin(tt * 2.2)) * 0.08 * motion;
+  'cue-shot': ({ pivot, head, hands: [hl, hr], held, shotTime }) => {
+    // Leaning in at the end of the table, drawing the cue back and striking the ball as it starts moving (#76).
     pivot.rotation.x = 0.1;
     head.rotation.x = 0.1;
     hl.position.set(0.04, CUE_Y, BRIDGE);
-    hr.position.set(0.36, CUE_Y, 0.1 - drawBack);
+    hr.position.set(0.36, CUE_Y, CUE_HAND_STRIKE - cueBack(shotTime ?? null) * motion);
     if (held) held.quaternion.setFromUnitVectors(UP, hl.position.clone().sub(hr.position).normalize());
     return 2.0;
   },
@@ -763,8 +905,9 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
   },
   watching: ({ pivot, head, hands: [hl, hr] }, tt) => {
     // Peering over someone's shoulder, hands on hips; upright, so it stays clear of their chair (#67).
+    // Eyes level with the monitor, under the seated agent's head (#78).
     pivot.rotation.x = 0.05;
-    head.rotation.x = 0.25;
+    head.rotation.x = 0.12;
     head.rotation.z = Math.sin(tt * 0.8) * 0.1 * motion;
     hl.position.set(-0.42, 0.62, 0.1);
     hr.position.set(0.42, 0.62, 0.1);
@@ -804,19 +947,18 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     if (held) held.rotation.z = 1.6 + Math.sin(tt * 8) * 0.2 * motion;
     return 2.1;
   },
-  'throwing-ball': ({ pivot, head, hands: [hl, hr], held }, tt) => {
-    const k = throwPhase(tt, 6);
-    const windUp = k < 0.6;
-    pivot.rotation.y = windUp ? -0.2 : 0.15;
+  'throwing-ball': ({ pivot, head, hands: [hl, hr], fetchThrow = null }) => {
+    // The ball itself is the fetch ball's (#75); the body turns with the throwing arm.
+    hr.position.copy(ballHand(fetchThrow));
+    pivot.rotation.y = -0.2 + ((hr.position.z - BALL_DRAWN.z) / (BALL_THROWN.z - BALL_DRAWN.z)) * 0.35;
     head.rotation.x = -0.1;
     hl.position.set(-0.4, 0.75, 0.25);
-    hr.position.copy(windUp ? new THREE.Vector3(0.35, 1.4, -0.15) : new THREE.Vector3(0.25, 1.4, 0.6));
-    if (held) held.visible = windUp;
     return 2.2;
   },
   gaming: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
     // On the sofa, leaning in, thumbs going.
     const mash = Math.max(0, Math.sin(tt * 14)) * 0.025 * motion;
+    pivot.position.y = SOFA_LIFT;
     pivot.rotation.x = 0.12;
     pivot.rotation.z = Math.sin(tt * 0.9) * 0.08 * motion;
     head.rotation.x = -0.05;
@@ -828,15 +970,26 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
   },
 };
 
+const smooth = (u: number) => u * u * (3 - 2 * u);
+
+/** Pool (#76): how far the cue hand is behind the strike, `t` seconds into the turn: at rest, then drawn back slowly, pushed through to the ball at STRIKE_AT, and eased back. */
+function cueBack(t: number | null) {
+  const s = t == null ? Infinity : t - STRIKE_AT;
+  if (s < -0.5 || s >= 0.6) return CUE_REST;
+  if (s < -0.25) return CUE_REST + (CUE_DRAWN - CUE_REST) * smooth((s + 0.5) / 0.25);
+  if (s < 0) return CUE_DRAWN * (1 - ((s + 0.25) / 0.25) ** 2);
+  return CUE_REST * smooth(s / 0.6);
+}
+
 function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   const rod = new THREE.Group();
   const pole = at(cyl(0.015, 0.025, ROD_LENGTH, '#8C6A4A', { outline: 0 }), 0, ROD_LENGTH / 2, 0);
   pole.userData.part = 'rod';
   rod.add(pole);
   const dart = dartModel();
-  const ball = at(mesh(new THREE.SphereGeometry(0.13, 16, 12), '#F07A4A', { outline: 0.06 }), 0, 0.15, 0.1);
-  // Gripped near the butt: the tip is 1.025 m along from the hand.
-  const cue = () => tag(at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.3, 0), 'cue');
+  const ball = hoopsBall();
+  // Gripped near the butt: the tip is 1.07 m along from the hand.
+  const cue = () => tag(at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.345, 0), 'cue');
   const bat = new THREE.Group();
   bat.add(Object.assign(at(cyl(0.14, 0.14, 0.03, '#C25B7A', { outline: 0.05 }), BLADE.x, BLADE.y, BLADE.z), { userData: { part: 'bat-blade' } }));
   bat.add(at(cyl(0.025, 0.025, 0.12, WOOD_DARK, { outline: 0 }), 0, 0.05, 0.02));
@@ -846,7 +999,6 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
     fishing: rod, 'throwing-darts': dart, 'shooting-hoops': ball, 'throwing-plane': paperPlane(),
     'cue-shot': holding(cue()), 'cue-wait': holding(cue()), paddle: bat, gaming: gamepad(),
     feeding: at(mesh(new THREE.BoxGeometry(0.14, 0.2, 0.08), '#F07A4A', { outline: 0.06 }), 0, 0.1, 0.05),
-    'throwing-ball': at(mesh(new THREE.SphereGeometry(0.08, 12, 10), '#C8E04A', { outline: 0.08 }), 0, 0.12, 0.08),
   };
 }
 
@@ -884,11 +1036,19 @@ export function dartModel() {
   return dart;
 }
 
+/** A basketball (#73). */
+export function hoopsBall() {
+  const ball = mesh(new THREE.SphereGeometry(0.13, 16, 12), '#F07A4A', { outline: 0.06 });
+  ball.userData.part = 'hoops-ball';
+  return ball;
+}
+
 /** A small white dart-shaped plane, nose along +z. */
 export function paperPlane() {
   const plane = mesh(new THREE.ConeGeometry(0.1, 0.3, 3), '#FFFFFF', { outline: 0.06 });
   plane.rotation.x = Math.PI / 2;
   plane.scale.set(1, 1, 0.25);
   plane.position.set(0, 0.12, 0.08);
+  plane.userData.part = 'paper-plane';
   return plane;
 }
