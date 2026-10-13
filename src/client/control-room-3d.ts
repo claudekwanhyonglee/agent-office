@@ -7,7 +7,7 @@ import type { Point } from './layout.ts';
 import { TIER_HALF_ARC, TIER_RISE, heightAt, type ControlRoomLayout } from './control-room.ts';
 import type { OfficeState } from '../shared/agent.ts';
 import { DeskScreen, newCanvas } from './screen.ts';
-import { BigBoard } from './board.ts';
+import { STATUS_COLORS, ScreenWall } from './screen-wall.ts';
 import { POOL_RIM, addGameTables, addPetCorner, addPool, addSoloProps } from './break-room.ts';
 import { waterSurface } from './water.ts';
 import { WORKTOP, buildCounter, buildEspressoMachine, buildFruitBowl, buildKettle, buildToaster } from './kitchen.ts';
@@ -21,10 +21,7 @@ loungeSide: '#3E3662', rail: '#C9A57A', door: '#F07A4A', frame: '#8C7FB0',
   lakeBed: '#C9B27E', lake: '#4C9BD6', lakeCut: '#2F6FA8',
 };
 
-/** Status light colours: working green, needs-you amber, done blue (finished too: done, and ended), stale grey. */
-export const STATUS_COLORS: Record<OfficeState, string> = {
-  working: '#5BD68A', needs: '#FFB648', done: '#4D86FF', finished: '#4D86FF', stale: '#8C8FA0',
-};
+export { STATUS_COLORS };
 export const STATUS_OFF = '#2C3350';
 
 /** A soft round glow, white in the middle fading to nothing, generated as pixels (no canvas needed). */
@@ -183,12 +180,14 @@ function addScreenWall(group: THREE.Group, { room, screenWall }: ControlRoomLayo
 
   const { centre, side, y } = SCREENS;
   const middle = at(wallScreen(centre.w, centre.h), 0, y, z + 0.1);
-  const board = new BigBoard(centre.w - 0.2);
-  middle.add(at(board.mesh, 0, 0, 0.07));
+  const board = new ScreenWall(centre, side);
+  middle.add(at(board.centre.mesh, 0, 0, 0.07));
   backWall.add(middle);
   for (const s of [-1, 1]) {
     const x = s * side.x, out = z + side.out;
-    backWall.add(turned(at(wallScreen(side.w, side.h), x, y, out), -s * side.yaw));
+    const screen = wallScreen(side.w, side.h);
+    screen.add(at((s < 0 ? board.left : board.right).mesh, 0, 0, 0.07));
+    backWall.add(turned(at(screen, x, y, out), -s * side.yaw));
     // Arms from the wall to the side screen's back.
     for (const dy of [-0.8, 0.8]) backWall.add(at(box(0.12, 0.12, side.out - 0.1, C.bezel, { outline: 0 }), x - s * 0.3, y + dy, z + side.out / 2));
   }
