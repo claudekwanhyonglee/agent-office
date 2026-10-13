@@ -40,10 +40,12 @@ describe('cloud sessions', () => {
 });
 
 describe('project chat agents', () => {
-  it('show for an hour after they were last active', async () => {
+  it('show while waiting on you, or for an hour after they were last active', async () => {
     const { buildCloudList } = await import('../src/cloud/sessions.ts');
     const now = Date.parse('2026-10-13T12:00:00Z');
     const chat = (id: string, minutesAgo: number) => ({ id, tags: ['hearth-overview'], session_status: 'idle', updated_at: new Date(now - minutesAgo * 60_000).toISOString() });
     expect(buildCloudList([chat('recent', 30), chat('stale', 90)], now).map((r) => r.id)).toEqual(['recent']);
+    const waiting = { ...chat('waiting', 300), status_bucket: 'SESSION_STATUS_BUCKET_BLOCKED' };
+    expect(buildCloudList([waiting], now).map((r) => r.id)).toEqual(['waiting']);
   });
 });

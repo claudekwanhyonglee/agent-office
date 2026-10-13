@@ -101,8 +101,8 @@ export function buildCloudList(sessions: CloudSession[], now: number) {
   return sessions.map(toCloudRecord).filter((record, i) => {
     const updated = Date.parse(sessions[i].updated_at ?? '');
     const age = Number.isFinite(updated) ? now - updated : Infinity;
-    // Every project has a chat agent that's always around (and can look busy when it isn't); show it for an hour after it was last active.
-    if (record.coordinator) return age < HOUR;
+    // Every project has a chat agent that's always around; show it while it's waiting on you, or for an hour after it was last active.
+    if (record.coordinator) return record.state === 'needs' || age < HOUR;
     // Idle sessions pile up for weeks; keep only ones working, waiting on you, or touched in the last day.
     if (record.state === 'working' || record.state === 'needs') return true;
     return age < DAY;
