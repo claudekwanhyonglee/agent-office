@@ -228,8 +228,8 @@ export function createOfficeScene(host: HTMLElement) {
   });
 
   // Dev only: lets a visual check frame a desk and throw a plane at it.
-  if (import.meta.env.DEV) Object.assign(window, { officeDebug: { camera: view.camera, planes, seats: () => office.seats } });
-  /** Dev only (#84): `?activity=fishing` puts an angler on the jetty, casting over and over, with the camera on the pond. */
+  if (import.meta.env.DEV) Object.assign(window, { officeDebug: { camera: view.camera, planes, fishingGear, seats: () => office.seats } });
+  /** Dev only (#84): `?activity=fishing` puts an angler on the jetty, casting over and over, with the camera on the pond; add `&catch` to catch a fish every time (#109). */
   function fishForever() {
     const place = office.layout.hangouts.find((s) => s.name === 'fishing')!.places[0];
     const angler = newCharacter('debug-angler');
@@ -238,7 +238,7 @@ export function createOfficeScene(host: HTMLElement) {
     characters.set('debug-angler', angler);
     let next = 0;
     const cast = () => {
-      const c = { landing: landingFrom(Math.random, props()), fish: null };
+      const c = { landing: landingFrom(Math.random, props()), fish: new URLSearchParams(location.search).has('catch') ? 0 : null };
       angler.fish(c);
       fishingGear.start(c, place, pondTime);
       clearTimeout(next);

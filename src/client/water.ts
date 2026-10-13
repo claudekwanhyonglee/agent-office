@@ -115,11 +115,12 @@ export class PondFish {
   }
 
   /** `caught`: a fish taking part in a catch, where the cast puts it. */
-  update(t: number, caught: { index: number; at: { x: number; y: number; z: number }; heading: number; alert: boolean } | null = null) {
+  update(t: number, caught: { index: number; at: { x: number; y: number; z: number }; heading: number; pitch?: number; wriggle?: number; alert: boolean } | null = null) {
     this.fish.forEach((f, i) => {
-      const at = caught?.index === i ? { ...caught.at, heading: caught.heading } : fishAt(i, t, this.props().pond);
+      const at = caught?.index === i ? { ...caught.at, heading: caught.heading, pitch: caught.pitch ?? 0, wriggle: caught.wriggle ?? 0 } : { ...fishAt(i, t, this.props().pond), pitch: 0, wriggle: 0 };
       f.position.set(at.x, at.y, at.z);
-      f.rotation.y = at.heading;
+      f.rotation.set(-at.pitch, at.heading, 0, 'YXZ');
+      f.rotateY(at.wriggle);
       f.userData.tail.rotation.y = tailSwing(i, t);
       this.alerts[i].visible = caught?.index === i && caught.alert;
       this.alerts[i].position.set(at.x, 0.45, at.z);

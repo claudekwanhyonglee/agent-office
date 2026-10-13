@@ -291,20 +291,36 @@ const toward = (from: number, to: number, step: number) => from + Math.max(-step
 /** `angle` give or take whole turns, the one nearest `to`: a ring looks the same a full turn round. */
 const nearestTurn = (angle: number, to: number) => angle + 2 * Math.PI * Math.round((to - angle) / (2 * Math.PI));
 
+/** A white ring lying on the water, for ripples and splashes. */
+function waterRing() {
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 32), new THREE.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.renderOrder = 2;
+  return ring;
+}
+
+function showRing(ring: ReturnType<typeof waterRing>, at: CastFrame['ripple']) {
+  ring.visible = !!at;
+  if (!at) return;
+  ring.position.set(at.x, 0.035, at.z);
+  ring.scale.setScalar(at.radius);
+  ring.material.opacity = at.opacity;
+}
+
 /** The angler's float, line and ripple (#58), following the cast the controller says. */
 export class FishingGear {
   readonly float = new THREE.Group();
   readonly line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: '#F4EEE2' }));
-  readonly ripple = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 32), new THREE.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, depthWrite: false }));
+  readonly ripple = waterRing();
+  /** Where a caught fish bursts out or drops back in (#109). */
+  readonly splash = waterRing();
   private cast: { cast: Cast; place: HangoutPlace; start: number; t: number } | null = null;
   private now: CastFrame | null = null;
 
   constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM, private floor: Floor = flat) {
     this.float.add(at(ball(0.04, '#FF5A5A', { outline: 0.08, shadow: false }), 0, 0.02, 0));
     this.float.add(at(ball(0.03, '#FFFFFF', { outline: 0.08, shadow: false }), 0, 0.06, 0));
-    this.ripple.rotation.x = -Math.PI / 2;
-    this.ripple.renderOrder = 2;
-    parent.add(this.float, this.line, this.ripple);
+    parent.add(this.float, this.line, this.ripple, this.splash);
     this.stop();
   }
 
@@ -316,7 +332,7 @@ export class FishingGear {
 
   stop() {
     this.cast = this.now = null;
-    this.float.visible = this.line.visible = this.ripple.visible = false;
+    this.float.visible = this.line.visible = this.ripple.visible = this.splash.visible = false;
   }
 
   /** The current moment of the cast, for the fish taking part in a catch. */
@@ -336,12 +352,8 @@ export class FishingGear {
     positions.setXYZ(0, f.tip.x, f.tip.y, f.tip.z);
     positions.setXYZ(1, f.lineEnd.x, f.lineEnd.y, f.lineEnd.z);
     positions.needsUpdate = true;
-    this.ripple.visible = !!f.ripple;
-    if (f.ripple) {
-      this.ripple.position.set(f.ripple.x, 0.035, f.ripple.z);
-      this.ripple.scale.setScalar(f.ripple.radius);
-      this.ripple.material.opacity = f.ripple.opacity;
-    }
+    showRing(this.ripple, f.ripple);
+    showRing(this.splash, f.splash);
   }
 
   lineEnds() {
