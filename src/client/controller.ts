@@ -317,8 +317,8 @@ export class OfficeController {
     this.agents.set(key, agent);
     const path = arrivalPath(this.layout, seat);
     if (this.firstUpdate) {
-      // Already there when the page opened: idle agents are found at a hangout spot.
-      const place = isIdle(record.state) ? this.pick(this.freePlaces().filter((p) => !this.spotOf(p)?.game)) : null;
+      // Already there when the page opened: idle agents are found at a hangout spot on their own (no lone chatters, #122).
+      const place = isIdle(record.state) ? this.pick(this.freePlaces().filter((p) => this.isSolo(p))) : null;
       if (place) {
         agent.place = place;
         agent.nextAt = this.setOffTime(now, STAY, agent);
