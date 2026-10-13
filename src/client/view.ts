@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildOffice } from './office.ts';
+import { createSky, createSunClock } from './sky.ts';
 import {
   bindHomeKey, blockContextMenu, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
   placeCamera, wheelRadius, zoomToward, type Orbit, type Pointer,
@@ -14,7 +15,9 @@ export function createView(host: HTMLElement) {
   host.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#2B2545');
+  const sky = createSky();
+  const sunClock = createSunClock(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+  scene.background = sky.texture;
   // Prototype intensities were tuned for legacy lighting; physical lights need ×π.
   scene.add(new THREE.HemisphereLight('#FFF1DC', '#5A4E7A', 0.55 * Math.PI));
   const sun = new THREE.DirectionalLight('#FFF4E2', 0.6 * Math.PI);
@@ -33,6 +36,8 @@ export function createView(host: HTMLElement) {
         if (target) orbit.target.set(...target);
         placeCamera(camera, orbit);
       },
+      // Set to a local hour (e.g. 6.2) to hold the sky there; undefined follows the clock.
+      __skyHour: undefined as number | undefined,
     });
   }
 
@@ -60,6 +65,7 @@ export function createView(host: HTMLElement) {
   function resize() {
     const w = host.clientWidth || innerWidth, h = host.clientHeight || innerHeight;
     renderer.setSize(w, h);
+    sky.resize(w, h);
     camera.aspect = w / h;
     frameFloor(camera, orbit, rows);
     devFocus();
@@ -135,6 +141,9 @@ export function createView(host: HTMLElement) {
   renderer.setAnimationLoop(() => {
     const dt = Math.min(timer.getDelta(), 0.05);
     frameHandlers.forEach((handle) => handle(timer.elapsedTime, dt));
+    const { hour, today } = sunClock.at(new Date());
+    const devHour = import.meta.env.DEV ? (window as { __skyHour?: number }).__skyHour : undefined;
+    sky.draw(devHour ?? hour, today, timer.elapsedTime);
     renderer.render(scene, camera);
   });
   addEventListener('resize', resize);

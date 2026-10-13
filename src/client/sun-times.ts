@@ -12,7 +12,8 @@ const toRad = (degrees: number) => (degrees * Math.PI) / 180;
 const toDeg = (radians: number) => (radians * 180) / Math.PI;
 const MS_PER_DAY = 864e5;
 
-function partsIn(zone: string, date: Date) {
+/** The calendar date and hours since midnight (e.g. 7.25) of `date` in `zone`. */
+export function partsIn(zone: string, date: Date) {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: zone, year: 'numeric', month: 'numeric', day: 'numeric',
     hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23',
