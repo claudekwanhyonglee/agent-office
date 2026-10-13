@@ -9,7 +9,7 @@ const flat: Floor = () => 0;
 import { dartModel, hoopsBall } from './character.ts';
 import { ballFlight, shotAt } from './hoops.ts';
 import { THROWS, dartFlight, dartsAt } from './darts.ts';
-import type { Afloat } from './float.ts';
+import { emptyDriftAt, type Afloat } from './float.ts';
 import { POND_DEPTH, POOL_DEPTH, waterSurface } from './water.ts';
 import { CAST_SECONDS, castAt, type Cast, type CastFrame } from './fishing.ts';
 import { toonRamp } from './toon.ts';
@@ -262,15 +262,33 @@ export class BinBall {
   }
 }
 
-/** Moves each pool ring with its rider's drift (#57), in pool-dip place order; an empty ring rests at home. */
-export function floatRings(group: THREE.Object3D, afloat: (Afloat | null)[], pool: Props['pool'] = BREAK_ROOM.pool) {
+/** How fast a ring catches up with where it should be, so climbing in or out never makes it jump (#110). */
+const RING_CATCH_UP = { move: 0.5, spin: 1, bob: 0.1 };
+
+/**
+ * Moves each pool ring with its rider's drift (#57), in pool-dip place order; an empty ring drifts on
+ * its own (#110). `dt` (seconds since the last call) limits how far a ring goes towards a new motion.
+ */
+export function floatRings(group: THREE.Object3D, afloat: (Afloat | null)[], pool: Props['pool'] = BREAK_ROOM.pool, t = 0, dt = Infinity) {
   group.traverse((o) => {
     if (o.userData.kind !== 'pool-ring') return;
-    const i = o.userData.ring as number, home = pool.rings[i], a = afloat[i];
-    o.position.set(home.x - pool.x + (a?.x ?? 0), RING_Y + (a?.bob ?? 0), home.z - pool.z + (a?.z ?? 0));
-    o.rotation.z = a?.spin ?? 0;
+    const i = o.userData.ring as number, home = pool.rings[i];
+    const want = afloat[i] ?? emptyDriftAt(i, t), was: Afloat | undefined = o.userData.afloat;
+    const a: Afloat = !was || dt === Infinity ? want : {
+      x: toward(was.x, want.x, RING_CATCH_UP.move * dt),
+      z: toward(was.z, want.z, RING_CATCH_UP.move * dt),
+      spin: toward(was.spin, nearestTurn(want.spin, was.spin), RING_CATCH_UP.spin * dt),
+      bob: toward(was.bob, want.bob, RING_CATCH_UP.bob * dt),
+    };
+    o.userData.afloat = a;
+    o.position.set(home.x - pool.x + a.x, RING_Y + a.bob, home.z - pool.z + a.z);
+    o.rotation.z = a.spin;
   });
 }
+
+const toward = (from: number, to: number, step: number) => from + Math.max(-step, Math.min(step, to - from));
+/** `angle` give or take whole turns, the one nearest `to`: a ring looks the same a full turn round. */
+const nearestTurn = (angle: number, to: number) => angle + 2 * Math.PI * Math.round((to - angle) / (2 * Math.PI));
 
 /** The angler's float, line and ripple (#58), following the cast the controller says. */
 export class FishingGear {

@@ -12,6 +12,7 @@ import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
 import { doorsOpen } from './control-room-3d.ts';
 import { CAST_SECONDS, landingFrom } from './fishing.ts';
+import { CLIMBING_IN } from './float.ts';
 import { bindLayoutPicker, savedLayout } from './layout-picker.ts';
 import { fetchRun, floorAt, planeLanding, yawTowards, type Point } from './layout.ts';
 
@@ -192,7 +193,10 @@ export function createOfficeScene(host: HTMLElement) {
     office.tv.update([...characters.values()].some((c) => c.onSofa()), t);
     const dip = office.layout.hangouts.find((s) => s.name === 'pool-dip')!.places;
     const riders = [...characters.values(), ...leaving];
-    floatRings(office.group, dip.map((p) => riders.find((c) => c.place?.x === p.x && c.place.z === p.z)?.floatOffset() ?? null), props().pool);
+    floatRings(office.group, dip.map((p) => {
+      const rider = riders.find((c) => c.place?.x === p.x && c.place.z === p.z);
+      return rider ? rider.floatOffset() ?? CLIMBING_IN : null;
+    }), props().pool, t, dt);
     boardDarts.update([...characters.values()].map((c) => c.dartsThrower()).find((d) => d) ?? null);
     binBall.update([...characters.values()].map((c) => c.hoopsShooter()).find((d) => d) ?? null);
     dog.update(t, dt);
