@@ -56,9 +56,9 @@ describe('#32 AC1 pool dip', () => {
 });
 
 describe('#32 AC2 couch co-op', () => {
-  it('#32 AC2 starts with 2–4 idle agents, seated on the sofa facing the TV', () => {
+  it('#32 AC2 (#112) starts with 2–3 idle agents, seated on the sofa facing the TV', () => {
     const places = spot('couch-co-op').places;
-    expect(places).toHaveLength(4);
+    expect(places).toHaveLength(3);
     const tv = START.lounge.tv;
     for (const p of places) {
       expect(p.sits).toBe(true);
@@ -73,7 +73,7 @@ describe('#32 AC2 couch co-op', () => {
     o.run(90 * 60, 0.25, () => {
       const players = [...o.c.agents.values()].filter((a) => a.place?.spot === 'couch-co-op');
       if (!players.length) return;
-      expect(players.length).toBeLessThanOrEqual(4);
+      expect(players.length).toBeLessThanOrEqual(3);
       if (players.length === 1) expect(players[0].chained, 'a lone player is on its way out').toBe(true);
       else games++;
     });
@@ -127,7 +127,8 @@ describe('#32 AC3 called back to work', () => {
       const moveOn = ofType(o.run(4.05, 0.05), 'walk').find((w) => w.key === last)!;
       expect(moveOn, 'the last player moves on').toBeDefined();
       expect(moveOn.place?.spot).not.toBe(name);
-      expect([...o.c.agents.values()].filter((a) => a.place?.spot === name)).toEqual([]);
+      // Only this game's players: others may start a new game on the free sofa straight away (#112).
+      expect(players.filter((k) => o.c.agents.get(k)?.place?.spot === name)).toEqual([]);
     });
   }
 });

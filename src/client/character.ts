@@ -453,8 +453,9 @@ export class Character {
     if (this.cheering > 0) {
       this.cheering -= dt;
       const pump = Math.abs(Math.sin(this.cheering * 9)) * 0.15 * motion;
-      hl.position.set(-0.3, 1.7 + pump, 0.15);
-      hr.position.set(0.3, 1.7 + pump, 0.15);
+      // Fists over the head, not out to the sides, clear of a neighbour on the sofa (#112).
+      hl.position.set(-0.22, 1.7 + pump, 0.15);
+      hr.position.set(0.22, 1.7 + pump, 0.15);
     }
     if (this.highFiving > 0) {
       this.highFiving -= dt;
@@ -486,8 +487,9 @@ export class Character {
       p.position.y = SOFA_LIFT;
       p.rotation.x = -0.15;
       head.rotation.x = -0.1 + Math.sin(tt * 0.8) * 0.05 * motion;
-      hl.position.set(-0.4, 0.42, 0.2);
-      hr.position.set(0.34, 0.62, 0.36);
+      // Hands kept in front, inside the shoulders, so a neighbour on the sofa has room (#112).
+      hl.position.set(-0.24, 0.5, 0.42);
+      hr.position.set(0.26, 0.6, 0.38);
       this.mug.visible = true;
       return 2.1;
     }
@@ -990,8 +992,8 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     // On the sofa, leaning in, thumbs going.
     const mash = Math.max(0, Math.sin(tt * 14)) * 0.025 * motion;
     pivot.position.y = SOFA_LIFT;
-    pivot.rotation.x = 0.12;
-    pivot.rotation.z = Math.sin(tt * 0.9) * 0.08 * motion;
+    // Rocking forward and back, not side to side, so neighbours on the sofa don't bump heads (#112).
+    pivot.rotation.x = 0.12 + Math.sin(tt * 0.9) * 0.05 * motion;
     head.rotation.x = -0.05;
     hl.position.set(-0.12, 0.62 + mash, 0.4);
     hr.position.set(0.12, 0.62, 0.4);

@@ -242,14 +242,20 @@ export function createOfficeScene(host: HTMLElement) {
     view.camera.lookAt(ahead.x, 1, ahead.z);
   }
 
-  /** Dev only (#87): `?activity=darts` puts a stand-in agent at that hangout and looks over its right shoulder. */
+  /**
+   * Dev only (#87): `?activity=darts` puts a stand-in agent at each of that hangout's places (#112: all of them,
+   * e.g. a full sofa) and looks over the first one's right shoulder.
+   */
   function showActivity(name: string | null) {
-    const place = office.layout.hangouts.find((s) => s.name === name)?.places[0];
+    const places = office.layout.hangouts.find((s) => s.name === name)?.places ?? [];
+    places.forEach((p, i) => {
+      const character = newCharacter(`stand-in-${i}`);
+      character.placeAt(office.seats[0], 'done', p);
+      view.scene.add(character.root);
+      characters.set(`stand-in-${i}`, character);
+    });
+    const [place] = places;
     if (!place) return;
-    const character = newCharacter('stand-in');
-    character.placeAt(office.seats[0], 'done', place);
-    view.scene.add(character.root);
-    characters.set('stand-in', character);
     const forward = new THREE.Vector3(Math.sin(place.yaw), 0, Math.cos(place.yaw)), right = new THREE.Vector3(forward.z, 0, -forward.x);
     const ahead = new THREE.Vector3(place.x, floor(place) + 1.3, place.z).addScaledVector(forward, 1);
     view.camera.position.copy(ahead).addScaledVector(right, 3).addScaledVector(forward, -3.5).setY(ahead.y + 1.3);

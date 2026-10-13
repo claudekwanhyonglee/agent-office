@@ -59,7 +59,7 @@ function sitThrough(cheer: boolean, check: (c: Character, label: () => string) =
 
 describe('#77 sofa sitters stay in front of the backrest', () => {
   it('#77 AC1 sofa parts are tagged, so the checks below measure the real sofa', () => {
-    expect(sofaPlaces.map((p) => p.pose).sort()).toEqual(['gaming', 'gaming', 'gaming', 'gaming', 'lounging', 'lounging', 'lounging']);
+    expect(sofaPlaces.map((p) => p.pose).sort()).toEqual(['gaming', 'gaming', 'gaming', 'lounging', 'lounging', 'lounging']); // 3 seats each (#112)
     expect(cushions).toHaveLength(3);
     expect(backrest.max.z).toBeLessThan(0); // the backrest is behind the seat's middle
   });

@@ -4,7 +4,7 @@
 // raised mezzanine behind the top tier with a rail along its front. The entrance is in the left wall beside the pit; the side door in the right wall opens
 // onto the deck. A new tier goes in behind the last and pushes the lounge back; the deck stays.
 import {
-  BREAK_ROOM, CHAT_GAP, DARTS_LINE, HOOPS_LINE, turnsAround, yawTowards,
+  BREAK_ROOM, CHAT_GAP, DARTS_LINE, HOOPS_LINE, SOFA_SEATS, turnsAround, yawTowards,
   type Area, type DogSpot, type HangoutPlace, type HangoutPose, type HangoutSpot, type Point, type Props, type SeatSpot,
 } from './layout.ts';
 import { PLAYER_X } from './pong.ts';
@@ -268,7 +268,7 @@ function hangoutsFor({ props, lounge, kitchen, cooler, poolTurns, inLounge, toPr
       chat: false,
       places: [standing('water-cooler', inLounge(cooler.x, 5.05), 'drinking'), standing('water-cooler', cooler2, 'drinking', yawTowards(cooler2, cooler))],
     },
-    { name: 'lounge', chat: false, places: [sofa.x - 0.7, sofa.x, sofa.x + 0.7].map((x) => sofaSeat(x)) },
+    { name: 'lounge', chat: false, places: SOFA_SEATS.map((dx) => sofaSeat(sofa.x + dx)) },
     chatSpot('chat-hall', inLounge(-3.6, 2.2), toPromenade),
     chatSpot('chat-deck', { x: 20.6, z: 3.6 }, toDeck(DECK_FRONT_Z)),
     chatSpot('chat-deck-right', { x: 20.6, z: -1.6 }, toDeck(DECK_BACK_Z)),
@@ -296,7 +296,7 @@ function hangoutsFor({ props, lounge, kitchen, cooler, poolTurns, inLounge, toPr
         return { ...r, spot: 'pool-dip', yaw: 0, pose: 'floating' as const, sits: true, link: [{ ...r }, edge, { x: edge.x, z: DECK_BACK_Z }] };
       }),
     },
-    { name: 'couch-co-op', chat: false, game: { min: 2 }, places: [-0.87, -0.29, 0.29, 0.87].map((dx) => sofaSeat(sofa.x + dx, 'couch-co-op', 'gaming')) },
+    { name: 'couch-co-op', chat: false, game: { min: 2 }, places: SOFA_SEATS.map((dx) => sofaSeat(sofa.x + dx, 'couch-co-op', 'gaming')) },
   ];
 }
 
