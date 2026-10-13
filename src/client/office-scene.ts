@@ -302,8 +302,19 @@ export function createOfficeScene(host: HTMLElement) {
     view.camera.position.set(visitor.at.x, floor(visitor.at) + 3.5, visitor.at.z + 6);
     view.camera.lookAt(visitor.at.x, floor(visitor.at) + 1, visitor.at.z);
   }
+  /** Dev only (#117): `?activity=pool` is the pool table with a shooter, striking every few seconds, and a player waiting; `&cam=x,y,z` puts the camera there relative to the shooter. */
+  function showPool() {
+    showActivity('pool-table'); // #112: a stand-in at every place, so the second one waits
+    const shooter = characters.get('stand-in-0')!;
+    const look = new THREE.Vector3(...(new URLSearchParams(location.search).get('cam')?.split(',').map(Number) ?? []));
+    shooter.root.updateMatrixWorld(true);
+    if (look.lengthSq()) { view.camera.position.copy(shooter.root.localToWorld(look)); view.camera.lookAt(shooter.root.localToWorld(new THREE.Vector3(0, 1, 0))); }
+    shooter.takeShot();
+    setInterval(() => shooter.takeShot(), 5000);
+  }
   if (debugActivity === 'fishing') fishForever();
   else if (debugActivity === 'fetch') playFetch();
+  else if (debugActivity === 'pool') showPool();
   else if (debugActivity === 'planes') showPlaneThrowers();
   else if (debugActivity) showActivity(debugActivity);
 

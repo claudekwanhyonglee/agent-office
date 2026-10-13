@@ -34,6 +34,11 @@ const BRIDGE = 0.62;
 const CUE_HAND_STRIKE = 0.16;
 const CUE_REST = 0.05;
 const CUE_DRAWN = 0.3;
+const CUE_BRIDGE = new THREE.Vector3(0.04, CUE_Y, BRIDGE);
+const CUE_STRIKE_HAND = new THREE.Vector3(0.36, CUE_Y, CUE_HAND_STRIKE);
+const CUE_ALONG = CUE_BRIDGE.clone().sub(CUE_STRIKE_HAND).normalize();
+/** Pool (#117): a waiting player's hand on the standing cue, and how far up the cue it grips (the butt rests on the floor). */
+const CUE_STAND = { x: 0.6, y: 1.0, z: 0.12, grip: 0.6 };
 const UP = new THREE.Vector3(0, 1, 0);
 const BUBBLE_SIZE = 0.72;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -988,20 +993,24 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
   },
   'cue-shot': ({ pivot, head, hands: [hl, hr], held, shotTime }) => {
     // Leaning in at the end of the table, drawing the cue back and striking the ball as it starts moving (#76).
-    pivot.rotation.x = 0.1;
+    pivot.rotation.x = 0.05;
     head.rotation.x = 0.1;
-    hl.position.set(0.04, CUE_Y, BRIDGE);
-    hr.position.set(0.36, CUE_Y, CUE_HAND_STRIKE - cueBack(shotTime ?? null) * motion);
-    if (held) held.quaternion.setFromUnitVectors(UP, hl.position.clone().sub(hr.position).normalize());
+    // The cue slides back and forth along its own line through the bridge, so it never swings in under the chin (#117).
+    hl.position.copy(CUE_BRIDGE);
+    hr.position.copy(CUE_STRIKE_HAND).addScaledVector(CUE_ALONG, -cueBack(shotTime ?? null) * motion);
+    if (held) held.quaternion.setFromUnitVectors(UP, CUE_ALONG);
     return 2.0;
   },
   'cue-wait': ({ pivot, head, hands: [hl, hr], held }, tt) => {
-    // Leaning on the cue, watching.
+    // Leaning on the cue, watching: it stands upright on its butt, off to the side, well clear of the head (#117).
     pivot.rotation.z = 0.06;
     head.rotation.y = Math.sin(tt * 0.6) * 0.2 * motion;
-    hl.position.set(0.05, 1.0, 0.3);
-    hr.position.set(0.18, 0.85, 0.3);
-    if (held) held.rotation.set(-0.1, 0, 0);
+    hl.position.set(-0.42, 0.62, 0.1);
+    hr.position.set(CUE_STAND.x, CUE_STAND.y, CUE_STAND.z);
+    if (held) {
+      held.position.set(0, -CUE_STAND.grip, 0);
+      held.rotation.set(0, 0, -0.04);
+    }
     return 2.2;
   },
   paddle: ({ pivot, head, hands: [hl, hr], feet: [fl, fr], rally }, tt) => {
