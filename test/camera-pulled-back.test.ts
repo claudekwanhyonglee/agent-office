@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { fitRadius, floorCorners, frameFloor, goHome, initialOrbit, wheelRadius } from '../src/client/camera.ts';
-import { INITIAL_ROWS, officeLayout } from '../src/client/layout.ts';
+import { allOnScreen, fitRadius, floorCorners, frameFloor, goHome, initialOrbit, wheelRadius } from '../src/client/camera.ts';
+import { INITIAL_ROWS, WALL_HEIGHT, officeLayout } from '../src/client/layout.ts';
 
 const SHAPES = [[1440, 900], [2560, 1080], [390, 844], [375, 667], [800, 800]] as const;
 const SIZES = [[INITIAL_ROWS, 'classic'], [3, 'classic'], [6, 'classic'], [INITIAL_ROWS, 'control-room'], [4, 'control-room']] as const;
@@ -50,5 +50,22 @@ describe('#111 AC2 Home returns to the farther view, and zoom still works both w
       expect(out).toBeGreaterThanOrEqual(orbit.radius);
       expect(wheelRadius(out, -1, orbit.maxRadius)).toBeLessThan(out);
     });
+  }
+});
+
+describe('the starting view sits the office in the middle of the screen, top to bottom', () => {
+  for (const [w, h] of SHAPES) {
+    for (const [rows, preset] of SIZES) {
+      it(`${w}×${h}, ${rows} rows, ${preset}`, () => {
+        const camera = new THREE.PerspectiveCamera(34, w / h, 0.1, 150);
+        frameFloor(camera, initialOrbit(), rows, preset);
+        const { left, right, back } = officeLayout(rows, preset).bounds;
+        // The floor corners (with the Control room's walls), plus Classic's back wall top.
+        const outline = [...floorCorners(rows, preset), ...(preset === 'classic' ? [new THREE.Vector3(left, WALL_HEIGHT, back), new THREE.Vector3(right, WALL_HEIGHT, back)] : [])];
+        const ys = outline.map((p) => p.clone().project(camera).y);
+        expect(Math.abs((Math.min(...ys) + Math.max(...ys)) / 2)).toBeLessThan(0.03);
+        expect(allOnScreen(camera, floorCorners(rows, preset))).toBe(true);
+      });
+    }
   }
 });
