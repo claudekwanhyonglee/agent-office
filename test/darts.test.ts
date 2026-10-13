@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { INITIAL_ROWS, officeLayout } from '../src/client/layout.ts';
-import { Character } from '../src/client/character.ts';
+import { Character, dartModel } from '../src/client/character.ts';
 import { lookFor } from '../src/client/look.ts';
 import { BoardDarts } from '../src/client/break-room.ts';
-import { BOARD, COLLECT_FROM, FLIGHT, RELEASE_AT, ROUND, THROWS, THROW_EVERY, dartFlight, dartsAt } from '../src/client/darts.ts';
+import { BOARD, COLLECT_FROM, DART, FLIGHT, RELEASE_AT, ROUND, THROWS, THROW_EVERY, dartFlight, dartsAt } from '../src/client/darts.ts';
 
 const START = officeLayout(INITIAL_ROWS);
 const PLACE = START.hangouts.find((s) => s.name === 'darts')!.places[0];
@@ -61,7 +61,7 @@ describe('#54 AC2 the dart flies to the board, point first', () => {
       expect(new THREE.Vector3(start.origin.x, start.origin.y, start.origin.z).distanceTo(world(before.dart)), 'leaves from the hand').toBeLessThan(0.08);
       expect(heldDart(thrower(i * THROW_EVERY + RELEASE_AT + 0.05)), 'the hand is empty once it\'s thrown').toBeNull();
       const end = dartFlight(PLACE, i, 1);
-      const tip = { x: end.origin.x + end.dir.x * 0.125 };
+      const tip = { x: end.origin.x + end.dir.x * DART.tip };
       expect(tip.x).toBeCloseTo(BOARD.x, 3);
       const mid = dartFlight(PLACE, i, 0.5).origin, straight = (start.origin.y + end.origin.y) / 2;
       expect(mid.y, 'an arc').toBeGreaterThan(straight + 0.05);
@@ -149,5 +149,46 @@ describe('#54 AC5 leaving clears the board', () => {
     expect(character.dartsThrower()).not.toBeNull();
     character.go([{ x: PLACE.x, z: PLACE.z }, { x: -5.8, z: PLACE.z }], null);
     expect(character.dartsThrower()).toBeNull();
+  });
+});
+
+/** The toon head's ball, with room for a hat's dome over it, and the hand's ball (#87). */
+const HEAD_R = 0.42, HAND_R = 0.12;
+const headCentre = (character: Character) => world(character.head);
+const throwingHand = (character: Character) => world(character.hands[1]);
+
+describe('#87 a visible, bigger dart and a hand clear of the head', () => {
+  it('#87 AC1 the dart is at least 0.35 m long', () => {
+    const box = new THREE.Box3().setFromObject(dartModel());
+    expect(box.max.z - box.min.z).toBeGreaterThanOrEqual(0.35);
+  });
+
+  it('#87 AC2 throughout a throw (aim, draw back, release, follow-through) the throwing hand never overlaps the head', () => {
+    for (let t = 0; t < THROWS * THROW_EVERY; t += 0.05) {
+      const character = thrower(t);
+      expect(throwingHand(character).distanceTo(headCentre(character)), `at ${t.toFixed(2)} s`).toBeGreaterThan(HEAD_R + HAND_R);
+    }
+  });
+
+  it('#87 AC3 while aiming, the held dart\'s tip and flights stick out of the hand and neither is inside the head', () => {
+    for (const u of [0.2, 0.7, RELEASE_AT - 0.35]) {
+      const character = thrower(u);
+      const held = heldDart(character)!;
+      const hand = throwingHand(character), head = headCentre(character);
+      for (const [name, p] of [['tip', held.tip], ['flights', held.tail]] as const) {
+        expect(p.distanceTo(hand), `${name} out of the hand at ${u}`).toBeGreaterThan(HAND_R + 0.02);
+        expect(p.distanceTo(head), `${name} clear of the head at ${u}`).toBeGreaterThan(HEAD_R);
+      }
+    }
+  });
+
+  it('#87 AC4 darts in the board stick in with their tip at the face', () => {
+    const darts = new BoardDarts(new THREE.Scene());
+    darts.update({ place: PLACE, t: THROWS * THROW_EVERY });
+    for (const d of darts.darts) {
+      d.updateMatrixWorld(true);
+      const point = new THREE.Box3().setFromObject(parts(d, 'dart-point')[0]);
+      expect(Math.abs(point.min.x - BOARD.x), 'the very tip is at the face').toBeLessThan(0.01);
+    }
   });
 });

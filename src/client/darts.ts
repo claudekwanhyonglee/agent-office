@@ -20,9 +20,9 @@ export const COLLECT_FROM = 0.55;
 /** Where each throw of a round lands on the face: up and along +z from the centre. */
 const LANDINGS = [{ up: 0.06, along: -0.09 }, { up: -0.1, along: 0.03 }, { up: 0.03, along: 0.12 }];
 /** The hand at the moment of release, in the thrower's own frame (forward is +z, its right is +x). */
-export const RELEASE_HAND = { x: 0.25, y: 1.4, z: 0.45 };
+export const RELEASE_HAND = { x: 0.4, y: 1.5, z: 0.5 };
 /** Darts point along +z; the tip is this far ahead of the dart's origin, the flights this far behind. */
-export const DART = { tip: 0.125, tail: 0.065 };
+export const DART = { tip: 0.21, tail: 0.19 };
 
 export interface Round {
   /** A dart in the hand, ready to throw. */

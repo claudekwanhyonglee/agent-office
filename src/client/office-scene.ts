@@ -201,6 +201,21 @@ export function createOfficeScene(host: HTMLElement) {
     view.camera.lookAt(ahead.x, 1, ahead.z);
   }
   if (debugActivity === 'fishing') fishForever();
+  if (debugActivity && debugActivity !== 'fishing') showActivity(debugActivity);
+
+  /** Dev only (#87): `?activity=darts` puts a stand-in agent at that hangout and looks over its right shoulder. */
+  function showActivity(name: string | null) {
+    const place = office.layout.hangouts.find((s) => s.name === name)?.places[0];
+    if (!place) return;
+    const character = new Character(lookFor('stand-in'));
+    character.placeAt(office.seats[0], 'done', place);
+    view.scene.add(character.root);
+    characters.set('stand-in', character);
+    const forward = new THREE.Vector3(Math.sin(place.yaw), 0, Math.cos(place.yaw)), right = new THREE.Vector3(forward.z, 0, -forward.x);
+    const ahead = new THREE.Vector3(place.x, 1.3, place.z).addScaledVector(forward, 1);
+    view.camera.position.copy(ahead).addScaledVector(right, 3).addScaledVector(forward, -3.5).setY(2.6);
+    view.camera.lookAt(ahead);
+  }
 
   return { show, onPick, onHover, select: (key: string | null) => { selected = key; } };
 }
