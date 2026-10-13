@@ -39,7 +39,7 @@ There is no login: anyone on your network can see the office and press **Got it*
 If you run Claude Code in the cloud (claude.ai/code, the Claude app, Projects), start the office in cloud mode:
 
 ```sh
-npx github:savvymonkeyfoo/agent-office#cloud-artifact --cloud
+npx github:claudekwanhyonglee/agent-office --cloud
 ```
 
 Or set `CLOUD=1`. It lists your cloud sessions (including Projects threads) every 10 seconds using the Claude login `claude` saved on this computer
@@ -50,19 +50,6 @@ Click an agent to open its session on claude.ai.
 In cloud mode, clicking an agent shows its progress checklist plus links to its session, pull request and artifacts. You get a Mac notification when a session starts needing you (set `NOTIFY=0` to turn that off), and the plan usage panel shows the limit status your cloud sessions report.
 
 This uses the same unpublished endpoint `claude --teleport` uses, so a Claude Code update could break it.
-
-## Cloud sessions (claude.ai artifact)
-
-This fork can also run as a private claude.ai artifact that shows your Claude Code **cloud** sessions
-(claude.ai/code, Claude app and Projects) instead of the sessions on one computer.
-It reads them with your own login through the built-in Claude Code Remote connector and refreshes every 30 seconds.
-
-```sh
-npm run build:artifact   # writes dist/agent-office.html
-```
-
-Publish `dist/agent-office.html` as an artifact that declares the `mcp` capability for `Claude Code Remote` → `list_sessions`.
-Click an agent to open its session on claude.ai. Got it is remembered in your browser only, and the usage panel is left out.
 
 ## Requirements
 

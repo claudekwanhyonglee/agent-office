@@ -4,11 +4,11 @@
 #   scripts/launch-agent.sh uninstall  stop it and remove it
 # Logs: ~/Library/Logs/agent-office.log
 set -e
-LABEL=com.savvymonkeyfoo.agent-office
+LABEL=com.github.agent-office
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DIR=$(cd "$(dirname "$0")/.." && pwd)
 NODE=$(command -v node)
-# The office runs `claude auth status` to renew your login, so launchd needs claude on its PATH too.
+# The office may run `claude` to renew your login, so launchd needs claude on its PATH too.
 CLAUDE_DIR=$(dirname "$(command -v claude || echo /usr/bin/claude)")
 LOG="$HOME/Library/Logs/agent-office.log"
 
