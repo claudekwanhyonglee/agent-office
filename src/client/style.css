@@ -138,6 +138,11 @@ body { background: var(--bg); color: var(--ink); font-family: var(--body); overf
   position: absolute; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
   min-width: 44px; min-height: 44px; display: grid; place-items: center;
 }
+/* The sky/plain toggle, just left of the camera button. */
+.background {
+  position: absolute; right: 68px; top: calc(16px + env(safe-area-inset-top, 0px));
+  min-width: 44px; min-height: 44px; display: grid; place-items: center;
+}
 
 .status {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);

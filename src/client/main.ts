@@ -2,6 +2,7 @@ import './style.css';
 import { createOfficeScene } from './office-scene.ts';
 import { renderCard, showTooltip } from './card.ts';
 import { startUsagePanel } from './usage.ts';
+import { startClock } from './clock.ts';
 import type { AgentRecord, FeedPayload } from '../shared/agent.ts';
 
 export function hasWebGL() {
@@ -88,6 +89,7 @@ const idleDemo = import.meta.env.DEV ? Number(new URLSearchParams(location.searc
 
 if (!import.meta.env.VITEST) {
   startUsagePanel(document.getElementById('usage')!);
+  startClock(document.querySelector('.brand h1')!);
   const app = boot();
   if (app && idleDemo) {
     app.applyFeed(Array.from({ length: idleDemo }, (_, i) => ({
