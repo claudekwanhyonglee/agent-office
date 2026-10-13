@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildOffice } from './office.ts';
 import { createSky, createSunClock } from './sky.ts';
+import { bindBackgroundToggle } from './background-toggle.ts';
 import {
   bindHomeKey, blockContextMenu, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
   placeCamera, wheelRadius, zoomToward, type Orbit, type Pointer,
@@ -17,7 +18,9 @@ export function createView(host: HTMLElement) {
   const scene = new THREE.Scene();
   const sky = createSky();
   const sunClock = createSunClock(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-  scene.background = sky.texture;
+  const backgroundButton = document.getElementById('background');
+  if (backgroundButton) bindBackgroundToggle(backgroundButton, scene, sky.texture);
+  else scene.background = sky.texture;
   // Prototype intensities were tuned for legacy lighting; physical lights need ×π.
   scene.add(new THREE.HemisphereLight('#FFF1DC', '#5A4E7A', 0.55 * Math.PI));
   const sun = new THREE.DirectionalLight('#FFF4E2', 0.6 * Math.PI);
@@ -143,7 +146,7 @@ export function createView(host: HTMLElement) {
     frameHandlers.forEach((handle) => handle(timer.elapsedTime, dt));
     const { hour, today } = sunClock.at(new Date());
     const devHour = import.meta.env.DEV ? (window as { __skyHour?: number }).__skyHour : undefined;
-    sky.draw(devHour ?? hour, today, timer.elapsedTime);
+    if (scene.background === sky.texture) sky.draw(devHour ?? hour, today, timer.elapsedTime);
     renderer.render(scene, camera);
   });
   addEventListener('resize', resize);
