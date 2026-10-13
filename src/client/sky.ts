@@ -76,9 +76,102 @@ export function createSunClock(zone: string) {
   };
 }
 
-// --- drawing -----------------------------------------------------------------
-
 const rand = ((seed) => () => (seed = (seed * 16807) % 2147483647) / 2147483647)(11);
+
+// --- clouds, birds and shooting stars -------------------------------------------
+
+/** Each cloud is pre-painted in these [lit top, shaded underside] colours and blended by the time of day. */
+const CLOUD_TINTS = { day: ['#FFFFFF', '#C3D2E8'], sunset: ['#FFD9B0', '#B4708E'], night: ['#3B4374', '#191D44'] };
+export type CloudTint = keyof typeof CLOUD_TINTS;
+/** A cloud sprite's size in px; `base` is its flat bottom, as a share of its height. Nothing is painted below it. */
+export const CLOUD_SPRITE = { w: 420, h: 240, base: 0.78 };
+/** The blur (px) that softens the puffs' edges; it spreads about three times this far. */
+export const PUFF_BLUR = 2;
+const PUFF_MARGIN = PUFF_BLUR * 3 + 2;
+
+export type Puff = [x: number, y: number, r: number];
+export type Cloud = ReturnType<typeof createClouds>[number];
+
+/** Six soft cumulus, each a row of puffs that sit on a flat base and stay inside the sprite, so none is clipped. */
+export function createClouds(random = rand) {
+  const { w, h, base } = CLOUD_SPRITE;
+  return Array.from({ length: 6 }, (_, i) => {
+    const count = 9 + Math.floor(random() * 8);
+    const puffs = Array.from({ length: count }, (_, j): Puff => {
+      const t = j / (count - 1), r = 26 + Math.sin(Math.PI * t) * (34 + random() * 30);
+      const x = 40 + t * (w - 80) + (random() - 0.5) * 20, y = h * base - r * (0.55 + random() * 0.3);
+      return [x, y, Math.min(r, x - PUFF_MARGIN, w - PUFF_MARGIN - x, y - PUFF_MARGIN)];
+    });
+    return {
+      puffs,
+      x: random(), // share of the loop it drifts round
+      y: 0.04 + (i % 3) * 0.1 + random() * 0.06, // share of the sky's height
+      scale: 0.15 + random() * 0.12, // width as a share of the sky's
+      speed: 0.004 + random() * 0.005, // loops per second
+    };
+  });
+}
+
+/** Where a cloud is drawn: drifting round a loop a little wider than the sky, its flat bottom always in the upper half. */
+export function cloudPlacement(cloud: Cloud, seconds: number, W: number, H: number) {
+  const w = W * cloud.scale, h = w * (CLOUD_SPRITE.h / CLOUD_SPRITE.w);
+  const x = ((cloud.x + seconds * cloud.speed) % 1) * (W + w * 2) - w;
+  const y = Math.min(cloud.y * H, H / 2 - h * CLOUD_SPRITE.base);
+  return { x, y, w, h };
+}
+
+/** How strongly each tint shows for a sun elevation: white by day, peach and pink around sunset, faint blue at night. */
+export function cloudTints(sunE: number): Record<CloudTint, number> {
+  const sunset = Math.exp(-(((sunE - 0.02) / 0.16) ** 2));
+  return { day: clamp01(sunE * 4) * (1 - sunset * 0.6), sunset, night: starVisibility(sunE) * 0.4 };
+}
+
+/** One bird of a flock, in shares of the sky's width and height. */
+export interface Bird { x: number; y: number; size: number; phase: number }
+/** A shooting star `t` (0..1) of the way through its 0.9 s, starting at x, y (shares of the sky) and heading along `angle`. */
+export interface ShootingStar { x: number; y: number; angle: number; t: number }
+
+/** The sky's occasional visitors: a flock of birds by day, a shooting star by night. */
+export function createVisitors(random = rand) {
+  const flock = { start: -1, next: 3, y: 0, direction: 1, birds: [] as { back: number; side: number; phase: number; size: number }[] };
+  const meteor = { start: -1, next: 4, x: 0, y: 0, angle: 0 };
+  return {
+    /** The flock crossing now (3–7 birds in a loose V, about 16 s to cross, every 6–18 s); empty when none, or the sun is down. */
+    birds(seconds: number, sunE: number): Bird[] {
+      if (sunE <= 0) { flock.start = -1; return []; }
+      if (flock.start < 0 && seconds > flock.next && sunE > 0.08) {
+        const count = 3 + Math.floor(random() * 5);
+        flock.birds = Array.from({ length: count }, (_, i) => ({
+          back: Math.ceil(i / 2) * 0.035, side: (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 0.022,
+          phase: random() * Math.PI * 2, size: 0.8 + random() * 0.4,
+        }));
+        Object.assign(flock, { start: seconds, y: 0.12 + random() * 0.22, direction: random() < 0.5 ? 1 : -1 });
+      }
+      if (flock.start < 0) return [];
+      const t = (seconds - flock.start) / 16;
+      if (t > 1) { flock.start = -1; flock.next = seconds + 6 + random() * 12; return []; }
+      const lead = flock.direction > 0 ? -0.15 + t * 1.3 : 1.15 - t * 1.3;
+      return flock.birds.map((b) => ({
+        x: lead - flock.direction * b.back,
+        y: flock.y + b.side + 0.01 * Math.sin(seconds * 1.3 + b.phase),
+        size: b.size, phase: b.phase,
+      }));
+    },
+    /** The shooting star now (one every 5–14 s while the stars are out); null when none, or the stars are hidden. */
+    shootingStar(seconds: number, visibility: number): ShootingStar | null {
+      if (visibility <= 0) { meteor.start = -1; return null; }
+      if (meteor.start < 0 && seconds > meteor.next && visibility > 0.6) {
+        Object.assign(meteor, { start: seconds, x: 0.15 + random() * 0.7, y: 0.05 + random() * 0.25, angle: 0.35 + random() * 0.5 });
+      }
+      if (meteor.start < 0) return null;
+      const t = (seconds - meteor.start) / 0.9;
+      if (t > 1) { meteor.start = -1; meteor.next = seconds + 5 + random() * 9; return null; }
+      return { x: meteor.x, y: meteor.y, angle: meteor.angle, t };
+    },
+  };
+}
+
+// --- drawing -----------------------------------------------------------------
 
 function offscreen(w: number, h: number, paint: (g: CanvasRenderingContext2D, w: number, h: number) => void) {
   const c = document.createElement('canvas');
@@ -121,6 +214,28 @@ function createStars() {
   });
 }
 
+/** One cloud's puffs merged into a soft silhouette, lit bright on top and shaded underneath, cut flat at its base. */
+function paintCloud(g: CanvasRenderingContext2D, w: number, h: number, puffs: Puff[], [light, shade]: string[]) {
+  const base = h * CLOUD_SPRITE.base;
+  g.filter = `blur(${PUFF_BLUR}px)`;
+  g.fillStyle = light;
+  for (const [x, y, r] of puffs) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); }
+  g.filter = 'none';
+  const top = Math.min(...puffs.map(([, y, r]) => y - r));
+  const shading = g.createLinearGradient(0, top, 0, base);
+  shading.addColorStop(0, light); shading.addColorStop(0.45, light); shading.addColorStop(1, shade);
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = shading; g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'destination-out';
+  const cut = g.createLinearGradient(0, base - 4, 0, base + 6);
+  cut.addColorStop(0, 'rgba(0,0,0,0)'); cut.addColorStop(1, '#000');
+  g.fillStyle = cut; g.fillRect(0, base - 4, w, h);
+  g.globalCompositeOperation = 'source-over';
+}
+
+const cloudSprites = (puffs: Puff[]) => Object.fromEntries(Object.entries(CLOUD_TINTS).map(([tint, colours]) =>
+  [tint, offscreen(CLOUD_SPRITE.w, CLOUD_SPRITE.h, (g, w, h) => paintCloud(g, w, h, puffs, colours))])) as Record<CloudTint, HTMLCanvasElement>;
+
 /** Fine grain laid over the whole sky so the gradients don't band. */
 const grain = () => offscreen(160, 160, (g, w, h) => {
   const img = g.createImageData(w, h);
@@ -141,6 +256,8 @@ export function createSky() {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const stars = createStars();
+  const clouds = createClouds().map((cloud) => ({ ...cloud, sprites: cloudSprites(cloud.puffs) }));
+  const visitors = createVisitors();
   const grainPattern = ctx.createPattern(grain(), 'repeat')!;
   let W = 1, H = 1;
 
@@ -238,6 +355,45 @@ export function createSky() {
     ctx.restore();
   }
 
+  function drawShootingStar(star: ShootingStar | null, visibility: number) {
+    if (!star) return;
+    const travel = W * 0.22 * star.t, tail = W * 0.12 * Math.sin(Math.PI * star.t);
+    const dx = Math.cos(star.angle), dy = Math.sin(star.angle);
+    const hx = star.x * W + dx * travel, hy = star.y * H + dy * travel;
+    const g = ctx.createLinearGradient(hx, hy, hx - dx * tail, hy - dy * tail);
+    g.addColorStop(0, `rgba(255,255,255,${0.9 * visibility})`);
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.strokeStyle = g; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx - dx * tail, hy - dy * tail); ctx.stroke();
+  }
+
+  function drawClouds(seconds: number, sunE: number) {
+    const tints = Object.entries(cloudTints(sunE)) as [CloudTint, number][];
+    for (const cloud of clouds) {
+      const { x, y, w, h } = cloudPlacement(cloud, seconds, W, H);
+      for (const [tint, weight] of tints) {
+        if (weight < 0.01) continue;
+        ctx.globalAlpha = Math.min(1, weight) * 0.95;
+        ctx.drawImage(cloud.sprites[tint], x, y, w, h);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawBirds(birds: Bird[], seconds: number) {
+    ctx.strokeStyle = 'rgba(40, 38, 64, 0.75)';
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(1.2, W * 0.0018);
+    for (const b of birds) {
+      const x = b.x * W, y = b.y * H;
+      const span = W * 0.009 * b.size, flap = Math.sin(seconds * 9 + b.phase) * span * 0.6;
+      ctx.beginPath();
+      ctx.moveTo(x - span, y - flap); ctx.quadraticCurveTo(x - span * 0.4, y - flap * 0.2 - span * 0.25, x, y);
+      ctx.quadraticCurveTo(x + span * 0.4, y - flap * 0.2 - span * 0.25, x + span, y - flap);
+      ctx.stroke();
+    }
+  }
+
   function drawFinish(nightness: number) {
     ellipseGlow(W / 2, H * 0.45, W * 0.8, H * 0.8, [[0.55, 'rgba(0,0,12,0)'], [1, `rgba(0,0,12,${0.35 * nightness})`]]);
     ctx.save();
@@ -261,9 +417,12 @@ export function createSky() {
       const nightness = starVisibility(sunNow.e);
       drawGradient(skyColours(sunNow.e));
       drawStars(hour, today, seconds, nightness);
+      drawShootingStar(visitors.shootingStar(seconds, nightness), nightness);
       drawTwilight(sun, sunNow.e);
       if (moon.up) drawMoon(moon, moonNow.e, nightness);
       if (sun.up) drawSun(sun, sunNow.e);
+      drawClouds(seconds, sunNow.e);
+      drawBirds(visitors.birds(seconds, sunNow.e), seconds);
       drawFinish(nightness);
       texture.needsUpdate = true;
     },
