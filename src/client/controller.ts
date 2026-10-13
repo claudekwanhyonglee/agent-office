@@ -166,6 +166,7 @@ export class OfficeController {
   /** `preset`: the office layout's preset id (classic if unknown). */
   constructor(clock: Partial<Clock> = {}, private preset = 'classic') {
     this.layout = officeLayout(INITIAL_ROWS, preset);
+    this.rows = this.layout.rows;
     this.clock = { ...systemClock, ...clock };
     const now = this.clock.now();
     this.dog = { spot: this.layout.dogSpots[0], lying: true, arrivesAt: now, nextAt: now + this.between(DOG_REST) };
@@ -703,7 +704,9 @@ export class OfficeController {
     this.rows += 1;
     this.layout = officeLayout(this.rows, this.preset);
     events.push({ type: 'rows', count: this.rows });
-    const places = old.hangouts.flatMap((s) => s.places), moved = this.layout.hangouts.flatMap((s) => s.places);
+    // Pool turns too: a player mid-game may be at any of them, and a layout can move the table (#100).
+    const placesIn = (l: OfficeLayout) => [...l.hangouts.flatMap((s) => s.places), ...l.poolTurns.flatMap((t) => [t.shoot, t.wait])];
+    const places = placesIn(old), moved = placesIn(this.layout);
     // The hall moves back, and the dog's hall spot with it.
     this.dog.spot = this.layout.dogSpots.find((s) => s.name === this.dog.spot.name)!;
     this.dog.arrivesAt = now;

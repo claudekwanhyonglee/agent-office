@@ -1,6 +1,7 @@
 // Office floor plan in plain numbers (no three.js), so seating and routes are testable.
 import { SHOT_COUNT, shotSetup } from './pool.ts';
 import { PLAYER_X } from './pong.ts';
+import { controlRoomLayout, type ControlRoomLayout } from './control-room.ts';
 
 // Plan C, "Mission Control Bay": curved rows of desks face the camera (+z) around a point on the
 // front deck. Kitchen, big board, TV and the door line the back wall (-z); a glass wall with two
@@ -97,7 +98,7 @@ export const GLASS_DOORS = [{ x0: -6.3, x1: -5.3 }, { x0: 5.3, x1: 6.3 }];
 export const AISLE_X = 5.8;
 export const DECK_Z = 7.6;
 /** Centre to centre between two people chatting. */
-const CHAT_GAP = 1.3;
+export const CHAT_GAP = 1.3;
 
 export const yawTowards = (from: Point, to: Point) => Math.atan2(to.x - from.x, to.z - from.z);
 
@@ -186,11 +187,12 @@ export type Props = typeof BREAK_ROOM;
 
 /** How far the darts line and the hoops line are from the board and the bin (along +x, into the room). */
 export const DARTS_LINE = 2.4;
-const HOOPS_LINE = 1.7;
+export const HOOPS_LINE = 1.7;
 
 /** Floor plans by preset id; each takes the number of rows of desks. */
 export const LAYOUT_PRESETS: Record<string, (rows: number) => OfficeLayout> = {
   classic: (rows) => classicLayout(rows),
+  'control-room': (rows) => controlRoomLayout(rows),
 };
 
 /** The office for preset `preset` with `rows` rows of desks; an unknown preset is classic. */
@@ -274,6 +276,7 @@ export function classicLayout(rows: number, props: Props = BREAK_ROOM) {
   ];
 
   return {
+    preset: 'classic' as const,
     rows,
     bounds: { ...FLOOR, back },
     hallZ,
@@ -302,7 +305,7 @@ export function classicLayout(rows: number, props: Props = BREAK_ROOM) {
   };
 }
 
-export type OfficeLayout = ReturnType<typeof classicLayout>;
+export type OfficeLayout = ReturnType<typeof classicLayout> | ControlRoomLayout;
 
 /** Between the loungers and the ping-pong table: the way from the deck walkway to the right of the deck. */
 const RIGHT_DECK_X = 4.95;
@@ -367,13 +370,14 @@ const turnsByTable = new WeakMap<Props['poolTable'], ReturnType<typeof turnsArou
 /** The same places for the same table, in every layout (places are matched by identity). */
 const poolTurnsAt = (table: Props['poolTable']) => turnsByTable.get(table) ?? turnsByTable.set(table, turnsAround(table)).get(table)!;
 
-const turnsAround = (table: Props['poolTable']) => Array.from({ length: SHOT_COUNT }, (_, k) => {
+/** `out(z)`: from a spot at `z` beside the table's end out to a walkway. */
+export const turnsAround = (table: Props['poolTable'], out = (z: number): Point[] => [{ x: AISLE_X, z }]) => Array.from({ length: SHOT_COUNT }, (_, k) => {
   const { cue, aim } = shotSetup(k);
   const at = { x: table.x + cue.x, z: table.z + cue.z - aim * CUE_REACH };
   const wait = { x: table.x + WAIT_X, z: at.z - aim * WAIT_BACK };
-  const shoot: HangoutPlace = { ...at, spot: 'pool-table', pose: 'cue-shot', yaw: aim > 0 ? 0 : Math.PI, link: [at, { x: AISLE_X, z: at.z }] };
+  const shoot: HangoutPlace = { ...at, spot: 'pool-table', pose: 'cue-shot', yaw: aim > 0 ? 0 : Math.PI, link: [at, ...out(at.z)] };
   const waiting: HangoutPlace = {
-    ...wait, spot: 'pool-table', pose: 'cue-wait', yaw: yawTowards(wait, table), link: [wait, { x: wait.x, z: at.z }, { x: AISLE_X, z: at.z }],
+    ...wait, spot: 'pool-table', pose: 'cue-wait', yaw: yawTowards(wait, table), link: [wait, { x: wait.x, z: at.z }, ...out(at.z)],
   };
   return { shoot, wait: waiting };
 });
