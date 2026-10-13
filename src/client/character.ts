@@ -8,6 +8,7 @@ import { bubbleTexture } from './bubbles.ts';
 import { HIT, hitTimes, type Rally, type Side } from './pong.ts';
 import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
 import { ROD_HAND, ROD_LENGTH, rodPitch, type Cast } from './fishing.ts';
+import { HANDS, shotAt } from './hoops.ts';
 import { BOARD, COLLECT_FROM, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, dartsAt } from './darts.ts';
 
 const SEAT_Y = 0.38;
@@ -52,7 +53,7 @@ export class Character {
   readonly head = new THREE.Group();
   private eyes: THREE.Mesh[];
   readonly hands: THREE.Mesh[];
-  private feet: THREE.Mesh[];
+  readonly feet: THREE.Mesh[];
   private mug = new THREE.Group();
   private snack: THREE.Mesh;
   /** Things held in the right hand for one pose: a fishing rod, dart, ball or paper plane. */
@@ -229,6 +230,11 @@ export class Character {
   /** At the darts line (#54): where, and seconds since arriving there (the board's darts follow it). */
   dartsThrower() {
     return this.mode === 'hanging' && this.place?.pose === 'throwing-darts' ? { place: this.place, t: this.placeTime } : null;
+  }
+
+  /** At the hoops line (#73): where, and seconds since arriving there (the ball in the air follows it). */
+  hoopsShooter() {
+    return this.mode === 'hanging' && this.place?.pose === 'shooting-hoops' ? { place: this.place, t: this.placeTime } : null;
   }
 
   /** Sitting on the lounge sofa, watching TV or playing (#61). */
@@ -741,17 +747,19 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     hr.position.set(0.3, round.walk === 1 ? 1.55 : 0.6, round.walk === 1 ? 0.4 : 0.06);
     return 2.2;
   },
-  'shooting-hoops': ({ pivot, head, hands: [hl, hr], feet: [fl, fr], held }, tt) => {
-    const k = throwPhase(tt, 3);
-    const jump = k > 0.3 && k < 1 ? Math.sin(((k - 0.3) / 0.7) * Math.PI) * 0.25 * motion : 0;
+  'shooting-hoops': ({ pivot, head, hands: [hl, hr], feet: [fl, fr], held, placeTime = 0 }) => {
+    // Hands either side of the ball, up as the shooter jumps; it lets go at the top and the bin's ball takes over (#73).
+    const { hands, jump, holding } = shotAt(placeTime);
     pivot.position.y = jump;
     head.rotation.x = -0.25;
-    const handY = k < 0.3 ? 0.85 : 1.75;
-    hl.position.set(-0.15, handY + jump, 0.3);
-    hr.position.set(0.15, handY + jump, 0.3);
+    hl.position.set(-HANDS.apart, hands, HANDS.forward);
+    hr.position.set(HANDS.apart, hands, HANDS.forward);
     fl.position.set(-0.17, 0.06 + jump, 0.04);
     fr.position.set(0.17, 0.06 + jump, 0.04);
-    if (held) held.visible = k < 0.8;
+    if (held) {
+      held.visible = holding;
+      held.position.set(-HANDS.apart, HANDS.under, 0);
+    }
     return 2.2 + jump;
   },
   'throwing-plane': ({ pivot, head, hands: [hl, hr], held, planeThrow }) => {
@@ -878,7 +886,7 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   pole.userData.part = 'rod';
   rod.add(pole);
   const dart = dartModel();
-  const ball = at(mesh(new THREE.SphereGeometry(0.13, 16, 12), '#F07A4A', { outline: 0.06 }), 0, 0.15, 0.1);
+  const ball = hoopsBall();
   // Gripped near the butt: the tip is 1.025 m along from the hand.
   const cue = () => tag(at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.3, 0), 'cue');
   const bat = new THREE.Group();
@@ -926,6 +934,13 @@ export function dartModel() {
   flights.position.z = -0.045;
   dart.add(flights);
   return dart;
+}
+
+/** A basketball (#73). */
+export function hoopsBall() {
+  const ball = mesh(new THREE.SphereGeometry(0.13, 16, 12), '#F07A4A', { outline: 0.06 });
+  ball.userData.part = 'hoops-ball';
+  return ball;
 }
 
 /** A small white dart-shaped plane, nose along +z. */

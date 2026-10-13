@@ -5,7 +5,7 @@ import { OfficeController, type OfficeEvent } from './controller.ts';
 import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { PaperPlanes } from './paper-planes.ts';
-import { BoardDarts, DeskMugs, FishingGear, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
+import { BinBall, BoardDarts, DeskMugs, FishingGear, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
 import { PondFish, updateWater } from './water.ts';
 import { Dog } from './dog.ts';
 import { lookFor } from './look.ts';
@@ -32,6 +32,7 @@ export function createOfficeScene(host: HTMLElement) {
   const poolBalls = new PoolBalls(view.scene);
   const pongBall = new PongBallMesh(view.scene);
   const boardDarts = new BoardDarts(view.scene);
+  const binBall = new BinBall(view.scene);
   const pondFish = new PondFish(view.scene);
   const fishingGear = new FishingGear(view.scene);
   let pondTime = 0;
@@ -147,6 +148,7 @@ export function createOfficeScene(host: HTMLElement) {
     const riders = [...characters.values(), ...leaving];
     floatRings(office.group, dip.map((p) => riders.find((c) => c.place?.x === p.x && c.place.z === p.z)?.floatOffset() ?? null));
     boardDarts.update([...characters.values()].map((c) => c.dartsThrower()).find((d) => d) ?? null);
+    binBall.update([...characters.values()].map((c) => c.hoopsShooter()).find((d) => d) ?? null);
     dog.update(t, dt);
     for (const c of leaving) {
       c.update(t, dt);

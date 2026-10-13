@@ -2,7 +2,8 @@
 import * as THREE from 'three';
 import { at, ball, box, cyl, mesh, tag } from './toon.ts';
 import { BREAK_ROOM, type HangoutPlace, type SeatSpot } from './layout.ts';
-import { dartModel } from './character.ts';
+import { dartModel, hoopsBall } from './character.ts';
+import { ballFlight, shotAt } from './hoops.ts';
 import { THROWS, dartFlight, dartsAt } from './darts.ts';
 import type { Afloat } from './float.ts';
 import { POND_DEPTH, POOL_DEPTH, waterSurface } from './water.ts';
@@ -241,6 +242,25 @@ export class BoardDarts {
       dart.position.set(origin.x, origin.y, origin.z);
       dart.lookAt(origin.x + dir.x, origin.y + dir.y, origin.z + dir.z);
     });
+  }
+}
+
+/** The basketball once it leaves the shooter's hands (#73): in the air, then in the bin; none without a shooter. */
+export class BinBall {
+  readonly mesh = hoopsBall();
+
+  constructor(parent: THREE.Object3D) {
+    parent.add(this.mesh);
+    this.update(null);
+  }
+
+  update(shooter: { place: HangoutPlace; t: number } | null) {
+    const shot = shooter && shotAt(shooter.t);
+    const k = !shot ? null : shot.landed ? 1 : shot.flying;
+    this.mesh.visible = k != null;
+    if (k == null) return;
+    const p = ballFlight(shooter!.place, k);
+    this.mesh.position.set(p.x, p.y, p.z);
   }
 }
 
