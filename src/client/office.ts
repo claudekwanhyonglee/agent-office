@@ -8,6 +8,9 @@ import { DeskScreen, screenContent } from './screen.ts';
 import { BigBoard } from './board.ts';
 import { POOL_RIM, addGameTables, addPetCorner, addPool, addSoloProps } from './break-room.ts';
 import { LoungeTv } from './tv.ts';
+import {
+  WORKTOP, buildCounter, buildEspressoMachine, buildFruitBowl, buildKettle, buildToaster, buildVase, buildWallCabinet,
+} from './kitchen.ts';
 import type { AgentRecord } from '../shared/agent.ts';
 
 export { SCREEN_OFF };
@@ -38,7 +41,7 @@ export function buildOffice(rows: number) {
   const backWall = addRoom(group, layout);
   addFrontGlass(group);
   addMeetingRoom(group);
-  addKitchen(group, layout);
+  addKitchen(group, layout, backWall);
   const tv = addLounge(group, layout);
   const board = addBackWallPieces(group, layout);
   addWallArt(group, layout);
@@ -190,27 +193,23 @@ function addMeetingRoom(group: THREE.Group) {
   group.add(room);
 }
 
-function addKitchen(group: THREE.Group, layout: OfficeLayout) {
+/** The kitchen (#88); its wall cabinet hangs on the back wall, so it hides with it. */
+function addKitchen(group: THREE.Group, layout: OfficeLayout, backWall: THREE.Group) {
   const kitchen = tag(new THREE.Group(), 'kitchen');
-  const { counter, coffee: coffeeAt, table } = layout.kitchen;
-
-  const top = tag(new THREE.Group(), 'kitchen-counter');
-  top.add(at(box(counter.w, 0.85, counter.d, '#9C8FB8'), 0, 0.425, 0));
-  top.add(at(box(counter.w + 0.06, 0.06, counter.d + 0.04, '#F4EEE2', { outline: 0.02 }), 0, 0.88, 0));
-  top.add(at(box(0.5, 0.04, 0.35, '#C9C0E3', { outline: 0.03 }), 0.6, 0.92, 0)); // sink
-  kitchen.add(at(top, counter.x, 0, counter.z));
-
-  const coffee = tag(new THREE.Group(), 'coffee-machine');
-  coffee.add(at(box(0.45, 0.55, 0.4, INK), 0, 0.275, 0));
-  coffee.add(at(ball(0.05, '#FF5A5A', { outline: 0, shadow: false }), 0, 0.4, 0.21));
-  coffee.add(at(cyl(0.08, 0.07, 0.14, '#FFFFFF', { outline: 0.08 }), 0.35, 0.07, 0.1));
-  kitchen.add(at(coffee, coffeeAt.x, 0.91, coffeeAt.z));
+  const { counter, coffee, table } = layout.kitchen;
+  kitchen.add(at(buildCounter(counter.w, counter.d), counter.x, 0, counter.z));
+  kitchen.add(at(buildEspressoMachine(), coffee.x, WORKTOP, coffee.z));
+  kitchen.add(at(buildToaster(), counter.x - 0.75, WORKTOP, counter.z - 0.05));
+  kitchen.add(at(buildKettle(), counter.x - 0.3, WORKTOP, counter.z - 0.05));
+  kitchen.add(at(buildFruitBowl(), counter.x + 0.05, WORKTOP, counter.z + 0.02));
+  backWall.add(at(buildWallCabinet(), counter.x, 0, layout.bounds.back));
 
   const bistro = tag(new THREE.Group(), 'kitchen-table');
   bistro.add(at(cyl(0.45, 0.45, 0.06, '#F4EEE2'), 0, 0.74, 0));
   bistro.add(at(cyl(0.05, 0.05, 0.72, INK, { outline: 0 }), 0, 0.36, 0));
   bistro.add(at(cyl(0.25, 0.25, 0.04, INK, { outline: 0.02 }), 0, 0.02, 0));
   kitchen.add(at(bistro, table.x, 0, table.z));
+  kitchen.add(at(buildVase(), table.x, 0.77, table.z));
   for (const dx of [-0.8, 0.8]) {
     const stool = tag(new THREE.Group(), 'stool');
     stool.add(at(cyl(0.2, 0.2, 0.07, '#F07A4A'), 0, 0.55, 0));

@@ -62,6 +62,16 @@ export function createView(host: HTMLElement) {
     renderer.setSize(w, h);
     camera.aspect = w / h;
     frameFloor(camera, orbit, rows);
+    devFocus();
+  }
+
+  /** Dev builds: `?focus=x,z,radius` opens the view close up on one spot, for checking a prop by eye. */
+  function devFocus() {
+    const focus = import.meta.env.DEV && new URLSearchParams(location.search).get('focus')?.split(',').map(Number);
+    if (!focus || focus.length !== 3 || focus.some(Number.isNaN)) return;
+    focusOn(orbit, new THREE.Vector3(focus[0], 1, focus[1]));
+    orbit.radius = focus[2];
+    placeCamera(camera, orbit);
   }
 
   // Map-style: drag to pan, right- or Shift-drag to orbit (touch: one finger orbits, two pan); pinch or scroll to zoom
