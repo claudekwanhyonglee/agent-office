@@ -5,7 +5,7 @@ import type { Look, HatKind } from './look.ts';
 import { BREAK_ROOM, WALK_SPEED, rejoin, yawTowards, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
-import { HIT, hitTimes, hitter, rallySeconds, type Rally, type Side } from './pong.ts';
+import { CROSS_SECONDS, FREE_HAND, HIT, PLAYER_X, hitTimes, hitter, pongBallAt, rallySeconds, reactionAt, shuffleAt, tossHand, type Rally, type Side } from './pong.ts';
 import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
 import { ROD_HAND, ROD_LENGTH, rodPitch, type Cast } from './fishing.ts';
 import { HANDS, shotAt } from './hoops.ts';
@@ -230,9 +230,9 @@ export class Character {
     else if (this.mode === 'standing' && state !== 'finished') this.hopToPlace();
   }
 
-  /** A table-tennis rally starts now, with this agent at end `side` (#70); null: play stopped. */
-  playRally(rally: Rally | null, side: Side) {
-    this.rally = rally && { rally, side, t: 0 };
+  /** A table-tennis rally starts now, `from` seconds into it, with this agent at end `side` (#70); null: play stopped. */
+  playRally(rally: Rally | null, side: Side, from = 0) {
+    this.rally = rally && { rally, side, t: from };
   }
 
   /** This agent's pool turn starts now (#76): it strikes at STRIKE_AT. */
@@ -517,6 +517,7 @@ export class Character {
     else this.root.rotation.y = lerpAngle(this.root.rotation.y, place.yaw, Math.min(1, dt * 8));
     if (place.pose === 'throwing-darts') this.collectDarts(place);
     if (place.pose === 'floating') this.drifting(place, dt);
+    if (place.pose === 'paddle') this.footwork(place);
     if (place.pose === 'lounging') {
       fl.position.set(-0.16, -0.24, 0.34);
       fr.position.set(0.16, -0.24, 0.34);
@@ -629,6 +630,17 @@ export class Character {
     const afloat = this.floatOffset()!;
     this.root.position.copy(this.above({ x: place.x + afloat.x, z: place.z + afloat.z }, SEAT_Y + afloat.bob * motion));
     this.root.rotation.y = place.yaw + afloat.spin;
+  }
+
+  /** Table tennis (#115): shuffling sideways between hits; after missing a point, turning to look where the ball went. */
+  private footwork(place: HangoutPlace) {
+    const r = this.rally;
+    const across = r ? shuffleAt(r.rally, r.side, r.t) : 0;
+    this.root.position.copy(this.above({ x: place.x + Math.cos(place.yaw) * across, z: place.z - Math.sin(place.yaw) * across }));
+    if (!r || hitter(r.rally, r.rally.hits) === r.side) return;
+    const ball = pongBallAt(r.rally, (r.rally.hits + 2) * CROSS_SECONDS);
+    const towardsBall = Math.atan2(ball.x - r.side * PLAYER_X, ball.z);
+    this.root.rotation.y = lerpAngle(place.yaw, towardsBall, reactionAt(r.rally, r.t));
   }
 
   /** Darts (#54): after a round, walk up to the board to pull the darts out, then back to the line. */
@@ -821,6 +833,8 @@ function ballHand(u: number | null) {
 const BLADE = new THREE.Vector3(0, 0.2, 0.05);
 const SWING = 0.3;
 const WIND = 0.25;
+/** How far the upper body turns, back before a hit and through after (#115). */
+const TWIST = 0.3;
 /** The hand when the blade is where the ball is hit, and when waiting between hits. */
 const CONTACT = new THREE.Vector3(HIT.side, HIT.y, HIT.reach).sub(BLADE);
 const READY = new THREE.Vector3(0.35, 0.8, 0.05);
@@ -833,11 +847,29 @@ function batHand({ rally, side, t }: { rally: Rally; side: Side; t: number }) {
   const back = CONTACT.clone().setZ(CONTACT.z - WIND), through = CONTACT.clone().setZ(CONTACT.z + WIND);
   const serves = -hitter(rally, rally.hits) === side ? [rallySeconds(rally)] : [];
   const d = [...hitTimes(rally, side), ...serves].map((h) => t - h).reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a), Infinity);
-  const smooth = (k: number) => k * k * (3 - 2 * k);
-  if (Math.abs(d) <= SWING / 2) return back.lerp(through, d / SWING + 0.5);
-  if (d < 0 && d > -SWING / 2 - 0.25) return READY.clone().lerp(back, smooth((d + SWING / 2 + 0.25) / 0.25));
-  if (d > 0 && d < SWING / 2 + 0.25) return through.lerp(READY, smooth((d - SWING / 2) / 0.25));
-  return READY.clone();
+  // The body turns with the bat: back (bat shoulder behind) as it winds up, through after the hit.
+  if (Math.abs(d) <= SWING / 2) {
+    const k = d / SWING + 0.5;
+    return { hand: back.lerp(through, k), twist: TWIST * (1 - 2 * k) };
+  }
+  if (d < 0 && d > -SWING / 2 - 0.25) {
+    const k = smooth((d + SWING / 2 + 0.25) / 0.25);
+    return { hand: READY.clone().lerp(back, k), twist: TWIST * k };
+  }
+  if (d > 0 && d < SWING / 2 + 0.25) {
+    const k = smooth((d - SWING / 2) / 0.25);
+    return { hand: through.lerp(READY, k), twist: -TWIST * (1 - k) };
+  }
+  return { hand: READY.clone(), twist: 0 };
+}
+
+/** The free hand during a rally (#115): tossing the ball to serve, or a fist pump after winning the point. */
+function freeHand({ rally, side, t }: { rally: Rally; side: Side; t: number }, tt: number) {
+  const local = (p: typeof FREE_HAND) => new THREE.Vector3(p.x, p.y, p.z);
+  if (rally.server === side && t < 0) return local(tossHand(t));
+  const won = hitter(rally, rally.hits) === side ? reactionAt(rally, t) : 0;
+  const pump = new THREE.Vector3(-0.45, 1.9 + Math.abs(Math.sin(tt * 9)) * 0.12 * motion, 0.15);
+  return local(FREE_HAND).lerp(pump, won);
 }
 
 /** Trampoline (#60): on the mat for CONTACT seconds, squashing and springing back, then a FLIGHT up and down. */
@@ -1014,15 +1046,18 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     return 2.2;
   },
   paddle: ({ pivot, head, hands: [hl, hr], feet: [fl, fr], rally }, tt) => {
-    // Ready stance, knees bent; the bat swings through the ball at each of this player's hits.
-    pivot.position.y = -0.04 + Math.sin(tt * 3) * 0.015 * motion;
-    pivot.rotation.x = 0.15;
-    head.rotation.x = -0.1;
-    hl.position.set(-0.4, 0.7, 0.2);
-    hr.position.copy(rally ? batHand(rally) : READY);
-    fl.position.set(-0.22, 0.06, 0.04);
-    fr.position.set(0.22, 0.06, 0.04);
-    return 2.2;
+    // Ready stance, knees bent, bouncing on the toes; the bat swings through the ball at each of this
+    // player's hits, the body turning with it (#115). The free hand tosses to serve and pumps a won point.
+    const bounce = Math.abs(Math.sin(tt * 4.5)) * 0.04 * motion;
+    const { hand, twist } = rally ? batHand(rally) : { hand: READY.clone(), twist: 0 };
+    pivot.position.y = -0.04 + bounce;
+    pivot.rotation.set(0.15, twist, 0);
+    head.rotation.set(-0.1, -twist, 0);
+    hl.position.copy(rally ? freeHand(rally, tt) : FREE_HAND);
+    hr.position.copy(hand);
+    fl.position.set(-0.22, 0.06 + bounce * 0.5, 0.04);
+    fr.position.set(0.22, 0.06 + bounce * 0.5, 0.04);
+    return 2.2 + bounce;
   },
   floating: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }) => {
     // Sitting low in a rubber ring, arms over its sides; the water hides the legs. The ring bobs them both (#57).

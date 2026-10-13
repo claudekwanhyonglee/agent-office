@@ -14,6 +14,7 @@ import { doorsOpen } from './control-room-3d.ts';
 import { CAST_SECONDS, landingFrom } from './fishing.ts';
 import { CLIMBING_IN } from './float.ts';
 import { SofaRemote } from './tv.ts';
+import { TOSS_SECONDS, hitter, rallySeconds, type Rally, type Side } from './pong.ts';
 import { bindLayoutPicker, savedLayout } from './layout-picker.ts';
 import { fetchRun, floorAt, planeLanding, yawTowards, type Point } from './layout.ts';
 
@@ -145,8 +146,9 @@ export function createOfficeScene(host: HTMLElement) {
       } else if (event.type === 'drift') {
         characters.get(event.key)?.float(event.drift);
       } else if (event.type === 'pong') {
-        pongBall.play(event.rally);
-        event.players.forEach((key, i) => characters.get(key)?.playRally(event.rally, i ? 1 : -1));
+        // Shown from the serve toss, which comes before the rally's first hit (#115).
+        pongBall.play(event.rally, -TOSS_SECONDS);
+        event.players.forEach((key, i) => characters.get(key)?.playRally(event.rally, i ? 1 : -1, -TOSS_SECONDS));
       } else if (event.type === 'pool') {
         poolBalls.play(event.shot);
         if (event.shot != null) characters.get(event.shooter)?.takeShot();
@@ -228,7 +230,7 @@ export function createOfficeScene(host: HTMLElement) {
   });
 
   // Dev only: lets a visual check frame a desk and throw a plane at it.
-  if (import.meta.env.DEV) Object.assign(window, { officeDebug: { camera: view.camera, planes, fishingGear, seats: () => office.seats } });
+  if (import.meta.env.DEV) Object.assign(window, { officeDebug: { camera: view.camera, planes, fishingGear, characters, seats: () => office.seats } });
   /** Dev only (#84): `?activity=fishing` puts an angler on the jetty, casting over and over, with the camera on the pond; add `&catch` to catch a fish every time (#109). */
   function fishForever() {
     const place = office.layout.hangouts.find((s) => s.name === 'fishing')!.places[0];
@@ -273,6 +275,24 @@ export function createOfficeScene(host: HTMLElement) {
     view.camera.position.copy(ahead).addScaledVector(right, 3).addScaledVector(forward, -3.5).setY(ahead.y + 1.3);
     view.camera.lookAt(ahead);
   }
+  /** Dev only (#115): `?activity=ping-pong` puts two players at the table, playing rallies one after another (add `&focus=6.3,8.7,5` to look closer). */
+  function playPongForever() {
+    const players: [string, string] = ['pong-left', 'pong-right'];
+    office.layout.hangouts.find((s) => s.name === 'ping-pong')!.places.forEach((place, i) => {
+      const character = newCharacter(players[i]);
+      character.placeAt(office.seats[0], 'done', place);
+      view.scene.add(character.root);
+      characters.set(players[i], character);
+    });
+    // On frame time, like the players, so a slow page still plays each rally to its end.
+    let rally: Rally | null = null, nextIn = 1.5;
+    view.onFrame((_, dt) => {
+      if ((nextIn -= dt) > 0) return;
+      rally = { server: rally ? -hitter(rally, rally.hits) as Side : -1, hits: 1 + Math.floor(Math.random() * 5) };
+      apply([{ type: 'pong', rally, players }]);
+      nextIn += rallySeconds(rally);
+    });
+  }
   /** Dev only (#86): `?activity=planes` puts a thrower at every paper-plane place, each throwing every few seconds. */
   function showPlaneThrowers() {
     office.layout.hangouts.find((s) => s.name === 'planes')!.places.forEach((place, i) => {
@@ -315,6 +335,7 @@ export function createOfficeScene(host: HTMLElement) {
   if (debugActivity === 'fishing') fishForever();
   else if (debugActivity === 'fetch') playFetch();
   else if (debugActivity === 'pool') showPool();
+  else if (debugActivity === 'ping-pong') playPongForever();
   else if (debugActivity === 'planes') showPlaneThrowers();
   else if (debugActivity) showActivity(debugActivity);
 

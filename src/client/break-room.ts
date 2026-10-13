@@ -206,9 +206,10 @@ export class PongBallMesh {
     this.mesh.visible = false;
   }
 
-  play(rally: Rally | null) {
+  /** Play `rally` from `from` seconds into it (before 0: the serve toss); null: nobody plays. */
+  play(rally: Rally | null, from = 0) {
     this.rally = rally;
-    this.t = 0;
+    this.t = from;
     this.update(0);
   }
 
