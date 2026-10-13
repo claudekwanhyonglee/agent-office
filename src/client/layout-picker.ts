@@ -13,13 +13,16 @@ function browserStorage(): Store | undefined {
   }
 }
 
-/** The layout picked last time, or classic when nothing (usable) was saved. */
+/** What a first visit (or unusable storage) gets. */
+const DEFAULT_LAYOUT = 'control-room';
+
+/** The layout picked last time, or the default when nothing (usable) was saved. */
 export function savedLayout(storage = browserStorage()) {
   try {
     const id = storage?.getItem(KEY);
-    return LAYOUTS.some(([known]) => known === id) ? id! : 'classic';
+    return LAYOUTS.some(([known]) => known === id) ? id! : DEFAULT_LAYOUT;
   } catch {
-    return 'classic';
+    return DEFAULT_LAYOUT;
   }
 }
 

@@ -12,21 +12,29 @@ const DESK_TOP = 0.79;
 /** A landed plane's middle is this far above its underside. */
 const PLANE_MIDDLE = 0.0285;
 
+/** Where a plane aimed at `to` comes to rest: on the desk there, or the floor there (#103). */
+export const landingPoint = (to: Point, onFloor = false) => new THREE.Vector3(to.x, (onFloor ? 0 : DESK_TOP) + PLANE_MIDDLE, to.z);
+
 /** Paper planes flying in an arc from a thrower's hand to a desk, where they lie for a while. */
 export class PaperPlanes {
   private flights: { plane: THREE.Object3D; from: THREE.Vector3; to: THREE.Vector3; arc: number; age: number }[] = [];
 
   constructor(private scene: THREE.Scene) {}
 
-  /** A plane leaving from `from` (the held plane's place in the world, #74) for the desk at `to`, or the floor there (#103). */
+  /**
+   * A plane leaving from `from` (the held plane's place in the world, #74) for the desk at `to`, or the floor there (#103).
+   * Returns where the plane is while it's in the air, and null once it has landed (#116).
+   */
   throw(from: THREE.Vector3, to: Point, onFloor = false) {
     const plane = new THREE.Group().add(paperPlane());
     plane.children[0].position.set(0, 0, 0);
-    const start = from.clone(), end = new THREE.Vector3(to.x, (onFloor ? 0 : DESK_TOP) + PLANE_MIDDLE, to.z);
+    const start = from.clone(), end = landingPoint(to, onFloor);
     plane.position.copy(start);
     plane.lookAt(end.x, start.y, end.z);
     this.scene.add(plane);
-    this.flights.push({ plane, from: start, to: end, arc: onFloor ? FLOOR_ARC : ARC, age: 0 });
+    const flight = { plane, from: start, to: end, arc: onFloor ? FLOOR_ARC : ARC, age: 0 };
+    this.flights.push(flight);
+    return () => (flight.age < FLIGHT_SECONDS ? plane.position : null);
   }
 
   /** The planes in the air or lying on desks. */

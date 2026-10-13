@@ -8,8 +8,8 @@ type Floor = (p: Point) => number;
 const flat: Floor = () => 0;
 import { dartModel, hoopsBall } from './character.ts';
 import { ballFlight, shotAt } from './hoops.ts';
-import { THROWS, dartFlight, dartsAt } from './darts.ts';
-import type { Afloat } from './float.ts';
+import { THROWS, dartFlight, dartsAt, stuckDart } from './darts.ts';
+import { emptyDriftAt, type Afloat } from './float.ts';
 import { POND_DEPTH, POOL_DEPTH, waterSurface } from './water.ts';
 import { CAST_SECONDS, castAt, type Cast, type CastFrame } from './fishing.ts';
 import { toonRamp } from './toon.ts';
@@ -206,9 +206,10 @@ export class PongBallMesh {
     this.mesh.visible = false;
   }
 
-  play(rally: Rally | null) {
+  /** Play `rally` from `from` seconds into it (before 0: the serve toss); null: nobody plays. */
+  play(rally: Rally | null, from = 0) {
     this.rally = rally;
-    this.t = 0;
+    this.t = from;
     this.update(0);
   }
 
@@ -236,7 +237,8 @@ export class BoardDarts {
       const k = !round ? null : i < round.stuck ? 1 : round.flying?.index === i ? round.flying.k : null;
       dart.visible = k != null;
       if (k == null) return;
-      const { origin, dir } = dartFlight(thrower!.place, i, k, this.props().dartboard);
+      const quiver = round!.quivering?.index === i ? round!.quivering.s : null;
+      const { origin, dir } = quiver != null ? stuckDart(thrower!.place, i, quiver, this.props().dartboard) : dartFlight(thrower!.place, i, k, this.props().dartboard);
       dart.position.set(origin.x, origin.y + this.floor(origin), origin.z);
       dart.lookAt(origin.x + dir.x, dart.position.y + dir.y, origin.z + dir.z);
     });
@@ -262,30 +264,64 @@ export class BinBall {
   }
 }
 
-/** Moves each pool ring with its rider's drift (#57), in pool-dip place order; an empty ring rests at home. */
-export function floatRings(group: THREE.Object3D, afloat: (Afloat | null)[], pool: Props['pool'] = BREAK_ROOM.pool) {
+/** How fast a ring catches up with where it should be, so climbing in or out never makes it jump (#110). */
+const RING_CATCH_UP = { move: 0.5, spin: 1, bob: 0.1 };
+
+/**
+ * Moves each pool ring with its rider's drift (#57), in pool-dip place order; an empty ring drifts on
+ * its own (#110). `dt` (seconds since the last call) limits how far a ring goes towards a new motion.
+ */
+export function floatRings(group: THREE.Object3D, afloat: (Afloat | null)[], pool: Props['pool'] = BREAK_ROOM.pool, t = 0, dt = Infinity) {
   group.traverse((o) => {
     if (o.userData.kind !== 'pool-ring') return;
-    const i = o.userData.ring as number, home = pool.rings[i], a = afloat[i];
-    o.position.set(home.x - pool.x + (a?.x ?? 0), RING_Y + (a?.bob ?? 0), home.z - pool.z + (a?.z ?? 0));
-    o.rotation.z = a?.spin ?? 0;
+    const i = o.userData.ring as number, home = pool.rings[i];
+    const want = afloat[i] ?? emptyDriftAt(i, t), was: Afloat | undefined = o.userData.afloat;
+    const a: Afloat = !was || dt === Infinity ? want : {
+      x: toward(was.x, want.x, RING_CATCH_UP.move * dt),
+      z: toward(was.z, want.z, RING_CATCH_UP.move * dt),
+      spin: toward(was.spin, nearestTurn(want.spin, was.spin), RING_CATCH_UP.spin * dt),
+      bob: toward(was.bob, want.bob, RING_CATCH_UP.bob * dt),
+    };
+    o.userData.afloat = a;
+    o.position.set(home.x - pool.x + a.x, RING_Y + a.bob, home.z - pool.z + a.z);
+    o.rotation.z = a.spin;
   });
+}
+
+const toward = (from: number, to: number, step: number) => from + Math.max(-step, Math.min(step, to - from));
+/** `angle` give or take whole turns, the one nearest `to`: a ring looks the same a full turn round. */
+const nearestTurn = (angle: number, to: number) => angle + 2 * Math.PI * Math.round((to - angle) / (2 * Math.PI));
+
+/** A white ring lying on the water, for ripples and splashes. */
+function waterRing() {
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 32), new THREE.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.renderOrder = 2;
+  return ring;
+}
+
+function showRing(ring: ReturnType<typeof waterRing>, at: CastFrame['ripple']) {
+  ring.visible = !!at;
+  if (!at) return;
+  ring.position.set(at.x, 0.035, at.z);
+  ring.scale.setScalar(at.radius);
+  ring.material.opacity = at.opacity;
 }
 
 /** The angler's float, line and ripple (#58), following the cast the controller says. */
 export class FishingGear {
   readonly float = new THREE.Group();
   readonly line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: '#F4EEE2' }));
-  readonly ripple = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 32), new THREE.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, depthWrite: false }));
+  readonly ripple = waterRing();
+  /** Where a caught fish bursts out or drops back in (#109). */
+  readonly splash = waterRing();
   private cast: { cast: Cast; place: HangoutPlace; start: number; t: number } | null = null;
   private now: CastFrame | null = null;
 
   constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM, private floor: Floor = flat) {
     this.float.add(at(ball(0.04, '#FF5A5A', { outline: 0.08, shadow: false }), 0, 0.02, 0));
     this.float.add(at(ball(0.03, '#FFFFFF', { outline: 0.08, shadow: false }), 0, 0.06, 0));
-    this.ripple.rotation.x = -Math.PI / 2;
-    this.ripple.renderOrder = 2;
-    parent.add(this.float, this.line, this.ripple);
+    parent.add(this.float, this.line, this.ripple, this.splash);
     this.stop();
   }
 
@@ -297,7 +333,7 @@ export class FishingGear {
 
   stop() {
     this.cast = this.now = null;
-    this.float.visible = this.line.visible = this.ripple.visible = false;
+    this.float.visible = this.line.visible = this.ripple.visible = this.splash.visible = false;
   }
 
   /** The current moment of the cast, for the fish taking part in a catch. */
@@ -317,12 +353,8 @@ export class FishingGear {
     positions.setXYZ(0, f.tip.x, f.tip.y, f.tip.z);
     positions.setXYZ(1, f.lineEnd.x, f.lineEnd.y, f.lineEnd.z);
     positions.needsUpdate = true;
-    this.ripple.visible = !!f.ripple;
-    if (f.ripple) {
-      this.ripple.position.set(f.ripple.x, 0.035, f.ripple.z);
-      this.ripple.scale.setScalar(f.ripple.radius);
-      this.ripple.material.opacity = f.ripple.opacity;
-    }
+    showRing(this.ripple, f.ripple);
+    showRing(this.splash, f.splash);
   }
 
   lineEnds() {

@@ -24,9 +24,9 @@ describe('#104 layout picker', () => {
   it('#104 AC1 the picker lists Classic and Control room and marks the current one', () => {
     const { host, marked, button } = setup(memoryStorage());
     expect([...host.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Classic', 'Control room']);
-    expect(marked()).toEqual(['Classic']);
-    button('Control room').click();
     expect(marked()).toEqual(['Control room']);
+    button('Classic').click();
+    expect(marked()).toEqual(['Classic']);
   });
 
   it('#104 AC1 the picker is on the page', () => {
@@ -35,9 +35,9 @@ describe('#104 layout picker', () => {
 
   it('#104 AC2 picking one hands its preset id to the office (no reload)', () => {
     const { picked, button } = setup(memoryStorage());
-    button('Control room').click();
     button('Classic').click();
-    expect(picked).toEqual(['control-room', 'classic']);
+    button('Control room').click();
+    expect(picked).toEqual(['classic', 'control-room']);
   });
 
   it('#104 AC2 every agent keeps its session and state and is placed in the new layout', () => {
@@ -55,33 +55,33 @@ describe('#104 layout picker', () => {
 
   it('#104 AC3 the choice is saved and used on the next load', () => {
     const storage = memoryStorage();
-    setup(storage).button('Control room').click();
-    expect(savedLayout(storage)).toBe('control-room');
+    setup(storage).button('Classic').click();
+    expect(savedLayout(storage)).toBe('classic');
     const reloaded = setup(storage);
-    expect(reloaded.current).toBe('control-room');
-    expect(reloaded.marked()).toEqual(['Control room']);
+    expect(reloaded.current).toBe('classic');
+    expect(reloaded.marked()).toEqual(['Classic']);
   });
 
-  it('#104 AC3 with nothing saved, or an unknown preset, the office is Classic', () => {
-    expect(savedLayout(memoryStorage())).toBe('classic');
+  it('#104 AC3 with nothing saved, or an unknown preset, the office is Control room (the default since #105)', () => {
+    expect(savedLayout(memoryStorage())).toBe('control-room');
     const storage = memoryStorage();
     storage.setItem('agent-office.layout', 'moon-base');
-    expect(savedLayout(storage)).toBe('classic');
+    expect(savedLayout(storage)).toBe('control-room');
   });
 
-  it('#104 AC3 with storage failing the office is Classic and the picker still works', () => {
+  it('#104 AC3 with storage failing the office is Control room and the picker still works', () => {
     const { current, picked, button, marked } = setup(brokenStorage);
-    expect(current).toBe('classic');
-    button('Control room').click();
-    expect(picked).toEqual(['control-room']);
-    expect(marked()).toEqual(['Control room']);
+    expect(current).toBe('control-room');
+    button('Classic').click();
+    expect(picked).toEqual(['classic']);
+    expect(marked()).toEqual(['Classic']);
   });
 
-  it('#104 AC3 a localStorage accessor that throws falls back to Classic', () => {
+  it('#104 AC3 a localStorage accessor that throws falls back to Control room', () => {
     const original = Object.getOwnPropertyDescriptor(window, 'localStorage')!;
     Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new Error('blocked'); } });
     try {
-      expect(savedLayout()).toBe('classic');
+      expect(savedLayout()).toBe('control-room');
     } finally {
       Object.defineProperty(window, 'localStorage', original);
     }

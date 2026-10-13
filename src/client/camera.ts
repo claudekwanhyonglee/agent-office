@@ -9,6 +9,8 @@ export const FOV = { base: 34, max: 45 };
 export const TILT = { min: 0.1, max: 1.45 };
 /** Furthest the fit will back off; the camera's far plane is 150 m. */
 const FIT_LIMIT = 120;
+/** The starting view sits this much farther out than the tight fit, for room around the office (#111). */
+const HOME_PULL_BACK = 1.15;
 
 /** Where the orbit target may go: the whole floor, deck included. */
 export interface FloorBounds { left: number; right: number; back: number; front: number }
@@ -200,18 +202,48 @@ export function fitRadius(camera: THREE.PerspectiveCamera, orbit: Orbit, points:
   return far;
 }
 
-/** Sets the fov for the screen shape, aims at the floor and backs off until all of it is on screen. */
+/** What the starting view centres on screen: the floor corners, and in Classic the top of the back wall too. */
+const officeOutline = (rows: number, preset: string) => {
+  const corners = floorCorners(rows, preset);
+  if (officeLayout(rows, preset).preset === 'control-room') return corners;
+  const { left, right, back } = officeLayout(rows, preset).bounds;
+  return [...corners, new THREE.Vector3(left, WALL_HEIGHT, back), new THREE.Vector3(right, WALL_HEIGHT, back)];
+};
+
+/** How far the office's middle sits above the screen's middle, in NDC (negative: below). */
+function heightOnScreen(camera: THREE.PerspectiveCamera, points: THREE.Vector3[]) {
+  const ys = points.map((p) => p.clone().project(camera).y);
+  return (Math.min(...ys) + Math.max(...ys)) / 2;
+}
+
+/**
+ * Sets the fov for the screen shape, aims at the floor, backs off until all of it is on screen,
+ * and slides the aim back or forward so the office sits in the middle of the screen, top to bottom.
+ */
 export function frameFloor(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: number, preset = 'classic') {
   camera.fov = fovFor(camera.aspect);
   orbit.bounds = officeLayout(rows, preset).bounds;
   const { left, right, back, front } = orbit.bounds;
   orbit.target.x = (left + right) / 2;
-  orbit.target.z = (back + front) / 2 + 1.5;
+  orbit.target.z = (back + front) / 2;
   // Never closer than the hand-tuned desktop framing, so walls and furniture above the floor stay in view.
   const handTuned = 4 + Math.max(right - left, front - back) * 0.9;
-  orbit.radius = Math.max(fitRadius(camera, orbit, floorCorners(rows, preset)), handTuned);
+  const fit = () => {
+    orbit.radius = Math.max(fitRadius(camera, orbit, floorCorners(rows, preset)), handTuned) * HOME_PULL_BACK;
+    placeCamera(camera, orbit);
+  };
+  const outline = officeOutline(rows, preset);
+  const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  for (let pass = 0; pass < 3; pass++) {
+    fit();
+    // Moving the aim away from the camera by d slides the office down the screen by about d·cos(phi) / (radius·tan(fov/2)).
+    const away = (heightOnScreen(camera, outline) * orbit.radius * halfHeight) / Math.cos(orbit.phi);
+    orbit.target.x -= away * Math.sin(orbit.theta);
+    orbit.target.z -= away * Math.cos(orbit.theta);
+    keepInRoom(orbit);
+  }
+  fit();
   orbit.maxRadius = Math.max(ZOOM.max, orbit.radius);
-  placeCamera(camera, orbit);
 }
 
 type ScreenPoint = { x: number; y: number };

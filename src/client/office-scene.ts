@@ -3,17 +3,20 @@ import type { AgentRecord } from '../shared/agent.ts';
 import { createView } from './view.ts';
 import { OfficeController, type OfficeEvent } from './controller.ts';
 import { Character } from './character.ts';
-import { PaperPlanes } from './paper-planes.ts';
+import { PaperPlanes, landingPoint } from './paper-planes.ts';
 import { BinBall, BoardDarts, DeskMugs, FishingGear, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
 import { PondFish, updateWater } from './water.ts';
 import { Dog } from './dog.ts';
-import { FetchBall } from './fetch.ts';
+import { FetchBall, RELEASE_AT } from './fetch.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
 import { doorsOpen } from './control-room-3d.ts';
 import { CAST_SECONDS, landingFrom } from './fishing.ts';
+import { CLIMBING_IN } from './float.ts';
+import { SofaRemote } from './tv.ts';
+import { TOSS_SECONDS, hitter, rallySeconds, type Rally, type Side } from './pong.ts';
 import { bindLayoutPicker, savedLayout } from './layout-picker.ts';
-import { floorAt, planeLanding, type Point } from './layout.ts';
+import { fetchRun, floorAt, planeLanding, yawTowards, type Point } from './layout.ts';
 
 /** The agent a picked mesh belongs to, if any. */
 export function agentKeyOf(object: THREE.Object3D | null | undefined): string | null {
@@ -52,6 +55,9 @@ export function createOfficeScene(host: HTMLElement) {
   dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
   view.scene.add(dog.root);
   const fetchBall = new FetchBall(view.scene, floor);
+  let remote = new SofaRemote();
+  /** Everyone sitting on the sofa, including anyone about to walk out of the office from it. */
+  const sofaSitters = () => [...characters.values(), ...leaving].filter((c) => c.onSofa());
   /** A new character, standing on the floor. */
   const newCharacter = (key: string) => {
     const character = new Character(lookFor(key));
@@ -61,7 +67,7 @@ export function createOfficeScene(host: HTMLElement) {
   /** `character` throws a paper plane at desk `desk` (it lands where the layout says, #103). */
   const throwPlane = (character: Character, desk: number) => {
     const { at, onFloor } = planeLanding(office.layout, office.seats[desk]);
-    character.throwPlane((from) => planes.throw(from, at, onFloor));
+    character.throwPlane((from) => planes.throw(from, at, onFloor), landingPoint(at, onFloor));
   };
 
   const ring = new THREE.Mesh(
@@ -89,6 +95,7 @@ export function createOfficeScene(host: HTMLElement) {
     mugs.clear();
     fishingGear.stop();
     controller = new OfficeController({}, preset);
+    remote = new SofaRemote();
     office = view.setRows(controller.rows, preset);
     dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
     apply(controller.update(records));
@@ -111,7 +118,9 @@ export function createOfficeScene(host: HTMLElement) {
         else if (event.place) character.placeAt(event.seat, event.record.state, event.place);
         else character.sitAt(event.seat, event.record.state);
       } else if (event.type === 'walk') {
-        characters.get(event.key)?.go(event.path, event.place);
+        const character = characters.get(event.key);
+        if (character) remote.gettingUp(character, sofaSitters());
+        character?.go(event.path, event.place);
       } else if (event.type === 'state') {
         characters.get(event.key)?.setState(event.state);
       } else if (event.type === 'plane') {
@@ -124,7 +133,7 @@ export function createOfficeScene(host: HTMLElement) {
         if (event.path.length === 1) dog.placeAt(event.path[0], event.lie);
         else dog.go(event.path, event.lie, event.wait);
       } else if (event.type === 'fetch') {
-        characters.get(event.key)?.throwBall();
+        characters.get(event.key)?.throwBall(event.to);
         fetchBall.throw(event.to);
       } else if (event.type === 'cast') {
         const angler = characters.get(event.key);
@@ -137,8 +146,9 @@ export function createOfficeScene(host: HTMLElement) {
       } else if (event.type === 'drift') {
         characters.get(event.key)?.float(event.drift);
       } else if (event.type === 'pong') {
-        pongBall.play(event.rally);
-        event.players.forEach((key, i) => characters.get(key)?.playRally(event.rally, i ? 1 : -1));
+        // Shown from the serve toss, which comes before the rally's first hit (#115).
+        pongBall.play(event.rally, -TOSS_SECONDS);
+        event.players.forEach((key, i) => characters.get(key)?.playRally(event.rally, i ? 1 : -1, -TOSS_SECONDS));
       } else if (event.type === 'pool') {
         poolBalls.play(event.shot);
         if (event.shot != null) characters.get(event.shooter)?.takeShot();
@@ -148,6 +158,7 @@ export function createOfficeScene(host: HTMLElement) {
         const character = characters.get(event.key)!;
         characters.delete(event.key);
         leaving.add(character);
+        remote.gettingUp(character, sofaSitters());
         character.leave(event.path);
       }
     }
@@ -189,10 +200,14 @@ export function createOfficeScene(host: HTMLElement) {
     if ([...characters.values()].some((c) => c.fishing())) fishingGear.update(dt);
     else fishingGear.stop();
     pondFish.update(t, fishingGear.frame()?.fish ?? null);
-    office.tv.update([...characters.values()].some((c) => c.onSofa()), t);
+    remote.update(sofaSitters());
+    office.tv.update(remote.on, t);
     const dip = office.layout.hangouts.find((s) => s.name === 'pool-dip')!.places;
     const riders = [...characters.values(), ...leaving];
-    floatRings(office.group, dip.map((p) => riders.find((c) => c.place?.x === p.x && c.place.z === p.z)?.floatOffset() ?? null), props().pool);
+    floatRings(office.group, dip.map((p) => {
+      const rider = riders.find((c) => c.place?.x === p.x && c.place.z === p.z);
+      return rider ? rider.floatOffset() ?? CLIMBING_IN : null;
+    }), props().pool, t, dt);
     boardDarts.update([...characters.values()].map((c) => c.dartsThrower()).find((d) => d) ?? null);
     binBall.update([...characters.values()].map((c) => c.hoopsShooter()).find((d) => d) ?? null);
     dog.update(t, dt);
@@ -215,8 +230,8 @@ export function createOfficeScene(host: HTMLElement) {
   });
 
   // Dev only: lets a visual check frame a desk and throw a plane at it.
-  if (import.meta.env.DEV) Object.assign(window, { officeDebug: { camera: view.camera, planes, seats: () => office.seats } });
-  /** Dev only (#84): `?activity=fishing` puts an angler on the jetty, casting over and over, with the camera on the pond. */
+  if (import.meta.env.DEV) Object.assign(window, { officeDebug: { camera: view.camera, planes, fishingGear, characters, seats: () => office.seats } });
+  /** Dev only (#84): `?activity=fishing` puts an angler on the jetty, casting over and over, with the camera on the pond; add `&catch` to catch a fish every time (#109). */
   function fishForever() {
     const place = office.layout.hangouts.find((s) => s.name === 'fishing')!.places[0];
     const angler = newCharacter('debug-angler');
@@ -225,7 +240,7 @@ export function createOfficeScene(host: HTMLElement) {
     characters.set('debug-angler', angler);
     let next = 0;
     const cast = () => {
-      const c = { landing: landingFrom(Math.random, props()), fish: null };
+      const c = { landing: landingFrom(Math.random, props()), fish: new URLSearchParams(location.search).has('catch') ? 0 : null };
       angler.fish(c);
       fishingGear.start(c, place, pondTime);
       clearTimeout(next);
@@ -238,18 +253,45 @@ export function createOfficeScene(host: HTMLElement) {
     view.camera.lookAt(ahead.x, 1, ahead.z);
   }
 
-  /** Dev only (#87): `?activity=darts` puts a stand-in agent at that hangout and looks over its right shoulder. */
+  /**
+   * Dev only (#87): `?activity=darts` puts a stand-in agent at each of that hangout's places (#112: all of them,
+   * e.g. a full sofa) and looks over the first one's right shoulder.
+   */
   function showActivity(name: string | null) {
-    const place = office.layout.hangouts.find((s) => s.name === name)?.places[0];
+    const places = office.layout.hangouts.find((s) => s.name === name)?.places ?? [];
+    places.forEach((p, i) => {
+      const character = newCharacter(`stand-in-${i}`);
+      character.placeAt(office.seats[0], 'done', p);
+      view.scene.add(character.root);
+      characters.set(`stand-in-${i}`, character);
+    });
+    const [place] = places;
     if (!place) return;
-    const character = newCharacter('stand-in');
-    character.placeAt(office.seats[0], 'done', place);
-    view.scene.add(character.root);
-    characters.set('stand-in', character);
+    // `officeDebug.standUp()` gets the stand-ins off the sofa (or wherever they are) and back to a desk (#113).
+    const standUp = () => apply(places.map((p, i) => ({ type: 'walk' as const, key: `stand-in-${i}`, path: [{ x: p.x, z: p.z }, ...p.link.slice(1)], place: null })));
+    Object.assign(window, { officeDebug: { ...(window as unknown as { officeDebug: object }).officeDebug, standIn: characters.get('stand-in-0'), standUp } });
     const forward = new THREE.Vector3(Math.sin(place.yaw), 0, Math.cos(place.yaw)), right = new THREE.Vector3(forward.z, 0, -forward.x);
     const ahead = new THREE.Vector3(place.x, floor(place) + 1.3, place.z).addScaledVector(forward, 1);
     view.camera.position.copy(ahead).addScaledVector(right, 3).addScaledVector(forward, -3.5).setY(ahead.y + 1.3);
     view.camera.lookAt(ahead);
+  }
+  /** Dev only (#115): `?activity=ping-pong` puts two players at the table, playing rallies one after another (add `&focus=6.3,8.7,5` to look closer). */
+  function playPongForever() {
+    const players: [string, string] = ['pong-left', 'pong-right'];
+    office.layout.hangouts.find((s) => s.name === 'ping-pong')!.places.forEach((place, i) => {
+      const character = newCharacter(players[i]);
+      character.placeAt(office.seats[0], 'done', place);
+      view.scene.add(character.root);
+      characters.set(players[i], character);
+    });
+    // On frame time, like the players, so a slow page still plays each rally to its end.
+    let rally: Rally | null = null, nextIn = 1.5;
+    view.onFrame((_, dt) => {
+      if ((nextIn -= dt) > 0) return;
+      rally = { server: rally ? -hitter(rally, rally.hits) as Side : -1, hits: 1 + Math.floor(Math.random() * 5) };
+      apply([{ type: 'pong', rally, players }]);
+      nextIn += rallySeconds(rally);
+    });
   }
   /** Dev only (#86): `?activity=planes` puts a thrower at every paper-plane place, each throwing every few seconds. */
   function showPlaneThrowers() {
@@ -260,8 +302,40 @@ export function createOfficeScene(host: HTMLElement) {
       characters.set(`planes-${i}`, character);
       setInterval(() => throwPlane(character, (i * 5) % office.seats.length), 2500 + i * 300);
     });
+    // Over the first thrower's shoulder, to see its head follow the plane (#116).
+    const place = office.layout.hangouts.find((s) => s.name === 'planes')!.places[0];
+    const forward = new THREE.Vector3(Math.sin(place.yaw), 0, Math.cos(place.yaw)), right = new THREE.Vector3(forward.z, 0, -forward.x);
+    const head = new THREE.Vector3(place.x, floor(place) + 1.3, place.z);
+    view.camera.position.copy(head).addScaledVector(forward, -2.5).addScaledVector(right, 2).setY(head.y + 2);
+    view.camera.lookAt(head.addScaledVector(forward, 2.5));
+  }
+  /** Dev only (#114): `?activity=fetch` plays fetch in the hall, where the ball goes behind the thrower; `throwBall()` throws. */
+  function playFetch() {
+    const spot = office.layout.dogSpots.find((s) => s.name === 'hall')!, visitor = spot.visitors[0];
+    const thrower = newCharacter('fetcher');
+    thrower.placeAt(office.seats[0], 'done', { spot: 'dog', pose: 'throwing-ball', ...visitor.at, link: visitor.link, yaw: yawTowards(visitor.at, spot.dog) });
+    view.scene.add(thrower.root);
+    characters.set('fetcher', thrower);
+    dog.placeAt(spot.dog, false);
+    const throwBall = () => { thrower.throwBall(spot.fetch); fetchBall.throw(spot.fetch); dog.go(fetchRun(office.layout, spot), false, RELEASE_AT); };
+    Object.assign(window, { throwBall });
+    view.camera.position.set(visitor.at.x, floor(visitor.at) + 3.5, visitor.at.z + 6);
+    view.camera.lookAt(visitor.at.x, floor(visitor.at) + 1, visitor.at.z);
+  }
+  /** Dev only (#117): `?activity=pool` is the pool table with a shooter, striking every few seconds, and a player waiting; `&cam=x,y,z` puts the camera there relative to the shooter. */
+  function showPool() {
+    showActivity('pool-table'); // #112: a stand-in at every place, so the second one waits
+    const shooter = characters.get('stand-in-0')!;
+    const look = new THREE.Vector3(...(new URLSearchParams(location.search).get('cam')?.split(',').map(Number) ?? []));
+    shooter.root.updateMatrixWorld(true);
+    if (look.lengthSq()) { view.camera.position.copy(shooter.root.localToWorld(look)); view.camera.lookAt(shooter.root.localToWorld(new THREE.Vector3(0, 1, 0))); }
+    shooter.takeShot();
+    setInterval(() => shooter.takeShot(), 5000);
   }
   if (debugActivity === 'fishing') fishForever();
+  else if (debugActivity === 'fetch') playFetch();
+  else if (debugActivity === 'pool') showPool();
+  else if (debugActivity === 'ping-pong') playPongForever();
   else if (debugActivity === 'planes') showPlaneThrowers();
   else if (debugActivity) showActivity(debugActivity);
 

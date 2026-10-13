@@ -70,6 +70,8 @@ export interface Area { name: string; x0: number; x1: number; z0: number; z1: nu
 export const DESKS_PER_ROW = 8;
 export const INITIAL_ROWS = 2;
 
+/** Sofa seats, from the sofa's middle: three of them, shared by lounging and couch co-op, roomy enough not to clip (#112). */
+export const SOFA_SEATS = [-0.9, 0, 0.9];
 /** Metres per second; the controller uses it to know when a walk ends. */
 export const WALK_SPEED = 1.7;
 export const DOG_SPEED = 2.4;
@@ -248,7 +250,7 @@ export function classicLayout(rows: number, props: Props = BREAK_ROOM) {
       chat: false,
       places: [standing('water-cooler', { x: cooler.x, z: -3.75 + b }, 'drinking'), standing('water-cooler', cooler2, 'drinking', yawTowards(cooler2, cooler))],
     },
-    { name: 'lounge', chat: false, places: [sofaSeat(5.7), sofaSeat(6.4), sofaSeat(7.1)] },
+    { name: 'lounge', chat: false, places: SOFA_SEATS.map((dx) => sofaSeat(lounge.sofa.x + dx)) },
     chatSpot('chat-hall', { x: -1.0, z: -2.6 + b }, toHall),
     chatSpot('chat-deck', { x: -1.2, z: 8.3 }, toDeck),
     chatSpot('chat-deck-right', { x: 2.4, z: 8.3 }, toDeck),
@@ -263,7 +265,7 @@ export function classicLayout(rows: number, props: Props = BREAK_ROOM) {
         return { ...r, spot: 'pool-dip', yaw: 0, pose: 'floating' as const, sits: true, link: [{ ...r }, edge, { x: edge.x, z: DECK_Z }] };
       }),
     },
-    { name: 'couch-co-op', chat: false, game: { min: 2 }, places: [-0.87, -0.29, 0.29, 0.87].map((dx) => sofaSeat(lounge.sofa.x + dx, 'couch-co-op', 'gaming')) },
+    { name: 'couch-co-op', chat: false, game: { min: 2 }, places: SOFA_SEATS.map((dx) => sofaSeat(lounge.sofa.x + dx, 'couch-co-op', 'gaming')) },
   ];
 
   const lanes = Array.from({ length: rows }, (_, row) => lane(row));

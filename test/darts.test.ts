@@ -4,7 +4,7 @@ import { INITIAL_ROWS, officeLayout } from '../src/client/layout.ts';
 import { Character, dartModel } from '../src/client/character.ts';
 import { lookFor } from '../src/client/look.ts';
 import { BoardDarts } from '../src/client/break-room.ts';
-import { BOARD, COLLECT_FROM, DART, FLIGHT, RELEASE_AT, ROUND, THROWS, THROW_EVERY, dartFlight, dartsAt } from '../src/client/darts.ts';
+import { BOARD, COLLECT_FROM, DART, FLIGHT, QUIVER, RELEASE_AT, ROUND, THROWS, THROW_EVERY, dartFlight, dartsAt } from '../src/client/darts.ts';
 
 const START = officeLayout(INITIAL_ROWS);
 const PLACE = START.hangouts.find((s) => s.name === 'darts')!.places[0];
@@ -52,9 +52,7 @@ describe('#54 AC1 a recognisable dart in hand, pointing at the board', () => {
 });
 
 describe('#54 AC2 the dart flies to the board, point first', () => {
-  it('#54 AC2 on release the dart leaves the hand and arcs to the board face in about half a second', () => {
-    expect(FLIGHT).toBeGreaterThanOrEqual(0.4);
-    expect(FLIGHT).toBeLessThanOrEqual(0.6);
+  it('#54 AC2 (#107 AC4) on release the dart leaves the hand and ends with its tip on the board face', () => {
     for (let i = 0; i < THROWS; i++) {
       const before = heldDart(thrower(i * THROW_EVERY + RELEASE_AT - 0.001))!;
       const start = dartFlight(PLACE, i, 0);
@@ -63,8 +61,6 @@ describe('#54 AC2 the dart flies to the board, point first', () => {
       const end = dartFlight(PLACE, i, 1);
       const tip = { x: end.origin.x + end.dir.x * DART.tip };
       expect(tip.x).toBeCloseTo(BOARD.x, 3);
-      const mid = dartFlight(PLACE, i, 0.5).origin, straight = (start.origin.y + end.origin.y) / 2;
-      expect(mid.y, 'an arc').toBeGreaterThan(straight + 0.05);
     }
   });
 
@@ -189,6 +185,52 @@ describe('#87 a visible, bigger dart and a hand clear of the head', () => {
       d.updateMatrixWorld(true);
       const point = new THREE.Box3().setFromObject(parts(d, 'dart-point')[0]);
       expect(Math.abs(point.min.x - BOARD.x), 'the very tip is at the face').toBeLessThan(0.01);
+    }
+  });
+});
+
+describe('#107 a fast, flat throw that sticks with a wobble', () => {
+  const v = (p: { x: number; y: number; z: number }) => new THREE.Vector3(p.x, p.y, p.z);
+  /** The pointing direction of throw `i`'s dart as the board shows it at `t`. */
+  const shownDir = (i: number, t: number) => {
+    const darts = new BoardDarts(new THREE.Scene());
+    darts.update({ place: PLACE, t });
+    const d = darts.darts[i];
+    d.updateMatrixWorld(true);
+    return world(parts(d, 'dart-point')[0]).sub(world(parts(d, 'dart-flights')[0])).normalize();
+  };
+  const hitAt = (i: number) => i * THROW_EVERY + RELEASE_AT + FLIGHT;
+
+  it('#107 AC1 each dart reaches the board 0.12–0.2 s after release', () => {
+    expect(FLIGHT).toBeGreaterThanOrEqual(0.12);
+    expect(FLIGHT).toBeLessThanOrEqual(0.2);
+    for (let i = 0; i < THROWS; i++) {
+      expect(dartsAt(hitAt(i) - 0.005).stuck, `throw ${i + 1} still flying`).toBe(i);
+      expect(dartsAt(hitAt(i) + 0.005).stuck, `throw ${i + 1} stuck`).toBe(i + 1);
+    }
+  });
+
+  it('#107 AC2 the dart\'s origin never rises more than 3 cm above the straight line from hand to board', () => {
+    for (let i = 0; i < THROWS; i++) {
+      const a = v(dartFlight(PLACE, i, 0).origin), b = v(dartFlight(PLACE, i, 1).origin);
+      for (let k = 0; k <= 1; k += 0.02) {
+        const p = v(dartFlight(PLACE, i, k).origin);
+        const s = p.clone().sub(a).dot(b.clone().sub(a)) / b.distanceToSquared(a);
+        const onLine = a.clone().lerp(b, s);
+        expect(p.y - onLine.y, `throw ${i + 1}, k ${k.toFixed(2)}`).toBeLessThanOrEqual(0.03);
+      }
+    }
+  });
+
+  it('#107 AC3 in its first 0.3 s in the board the dart quivers 0.5°–5° off its stuck direction, then rests', () => {
+    expect(QUIVER).toBeLessThanOrEqual(0.3);
+    for (let i = 0; i < THROWS; i++) {
+      const rest = shownDir(i, hitAt(i) + 1);
+      let most = 0;
+      for (let s = 0.005; s < 0.3; s += 0.005) most = Math.max(most, THREE.MathUtils.radToDeg(shownDir(i, hitAt(i) + s).angleTo(rest)));
+      expect(most, `throw ${i + 1} quivers`).toBeGreaterThan(0.5);
+      expect(most, `throw ${i + 1} only a little`).toBeLessThanOrEqual(5);
+      for (const s of [0.3, 0.35, 0.6]) expect(shownDir(i, hitAt(i) + s).angleTo(rest), `throw ${i + 1} at rest ${s} s in`).toBeLessThan(1e-6);
     }
   });
 });

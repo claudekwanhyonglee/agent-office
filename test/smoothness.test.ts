@@ -37,7 +37,7 @@ const FAR_DESK = START.seats.map((s) => s.desk).reduce((a, b) => {
 type Rig = { character: Character; planes: PaperPlanes; random: () => number; n: number };
 const EVENTS: Partial<Record<HangoutPose, { every: number; fire: (rig: Rig) => void }>> = {
   'throwing-plane': { every: 5, fire: ({ character, planes }) => character.throwPlane((from) => planes.throw(from, FAR_DESK)) },
-  'throwing-ball': { every: 6, fire: ({ character }) => character.throwBall() },
+  'throwing-ball': { every: 6, fire: ({ character }) => character.throwBall(START.dogSpots[0].fetch) },
   fishing: { every: CAST_SECONDS + 1, fire: ({ character, random, n }) => character.fish({ landing: landingFrom(random), fish: n % 2 ? 0 : null }) },
   'cue-shot': { every: SHOT_SECONDS * 2, fire: ({ character }) => character.takeShot() },
   paddle: { every: rallySeconds({ server: 1, hits: 5 }), fire: ({ character }) => character.playRally({ server: 1, hits: 5 }, 1) },

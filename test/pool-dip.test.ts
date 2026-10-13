@@ -5,7 +5,7 @@ import { buildOffice } from '../src/client/office.ts';
 import { Character } from '../src/client/character.ts';
 import { lookFor } from '../src/client/look.ts';
 import { floatRings } from '../src/client/break-room.ts';
-import { RETURN_SECONDS, driftAt, driftParams, type Drift } from '../src/client/float.ts';
+import { RETURN_SECONDS, driftAt, driftParams, emptyDriftAt, type Drift } from '../src/client/float.ts';
 import { find, ofType, office, seeded } from './office-sim.ts';
 
 const START = officeLayout(INITIAL_ROWS);
@@ -149,15 +149,16 @@ describe('#57 AC5 back to the home spot before climbing out', () => {
     expect(agent.arrivesAt).toBeCloseTo(t + RETURN_SECONDS + length / 1.7, 6);
   });
 
-  it('#57 AC5 an empty ring rests at its home spot', () => {
+  // Since #110 an empty ring no longer rests at home: it drifts on its own around it.
+  it('#57 AC5 (#110) an empty ring drifts on its own around its home spot', () => {
     const { group, rings: all } = rings();
     floatRings(group, [{ x: 0.1, z: 0.3, spin: 1, bob: 0.02 }, null, null, null]);
-    floatRings(group, [null, null, null, null]);
+    floatRings(group, [null, null, null, null], undefined, 12);
     all.forEach((ring, i) => {
-      const at = ringAt(ring);
-      expect(at.x).toBeCloseTo(RINGS[i].x, 9);
-      expect(at.z).toBeCloseTo(RINGS[i].z, 9);
-      expect(ring.rotation.z).toBe(0);
+      const at = ringAt(ring), own = emptyDriftAt(i, 12);
+      expect(at.x).toBeCloseTo(RINGS[i].x + own.x, 9);
+      expect(at.z).toBeCloseTo(RINGS[i].z + own.z, 9);
+      expect(ring.rotation.z).toBeCloseTo(own.spin, 9);
     });
   });
 });
