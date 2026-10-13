@@ -9,6 +9,7 @@ import { HIT, hitTimes, type Rally, type Side } from './pong.ts';
 import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
 import { ROD_HAND, ROD_LENGTH, rodPitch, type Cast } from './fishing.ts';
 import { HANDS, shotAt } from './hoops.ts';
+import { STRIKE_AT } from './pool.ts';
 import { BOARD, COLLECT_FROM, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, dartsAt } from './darts.ts';
 import { RELEASE_AT as BALL_RELEASE_AT } from './fetch.ts';
 
@@ -25,6 +26,10 @@ const POP_SECONDS = 0.2;
 /** Pool (#53): the cue is held level this high, over the playing surface (0.835 m); the bridge hand stops short of the table's edge, 0.85 m ahead. */
 const CUE_Y = 0.9;
 const BRIDGE = 0.62;
+/** Pool (#76): the cue hand's distance from the strike (tip at the ball): at rest, and drawn back. */
+const CUE_HAND_STRIKE = 0.16;
+const CUE_REST = 0.05;
+const CUE_DRAWN = 0.3;
 const UP = new THREE.Vector3(0, 1, 0);
 const BUBBLE_SIZE = 0.72;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -84,6 +89,8 @@ export class Character {
   private planeThrow: PlaneThrow | null = null;
   /** Seconds since this agent last threw the dog's ball (#75). */
   private fetchThrow: number | null = null;
+  /** Seconds into the pool turn this agent is shooting (#76). */
+  private shotTime: number | null = null;
   /** Seconds since the agent got to its hangout place. */
   private placeTime = 0;
   /** Seconds since the agent started leaving; its bubble pops, then stays gone (#49). */
@@ -199,6 +206,11 @@ export class Character {
     this.rally = rally && { rally, side, t: 0 };
   }
 
+  /** This agent's pool turn starts now (#76): it strikes at STRIKE_AT. */
+  takeShot() {
+    this.shotTime = 0;
+  }
+
   /** How its ring will drift once this agent is afloat in a pool dip (#57). */
   float(drift: Drift) {
     this.drift = drift;
@@ -293,6 +305,7 @@ export class Character {
     this.casting = null;
     this.planeThrow = null;
     this.fetchThrow = null;
+    this.shotTime = null;
   }
 
   private hangAt(place: HangoutPlace) {
@@ -341,6 +354,7 @@ export class Character {
     for (const prop of Object.values(this.held)) prop.visible = false;
     // Every agent keeps its state's bubble, wherever it is, until it pops on leaving.
     if (this.leftFor != null) this.leftFor += dt;
+    if (this.shotTime != null) this.shotTime += dt;
     const popping = this.leftFor != null && this.leftFor < POP_SECONDS;
     const bubble: BubbleKind | null = this.leftFor == null || popping ? POSES[this.state].bubble : null;
     this.bubble.scale.setScalar(BUBBLE_SIZE * (popping ? 1 + (this.leftFor! / POP_SECONDS) * 0.5 : 1));
@@ -455,7 +469,7 @@ export class Character {
       if (this.casting) this.casting.t += dt;
       if (this.planeThrow) this.planeThrow.t += dt;
       if (this.fetchThrow != null) this.fetchThrow += dt;
-      const bubbleY = activity({ fetchThrow: this.fetchThrow, casting: this.casting, pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally, placeTime: this.placeTime, planeThrow: this.planeThrow }, tt);
+      const bubbleY = activity({ fetchThrow: this.fetchThrow, casting: this.casting, pivot: p, head, hands: this.hands, feet: this.feet, held, rally: this.rally, placeTime: this.placeTime, planeThrow: this.planeThrow, shotTime: this.shotTime }, tt);
       if (place.pose === 'throwing-plane') this.letGoOfPlane(held!);
       return bubbleY;
     }
@@ -614,6 +628,8 @@ interface Body {
   casting?: { cast: Cast; t: number } | null;
   planeThrow?: PlaneThrow | null;
   fetchThrow?: number | null;
+  /** Seconds into this agent's pool turn (#76). */
+  shotTime?: number | null;
 }
 
 interface PlaneThrow { t: number; from: THREE.Vector3 | null; release: ((from: THREE.Vector3) => void) | null }
@@ -801,13 +817,12 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     if (held) held.visible = t < PLANE_ARM.release || t >= PLANE_ARM.end;
     return 2.2;
   },
-  'cue-shot': ({ pivot, head, hands: [hl, hr], held }, tt) => {
-    // Leaning in at the end of the table, drawing the cue back and striking along it.
-    const drawBack = (1 - Math.sin(tt * 2.2)) * 0.08 * motion;
+  'cue-shot': ({ pivot, head, hands: [hl, hr], held, shotTime }) => {
+    // Leaning in at the end of the table, drawing the cue back and striking the ball as it starts moving (#76).
     pivot.rotation.x = 0.1;
     head.rotation.x = 0.1;
     hl.position.set(0.04, CUE_Y, BRIDGE);
-    hr.position.set(0.36, CUE_Y, 0.1 - drawBack);
+    hr.position.set(0.36, CUE_Y, CUE_HAND_STRIKE - cueBack(shotTime ?? null) * motion);
     if (held) held.quaternion.setFromUnitVectors(UP, hl.position.clone().sub(hr.position).normalize());
     return 2.0;
   },
@@ -907,6 +922,17 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
   },
 };
 
+const smooth = (u: number) => u * u * (3 - 2 * u);
+
+/** Pool (#76): how far the cue hand is behind the strike, `t` seconds into the turn: at rest, then drawn back slowly, pushed through to the ball at STRIKE_AT, and eased back. */
+function cueBack(t: number | null) {
+  const s = t == null ? Infinity : t - STRIKE_AT;
+  if (s < -0.5 || s >= 0.6) return CUE_REST;
+  if (s < -0.25) return CUE_REST + (CUE_DRAWN - CUE_REST) * smooth((s + 0.5) / 0.25);
+  if (s < 0) return CUE_DRAWN * (1 - ((s + 0.25) / 0.25) ** 2);
+  return CUE_REST * smooth(s / 0.6);
+}
+
 function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   const rod = new THREE.Group();
   const pole = at(cyl(0.015, 0.025, ROD_LENGTH, '#8C6A4A', { outline: 0 }), 0, ROD_LENGTH / 2, 0);
@@ -914,8 +940,8 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   rod.add(pole);
   const dart = dartModel();
   const ball = hoopsBall();
-  // Gripped near the butt: the tip is 1.025 m along from the hand.
-  const cue = () => tag(at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.3, 0), 'cue');
+  // Gripped near the butt: the tip is 1.07 m along from the hand.
+  const cue = () => tag(at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.345, 0), 'cue');
   const bat = new THREE.Group();
   bat.add(Object.assign(at(cyl(0.14, 0.14, 0.03, '#C25B7A', { outline: 0.05 }), BLADE.x, BLADE.y, BLADE.z), { userData: { part: 'bat-blade' } }));
   bat.add(at(cyl(0.025, 0.025, 0.12, WOOD_DARK, { outline: 0 }), 0, 0.05, 0.02));

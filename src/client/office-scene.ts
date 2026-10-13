@@ -101,6 +101,7 @@ export function createOfficeScene(host: HTMLElement) {
         event.players.forEach((key, i) => characters.get(key)?.playRally(event.rally, i ? 1 : -1));
       } else if (event.type === 'pool') {
         poolBalls.play(event.shot);
+        if (event.shot != null) characters.get(event.shooter)?.takeShot();
       } else if (event.type === 'mug') {
         mugs.set(office.seats[event.desk], event.on);
       } else if (event.type === 'leave') {

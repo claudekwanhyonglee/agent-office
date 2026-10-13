@@ -98,8 +98,9 @@ export type OfficeEvent =
   | { type: 'dog'; path: Point[]; lie: boolean; wait?: number }
   /** Agent `key` throws a ball for the dog to `to` (the dog's run follows). */
   | { type: 'fetch'; key: string; to: Point }
-  /** Turn `shot` of the pool rack starts (#53); null: play stopped, the balls go back in the rack. */
-  | { type: 'pool'; shot: number | null }
+  /** Turn `shot` of the pool rack starts (#53), played by `shooter` (#76); null: play stopped, the balls go back in the rack. */
+  | { type: 'pool'; shot: number; shooter: string }
+  | { type: 'pool'; shot: null }
   /** A table-tennis rally starts (#70) between `players` (at the -x end, then the +x end); null: play stopped. */
   | { type: 'pong'; rally: Rally | null; players: [string, string] }
   /** How agent `key`'s ring will drift once it's afloat in the pool dip it's walking to (#57). */
@@ -247,7 +248,7 @@ export class OfficeController {
       const breaker = players.find(([, a]) => a.place!.pose === 'cue-shot') ?? players[0];
       const other = players.find((p) => p !== breaker)!;
       this.pool = { players: [breaker[0], other[0]], turn: 0, nextAt: now + SHOT_SECONDS };
-      events.push({ type: 'pool', shot: 0 });
+      events.push({ type: 'pool', shot: 0, shooter: breaker[0] });
       return;
     }
     const pool = this.pool;
@@ -259,7 +260,7 @@ export class OfficeController {
     const turns = this.layout.poolTurns;
     this.step(waiter, turns[last].wait, now, events);
     this.step(shooter, turns[shot].shoot, now, events);
-    events.push({ type: 'pool', shot });
+    events.push({ type: 'pool', shot, shooter });
   }
 
   /** Walks a player straight to another place at the same table (its stay there is unchanged). */
