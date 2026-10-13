@@ -9,6 +9,8 @@ export const FOV = { base: 34, max: 45 };
 export const TILT = { min: 0.1, max: 1.45 };
 /** Furthest the fit will back off; the camera's far plane is 150 m. */
 const FIT_LIMIT = 120;
+/** The starting view sits this much farther out than the tight fit, for room around the office (#111). */
+const HOME_PULL_BACK = 1.15;
 
 /** Where the orbit target may go: the whole floor, deck included. */
 export interface FloorBounds { left: number; right: number; back: number; front: number }
@@ -209,7 +211,7 @@ export function frameFloor(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: 
   orbit.target.z = (back + front) / 2 + 1.5;
   // Never closer than the hand-tuned desktop framing, so walls and furniture above the floor stay in view.
   const handTuned = 4 + Math.max(right - left, front - back) * 0.9;
-  orbit.radius = Math.max(fitRadius(camera, orbit, floorCorners(rows, preset)), handTuned);
+  orbit.radius = Math.max(fitRadius(camera, orbit, floorCorners(rows, preset)), handTuned) * HOME_PULL_BACK;
   orbit.maxRadius = Math.max(ZOOM.max, orbit.radius);
   placeCamera(camera, orbit);
 }
