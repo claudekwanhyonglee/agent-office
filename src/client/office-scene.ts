@@ -7,13 +7,13 @@ import { PaperPlanes } from './paper-planes.ts';
 import { BinBall, BoardDarts, DeskMugs, FishingGear, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
 import { PondFish, updateWater } from './water.ts';
 import { Dog } from './dog.ts';
-import { FetchBall } from './fetch.ts';
+import { FetchBall, RELEASE_AT } from './fetch.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
 import { doorsOpen } from './control-room-3d.ts';
 import { CAST_SECONDS, landingFrom } from './fishing.ts';
 import { bindLayoutPicker, savedLayout } from './layout-picker.ts';
-import { floorAt, planeLanding, type Point } from './layout.ts';
+import { fetchRun, floorAt, planeLanding, yawTowards, type Point } from './layout.ts';
 
 /** The agent a picked mesh belongs to, if any. */
 export function agentKeyOf(object: THREE.Object3D | null | undefined): string | null {
@@ -124,7 +124,7 @@ export function createOfficeScene(host: HTMLElement) {
         if (event.path.length === 1) dog.placeAt(event.path[0], event.lie);
         else dog.go(event.path, event.lie, event.wait);
       } else if (event.type === 'fetch') {
-        characters.get(event.key)?.throwBall();
+        characters.get(event.key)?.throwBall(event.to);
         fetchBall.throw(event.to);
       } else if (event.type === 'cast') {
         const angler = characters.get(event.key);
@@ -261,7 +261,21 @@ export function createOfficeScene(host: HTMLElement) {
       setInterval(() => throwPlane(character, (i * 5) % office.seats.length), 2500 + i * 300);
     });
   }
+  /** Dev only (#114): `?activity=fetch` plays fetch in the hall, where the ball goes behind the thrower; `throwBall()` throws. */
+  function playFetch() {
+    const spot = office.layout.dogSpots.find((s) => s.name === 'hall')!, visitor = spot.visitors[0];
+    const thrower = newCharacter('fetcher');
+    thrower.placeAt(office.seats[0], 'done', { spot: 'dog', pose: 'throwing-ball', ...visitor.at, link: visitor.link, yaw: yawTowards(visitor.at, spot.dog) });
+    view.scene.add(thrower.root);
+    characters.set('fetcher', thrower);
+    dog.placeAt(spot.dog, false);
+    const throwBall = () => { thrower.throwBall(spot.fetch); fetchBall.throw(spot.fetch); dog.go(fetchRun(office.layout, spot), false, RELEASE_AT); };
+    Object.assign(window, { throwBall });
+    view.camera.position.set(visitor.at.x, floor(visitor.at) + 3.5, visitor.at.z + 6);
+    view.camera.lookAt(visitor.at.x, floor(visitor.at) + 1, visitor.at.z);
+  }
   if (debugActivity === 'fishing') fishForever();
+  else if (debugActivity === 'fetch') playFetch();
   else if (debugActivity === 'planes') showPlaneThrowers();
   else if (debugActivity) showActivity(debugActivity);
 

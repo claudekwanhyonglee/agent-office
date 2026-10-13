@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { OfficeState } from '../shared/agent.ts';
 import { at, ball, cyl, mesh, tag } from './toon.ts';
 import type { Look, HatKind } from './look.ts';
-import { BREAK_ROOM, WALK_SPEED, rejoin, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
+import { BREAK_ROOM, WALK_SPEED, rejoin, yawTowards, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
 import { HIT, hitTimes, hitter, rallySeconds, type Rally, type Side } from './pong.ts';
@@ -47,6 +47,13 @@ function lerpAngle(a: number, b: number, k: number) {
   if (d < -Math.PI) d += Math.PI * 2;
   return a + d * k;
 }
+
+/** Eases `a` towards `b`, no faster than MAX_TURN radians a second (#114). */
+function turnTowards(a: number, b: number, dt: number) {
+  const step = lerpAngle(a, b, Math.min(1, dt * 12)) - a;
+  return a + Math.sign(step) * Math.min(Math.abs(step), MAX_TURN * dt);
+}
+const MAX_TURN = (480 * Math.PI) / 180;
 
 /** A prototype-style cartoon agent. Builds without a DOM; speech bubbles appear when a canvas is available. */
 export class Character {
@@ -95,6 +102,8 @@ export class Character {
   private planeThrow: PlaneThrow | null = null;
   /** Seconds since this agent last threw the dog's ball (#75). */
   private fetchThrow: number | null = null;
+  /** Where the fetch ball is being thrown (#114). */
+  private fetchTo: Point | null = null;
   /** Seconds into the pool turn this agent is shooting (#76). */
   private shotTime: number | null = null;
   /** Seconds since the agent got to its hangout place. */
@@ -243,9 +252,16 @@ export class Character {
     this.planeThrow = { t: 0, from: null, release };
   }
 
-  /** A fetch starts now: throw the dog's ball (#75). */
-  throwBall() {
+  /** A fetch starts now: throw the dog's ball (#75) towards `to`, turning to face it first (#114). */
+  throwBall(to: Point) {
     this.fetchThrow = 0;
+    this.fetchTo = to;
+  }
+
+  /** Which way to face playing fetch: towards the throw until the follow-through ends, then back to the dog (#114). */
+  private fetchYaw(place: HangoutPlace) {
+    const throwing = this.fetchThrow != null && this.fetchTo && this.fetchThrow < BALL_RELEASE_AT + BALL_FOLLOW_THROUGH;
+    return throwing ? yawTowards(this.root.position, this.fetchTo!) : place.yaw;
   }
 
   /** Playing fetch with the dog (#75). */
@@ -312,6 +328,7 @@ export class Character {
     this.casting = null;
     this.planeThrow = null;
     this.fetchThrow = null;
+    this.fetchTo = null;
     this.shotTime = null;
   }
 
@@ -459,7 +476,8 @@ export class Character {
   private hangingPose(place: HangoutPlace, tt: number, dt: number) {
     const p = this.pivot, head = this.head, [hl, hr] = this.hands, [fl, fr] = this.feet;
     this.placeTime += dt;
-    this.root.rotation.y = lerpAngle(this.root.rotation.y, place.yaw, Math.min(1, dt * 8));
+    if (place.pose === 'throwing-ball') this.root.rotation.y = turnTowards(this.root.rotation.y, this.fetchYaw(place), dt);
+    else this.root.rotation.y = lerpAngle(this.root.rotation.y, place.yaw, Math.min(1, dt * 8));
     if (place.pose === 'throwing-darts') this.collectDarts(place);
     if (place.pose === 'floating') this.drifting(place, dt);
     if (place.pose === 'lounging') {
@@ -689,6 +707,8 @@ const BALL_READY = new THREE.Vector3(0.35, 1.0, 0.25);
 const BALL_DRAWN = new THREE.Vector3(0.35, 1.45, -0.15);
 const BALL_THROWN = new THREE.Vector3(0.25, 1.45, 0.6);
 const BALL_SNAP = 0.15;
+/** Seconds after the release before the thrower turns back to watch the dog (#114). */
+const BALL_FOLLOW_THROUGH = 0.4;
 
 /** The ball hand `u` seconds into a throw (null: none): draw back, snap forward to let go, follow through, back to ready. */
 function ballHand(u: number | null) {

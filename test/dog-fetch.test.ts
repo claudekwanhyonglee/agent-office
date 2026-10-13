@@ -12,8 +12,7 @@ const DT = 1 / 60;
 const flat = (a: THREE.Vector3, b: { x: number; z: number }) => Math.hypot(a.x - b.x, a.z - b.z);
 
 /** A thrower with the dog at `spot`; fetch events at `throws` seconds. Every frame: where the ball, hand, mouth and dog are. */
-function play(spot: DogSpot, seconds: number, throws: number[]) {
-  const visitor = spot.visitors.find((v) => v.poses.includes('throwing-ball'))!;
+function play(spot: DogSpot, seconds: number, throws: number[], visitor = spot.visitors.find((v) => v.poses.includes('throwing-ball'))!) {
   const place: HangoutPlace = { spot: 'dog', pose: 'throwing-ball', x: visitor.at.x, z: visitor.at.z, yaw: yawTowards(visitor.at, spot.dog), link: visitor.link };
   const thrower = new Character(lookFor('session-1'));
   thrower.placeAt(LAYOUT.seats[0], 'done', place);
@@ -26,7 +25,7 @@ function play(spot: DogSpot, seconds: number, throws: number[]) {
     const t = i * DT;
     if (pending.length && t >= pending[0]) {
       pending.shift();
-      thrower.throwBall();
+      thrower.throwBall(spot.fetch);
       ball.throw(spot.fetch);
       dog.go(fetchRun(LAYOUT, spot), false, RELEASE_AT);
     }
@@ -35,11 +34,19 @@ function play(spot: DogSpot, seconds: number, throws: number[]) {
     ball.update(DT, thrower, dog);
     frames.push({
       t, ball: ball.mesh.position.clone(), shown: ball.mesh.visible, hand: ballInHand(thrower),
-      arm: thrower.hands[1].position.clone(), mouth: dog.mouth(), dog: dog.root.position.clone(), running: dog.running,
+      arm: thrower.hands[1].position.clone(), facing: facing(thrower), mouth: dog.mouth(), dog: dog.root.position.clone(), running: dog.running,
     });
   }
   return { frames, place };
 }
+
+/** Which way the thrower's body faces, as a world yaw. */
+function facing(c: Character) {
+  const d = c.pivot.getWorldDirection(new THREE.Vector3());
+  return Math.atan2(d.x, d.z);
+}
+const angleBetween = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+const DEG = Math.PI / 180;
 
 const THROW = 1;
 const at = (frames: ReturnType<typeof play>['frames'], t: number) => frames[Math.round(t / DT)];
@@ -129,4 +136,37 @@ describe('#75 AC3 between fetches the ball is in hand, and the arm throws only o
     const thrown = at(frames, second + RELEASE_AT + FLIGHT / 2);
     expect(thrown.ball.distanceTo(thrown.hand), 'and is thrown again').toBeGreaterThan(0.5);
   });
+});
+
+describe('#114 face the way you throw', () => {
+  const throwers = LAYOUT.dogSpots.flatMap((spot) => spot.visitors.filter((v) => v.poses.includes('throwing-ball')).map((visitor) => ({ spot, visitor })));
+
+  for (const { spot, visitor } of throwers) {
+    const name = `${spot.name} from ${visitor.at.x},${visitor.at.z}`;
+
+    it(`#114 AC1 at the release the thrower faces within 30° of the ball's flight (${name})`, () => {
+      const { frames } = play(spot, 4, [THROW], visitor);
+      const lastHeld = frames.findLastIndex((f) => f.t < THROW + 1.5 && f.ball.distanceTo(f.hand) < 0.01);
+      const release = frames[lastHeld];
+      const flight = yawTowards({ x: release.ball.x, z: release.ball.z }, spot.fetch);
+      expect(angleBetween(release.facing, flight) / DEG).toBeLessThanOrEqual(30);
+    });
+
+    it(`#114 AC2 the turn to throw and back is smooth (${name})`, () => {
+      const { frames } = play(spot, 6, [THROW], visitor);
+      for (let i = Math.round(THROW / DT); i < frames.length; i++) {
+        expect(angleBetween(frames[i].facing, frames[i - 1].facing) / DEG, `t=${frames[i].t.toFixed(2)}`).toBeLessThanOrEqual(10);
+      }
+    });
+
+    it(`#114 AC3 the ball leaves the hand, lands at the fetch spot, and the thrower turns back to the dog (${name})`, () => {
+      const { frames, place } = play(spot, 8, [THROW], visitor);
+      const lastHeld = frames.findLastIndex((f) => f.t < THROW + 1.5 && f.ball.distanceTo(f.hand) < 0.01);
+      expect(frames[lastHeld].t, 'released on time, as the dog sets off').toBeCloseTo(THROW + RELEASE_AT, 1);
+      expect(frames[lastHeld + 1].ball.distanceTo(frames[lastHeld].ball), 'leaves from the hand').toBeLessThan(0.12);
+      const end = at(frames, THROW + RELEASE_AT + FLIGHT + 2 * DT);
+      expect(flat(end.ball, spot.fetch), 'lands on the fetch spot').toBeLessThan(0.01);
+      expect(angleBetween(at(frames, THROW + 3).facing, place.yaw) / DEG, 'watching the dog again').toBeLessThan(15);
+    });
+  }
 });
