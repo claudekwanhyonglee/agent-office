@@ -87,6 +87,9 @@ const LANE_BEHIND = 2.1;
 export const FLOOR = { left: -9, right: 9, front: 13.4 };
 /** The back wall's height; the camera's pivot stays below it. */
 export const WALL_HEIGHT = 3.4;
+/** The left wall: frames, the dart board and the whiteboard hang flat on its inner face (#83). */
+export const LEFT_WALL_HEIGHT = 2.2;
+export const LEFT_WALL_FACE = FLOOR.left - 0.025;
 /** The glass wall between the office and the deck. */
 export const GLASS_Z = 6.8;
 export const GLASS_DOORS = [{ x0: -6.3, x1: -5.3 }, { x0: 5.3, x1: 6.3 }];
@@ -159,10 +162,9 @@ export const BREAK_ROOM = {
   hammock: { x: 6.9, z: 12.6, trees: [5.4, 8.4] },
   yogaMat: { x: -7.6, z: 8.5, w: 1.8, d: 0.6 },
   trampoline: { x: 7.6, z: 10.6, r: 0.85 },
-  dartboard: { x: -8.85, z: 4.4 },
+  /** The board's centre, its back flat on the left wall (it is 5 cm deep). */
+  dartboard: { x: LEFT_WALL_FACE + 0.025, z: 4.4 },
   bin: { x: -8.5, z: 6.3 },
-  /** Pin 12 marks the throwing spot on the right aisle; the paper stack sits beside it. */
-  paperStack: { x: 6.6, z: 4.0 },
   petBed: { x: 7.4, z: 5.4, rx: 0.45, rz: 0.32 },
   bowl: { x: 8.05, z: 5.55, r: 0.13 },
   /** Long side along z. */
@@ -278,7 +280,7 @@ export function officeLayout(rows: number) {
       { x: -4.0, z: -4.5 + b }, { x: 4.7, z: -4.4 + b }, { x: 8.5, z: -1.0 }, { x: -8.5, z: 7.4 }, { x: -3.2, z: 12.9 },
       { x: 3.0, z: 12.9 }, { x: 8.5, z: 3.6 }, { x: -8.5, z: 2.9 }, { x: 8.5, z: 6.4 },
     ] as Point[],
-    wallArt: [0.5, 3.0],
+    wallArt: [-1.4, 3.0],
   };
 }
 

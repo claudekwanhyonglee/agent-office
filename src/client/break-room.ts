@@ -62,9 +62,9 @@ const turned = <T extends THREE.Object3D>(obj: T, yaw: number) => {
   return obj;
 };
 
-/** Loungers, pond and jetty, hammock, yoga mat, trampoline, dartboard, bin and paper stack (#30). */
+/** Loungers, pond and jetty, hammock, yoga mat, trampoline, dartboard and bin (#30). */
 export function addSoloProps(group: THREE.Group) {
-  const { loungers, lounger, pond, jetty, hammock, yogaMat, trampoline, dartboard, bin, paperStack } = BREAK_ROOM;
+  const { loungers, lounger, pond, jetty, hammock, yogaMat, trampoline, dartboard, bin } = BREAK_ROOM;
 
   for (const { x, z } of loungers) group.add(at(sunLounger(), x, 0, z));
 
@@ -133,13 +133,7 @@ export function addSoloProps(group: THREE.Group) {
   rim.rotation.x = Math.PI / 2;
   rim.position.y = 0.51;
   hoop.add(rim);
-  hoop.add(at(box(0.04, 0.5, 0.6, '#FFFFFF', { outline: 0.03 }), -0.38, 1.0, 0)); // backboard on the wall
   group.add(at(hoop, bin.x, 0, bin.z));
-
-  const stack = tag(new THREE.Group(), 'paper-stack');
-  stack.add(at(box(0.35, 0.4, 0.35, WOOD), 0, 0.2, 0));
-  stack.add(at(box(0.28, 0.06, 0.2, '#FFFFFF', { outline: 0.04 }), 0, 0.43, 0));
-  group.add(turned(at(stack, paperStack.x, 0, paperStack.z), 0.2));
 }
 
 /** The pool table and ping-pong table (#31). */

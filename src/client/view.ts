@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { buildOffice } from './office.ts';
 import {
   bindHomeKey, blockContextMenu, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
-  placeCamera, wheelRadius, zoomToward, type Pointer,
+  placeCamera, wheelRadius, zoomToward, type Orbit, type Pointer,
 } from './camera.ts';
 
 /** Renderer, lights, orbit camera and the office. Agents are layered on by callers. */
@@ -25,6 +25,16 @@ export function createView(host: HTMLElement) {
 
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 150);
   const orbit = initialOrbit();
+  // Dev hook: aim the camera from the console or a capture script, e.g. __aim({ theta: Math.PI / 2 }, [-9, 1, 1.5]).
+  if (import.meta.env.DEV) {
+    Object.assign(window, {
+      __aim: (angles: Partial<Pick<Orbit, 'theta' | 'phi' | 'radius'>>, target?: [number, number, number]) => {
+        Object.assign(orbit, angles);
+        if (target) orbit.target.set(...target);
+        placeCamera(camera, orbit);
+      },
+    });
+  }
 
   let office: ReturnType<typeof buildOffice> | undefined;
   let rows = 0;

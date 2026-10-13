@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { at, ball, box, cyl, mesh, part, tag, toonRamp } from './toon.ts';
 import {
-  BREAK_ROOM, DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, MEETING_ROOM, MEETING_TABLE, WALL_HEIGHT, officeLayout, type OfficeLayout, type SeatSpot,
+  BREAK_ROOM, DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, LEFT_WALL_FACE, LEFT_WALL_HEIGHT, MEETING_ROOM, MEETING_TABLE, WALL_HEIGHT, officeLayout, type OfficeLayout, type SeatSpot,
 } from './layout.ts';
 import { SCREEN_OFF } from './poses.ts';
 import { DeskScreen, screenContent } from './screen.ts';
@@ -105,7 +105,7 @@ function addRoom(group: THREE.Group, layout: OfficeLayout) {
   base.position.y = -0.31;
   group.add(base);
 
-  // The back wall is tall (the camera faces it, and the big board hangs on it); the left wall stays low.
+  // The back wall is tall (the camera faces it, and the big board hangs on it); the left wall is tall enough to hang things on (#83).
   const backZ = back - 0.15;
   const backWall = new THREE.Group();
   backWall.add(tag(at(box(width + 0.3, WALL_HEIGHT, 0.25, WALL, { outline: 0.01 }), centerX, WALL_HEIGHT / 2, backZ), 'wall'));
@@ -113,7 +113,7 @@ function addRoom(group: THREE.Group, layout: OfficeLayout) {
     backWall.add(tag(at(box(1.0, 0.6, 0.05, '#BFE6F5', { outline: 0.03, shadow: false }), x, 1.9, backZ + 0.14), 'window'));
   }
   group.add(backWall);
-  group.add(tag(at(box(0.25, 1.4, indoorDepth + 0.25, WALL, { outline: 0.01 }), left - 0.15, 0.7, indoorZ), 'wall'));
+  group.add(tag(at(box(0.25, LEFT_WALL_HEIGHT, indoorDepth + 0.25, WALL, { outline: 0.01 }), LEFT_WALL_FACE - 0.125, LEFT_WALL_HEIGHT / 2, indoorZ), 'wall'));
 
   const door = tag(new THREE.Group(), 'door');
   door.add(at(box(0.9, 2.0, 0.06, INK, { outline: 0, shadow: false }), 0, 1.0, 0));
@@ -186,7 +186,7 @@ function addMeetingRoom(group: THREE.Group) {
     board.add(at(box(sw, 0.04, 0.02, color, { outline: 0 }), sx, sy, 0.04));
   }
   // Flat on the room's solid side (the office's left wall), facing in: nothing opaque against the glass (#62).
-  room.add(turned(at(board, x0 + 0.04, 0, z), Math.PI / 2));
+  room.add(turned(at(board, LEFT_WALL_FACE + 0.03, 0, z), Math.PI / 2));
   group.add(room);
 }
 
@@ -283,9 +283,11 @@ function addWallArt(group: THREE.Group, layout: OfficeLayout) {
     const [a, b] = ART[i % ART.length];
     art.add(at(box(0.9, 0.65, 0.05, INK, { outline: 0.02 }), 0, 0, 0));
     art.add(at(box(0.76, 0.51, 0.02, '#FFF8EC', { outline: 0, shadow: false }), 0, 0, 0.03));
-    art.add(at(ball(0.14, a, { outline: 0, shadow: false }), -0.15, 0.05, 0.04));
+    const sun = at(ball(0.14, a, { outline: 0, shadow: false }), -0.15, 0.05, 0.045);
+    sun.scale.z = 0.1; // painted on, not poking through the wall behind
+    art.add(sun);
     art.add(at(box(0.3, 0.2, 0.02, b, { outline: 0, shadow: false }), 0.15, -0.08, 0.05));
-    group.add(turned(at(art, layout.bounds.left + 0.02, 0.95, z), Math.PI / 2));
+    group.add(turned(at(art, LEFT_WALL_FACE + 0.025, 0.95, z), Math.PI / 2));
   });
 }
 

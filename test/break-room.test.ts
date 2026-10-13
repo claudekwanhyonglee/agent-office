@@ -17,18 +17,19 @@ const SOLO = [
   { spot: 'trampoline', pose: 'bouncing', prop: 'trampoline', at: [plan(16.6, 15.6)] },
   { spot: 'darts', pose: 'throwing-darts', prop: 'dartboard', at: [plan(0.15, 9.4)] },
   { spot: 'hoops', pose: 'shooting-hoops', prop: 'bin', at: [plan(0.5, 11.3)] },
-  { spot: 'planes', pose: 'throwing-plane', prop: 'paper-stack', at: [plan(14.8, 9.4)] },
+  // No prop: the paper stack is gone (#83); pin 12 marks where planes are thrown from.
+  { spot: 'planes', pose: 'throwing-plane', prop: null, at: [plan(14.8, 9.4)] },
 ] as const;
 
 describe('#30 AC1 solo props and poses', () => {
   const { group } = buildOffice(INITIAL_ROWS);
   for (const s of SOLO) {
-    it(`#30 AC1 ${s.spot}: a tagged ${s.prop} at its plan C position, and places posed ${s.pose}`, () => {
-      const props = find(group, s.prop);
-      expect(props).toHaveLength(s.at.length);
-      // The paper stack has no plan C footprint (pin 12 marks where planes are thrown from), so it gets more room.
-      const tolerance = s.spot === 'planes' ? 1 : 0.35;
-      for (const p of s.at) expect(Math.min(...props.map((o) => distance(centre(o), p))), `${s.prop} near (${p.x}, ${p.z})`).toBeLessThan(tolerance);
+    it(`#30 AC1 ${s.spot}: a tagged ${s.prop ?? 'spot'} at its plan C position, and places posed ${s.pose}`, () => {
+      const places = spot(s.spot).places;
+      const props = s.prop ? find(group, s.prop) : [];
+      if (s.prop) expect(props).toHaveLength(s.at.length);
+      const near = (p: { x: number; z: number }) => (s.prop ? Math.min(...props.map((o) => distance(centre(o), p))) : Math.min(...places.map((q) => distance(q, p))));
+      for (const p of s.at) expect(near(p), `${s.prop ?? s.spot} near (${p.x}, ${p.z})`).toBeLessThan(s.prop ? 0.35 : 1);
       expect(spot(s.spot).places.map((p) => p.pose)).toEqual(s.at.map(() => s.pose));
     });
   }
