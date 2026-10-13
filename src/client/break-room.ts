@@ -62,13 +62,13 @@ const turned = <T extends THREE.Object3D>(obj: T, yaw: number) => {
   return obj;
 };
 
-/** Loungers, pond and jetty, hammock, yoga mat, trampoline, dartboard and bin (#30). */
-export function addSoloProps(group: THREE.Group, props: Props) {
+/** Loungers, pond and jetty, hammock, yoga mat, trampoline, dartboard and bin (#30). `pond: false` leaves the pond out (a layout with its own water). */
+export function addSoloProps(group: THREE.Group, props: Props, { pond: withPond = true } = {}) {
   const { loungers, lounger, pond, jetty, hammock, yogaMat, trampoline, dartboard, bin } = props;
 
   for (const { x, z } of loungers) group.add(at(sunLounger(lounger), x, 0, z));
 
-  group.add(at(buildPond(pond.rx, pond.rz), pond.x, 0, pond.z));
+  if (withPond) group.add(at(buildPond(pond.rx, pond.rz), pond.x, 0, pond.z));
   for (const [dx, dz] of [[-0.8, -0.3], [0.4, 0.45]]) {
     const pad = at(cyl(0.16, 0.16, 0.02, '#5FA35A', { outline: 0, shadow: false }), pond.x + dx, 0.05, pond.z + dz);
     group.add(pad);

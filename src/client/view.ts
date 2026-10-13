@@ -46,21 +46,24 @@ export function createView(host: HTMLElement) {
 
   let office: ReturnType<typeof buildOffice> | undefined;
   let rows = 0;
+  let preset = 'classic';
 
-  function setRows(count: number) {
-    if (count === rows) return office!;
+  /** The office with `count` rows of desks, for layout preset `layoutPreset`; rebuilt only when either changes. */
+  function setRows(count: number, layoutPreset = 'classic') {
+    if (count === rows && layoutPreset === preset) return office!;
     if (office) scene.remove(office.group);
     rows = count;
-    office = buildOffice(count);
+    preset = layoutPreset;
+    office = buildOffice(count, preset);
     scene.add(office.group);
     // Frame the whole floor and stretch the sun's shadow box over it.
     const { left, right, back, front } = office.layout.bounds;
-    const depth = front - back, centerZ = (back + front) / 2, width = right - left;
+    const depth = front - back, centerZ = (back + front) / 2, width = right - left, centerX = (left + right) / 2;
     const half = Math.max(width, depth) / 2 + 2;
     Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 40 });
     sun.shadow.camera.updateProjectionMatrix();
-    sun.position.set(5, 14, 8 + centerZ);
-    sun.target.position.set(0, 0, centerZ);
+    sun.position.set(5 + centerX, 14, 8 + centerZ);
+    sun.target.position.set(centerX, 0, centerZ);
     resize();
     return office;
   }
@@ -70,7 +73,7 @@ export function createView(host: HTMLElement) {
     renderer.setSize(w, h);
     sky.resize(w, h);
     camera.aspect = w / h;
-    frameFloor(camera, orbit, rows);
+    frameFloor(camera, orbit, rows, preset);
     devFocus();
   }
 
@@ -135,7 +138,7 @@ export function createView(host: HTMLElement) {
     placeCamera(camera, orbit);
   }, { passive: false });
 
-  const home = () => goHome(camera, orbit, rows);
+  const home = () => goHome(camera, orbit, rows, preset);
   document.getElementById('home')?.addEventListener('click', home);
   bindHomeKey(window, home);
 

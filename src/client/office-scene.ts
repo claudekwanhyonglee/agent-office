@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { AgentRecord } from '../shared/agent.ts';
 import { createView } from './view.ts';
 import { OfficeController, type OfficeEvent } from './controller.ts';
-import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { PaperPlanes } from './paper-planes.ts';
 import { BinBall, BoardDarts, DeskMugs, FishingGear, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
@@ -11,6 +10,7 @@ import { Dog } from './dog.ts';
 import { FetchBall } from './fetch.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
+import { doorsOpen } from './control-room-3d.ts';
 import { CAST_SECONDS, landingFrom } from './fishing.ts';
 
 /** The agent a picked mesh belongs to, if any. */
@@ -23,11 +23,13 @@ export function agentKeyOf(object: THREE.Object3D | null | undefined): string | 
 /** The live office: the 3D view plus a character for every listed agent. */
 export function createOfficeScene(host: HTMLElement) {
   const view = createView(host);
-  const controller = new OfficeController();
+  /** Dev builds: `?layout=control-room` opens that layout preset (#101; the picker comes in #104). */
+  const preset = (import.meta.env.DEV && new URLSearchParams(location.search).get('layout')) || 'classic';
+  const controller = new OfficeController({}, preset);
   const characters = new Map<string, Character>();
   /** Walking out; kept until they're through the door. */
   const leaving = new Set<Character>();
-  let office = view.setRows(INITIAL_ROWS);
+  let office = view.setRows(controller.rows, preset);
   let selected: string | null = null;
   const planes = new PaperPlanes(view.scene);
   const mugs = new DeskMugs(view.scene);
@@ -62,7 +64,7 @@ export function createOfficeScene(host: HTMLElement) {
   function apply(events: OfficeEvent[]) {
     for (const event of events) {
       if (event.type === 'rows') {
-        office = view.setRows(event.count);
+        office = view.setRows(event.count, preset);
       } else if (event.type === 'place') {
         const character = characters.get(event.key)!;
         if (event.place) character.placeAt(event.seat, event.state, event.place);
@@ -169,6 +171,7 @@ export function createOfficeScene(host: HTMLElement) {
     const occupants = controller.occupants();
     updateScreens(office.seats, occupants, t);
     updateBackWall(office, view.camera.position);
+    office.doors?.update(doorsOpen(office.layout.door, [...characters.values(), ...leaving].map((c) => c.root.position)), dt);
     office.board.update(occupants);
     const target = selected ? characters.get(selected) : undefined;
     ring.visible = !!target;

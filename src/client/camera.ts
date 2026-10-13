@@ -106,12 +106,12 @@ export const pansWith = ({ button, shiftKey, pointerType }: { button: number; sh
 export const blockContextMenu = (canvas: EventTarget) => canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 /** Back to the view on first load: starting angle, tilt and target, zoomed to fit the floor. */
-export function goHome(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: number) {
+export function goHome(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: number, preset = 'classic') {
   const start = initialOrbit();
   orbit.theta = start.theta;
   orbit.phi = start.phi;
   orbit.target.copy(start.target);
-  frameFloor(camera, orbit, rows);
+  frameFloor(camera, orbit, rows, preset);
 }
 
 /** The Home key goes back to the starting view. */
@@ -158,10 +158,19 @@ export const fovFor = (aspect: number) => {
   return THREE.MathUtils.clamp(keepHorizontal, FOV.base, FOV.max);
 };
 
-/** The corners of the whole floor, deck included. */
-export const floorCorners = (rows: number) => {
-  const { left, right, back, front } = officeLayout(rows).bounds;
-  return [[left, back], [right, back], [left, front], [right, front]].map(([x, z]) => new THREE.Vector3(x, 0, z));
+/** The corners of the whole floor, deck included; in the Control room also the tops of the screen wall and of the lounge's side walls. */
+export const floorCorners = (rows: number, preset = 'classic') => {
+  const layout = officeLayout(rows, preset);
+  const { left, right, back, front } = layout.bounds;
+  const corners = [[left, back], [right, back], [left, front], [right, front]].map(([x, z]) => new THREE.Vector3(x, 0, z));
+  if (layout.preset !== 'control-room') return corners;
+  const { room, screenWall, crewLounge } = layout;
+  return [
+    ...corners,
+    ...[room.left - 0.3, room.right + 0.3].flatMap((x) => [
+      new THREE.Vector3(x, screenWall.height, back), new THREE.Vector3(x, crewLounge.height + crewLounge.wallHeight, crewLounge.z1),
+    ]),
+  ];
 };
 
 /** Whether every point lands inside the screen, leaving `margin` (in NDC units) at the edges. */
@@ -192,14 +201,15 @@ export function fitRadius(camera: THREE.PerspectiveCamera, orbit: Orbit, points:
 }
 
 /** Sets the fov for the screen shape, aims at the floor and backs off until all of it is on screen. */
-export function frameFloor(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: number) {
+export function frameFloor(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: number, preset = 'classic') {
   camera.fov = fovFor(camera.aspect);
-  orbit.bounds = officeLayout(rows).bounds;
+  orbit.bounds = officeLayout(rows, preset).bounds;
   const { left, right, back, front } = orbit.bounds;
+  orbit.target.x = (left + right) / 2;
   orbit.target.z = (back + front) / 2 + 1.5;
   // Never closer than the hand-tuned desktop framing, so walls and furniture above the floor stay in view.
   const handTuned = 4 + Math.max(right - left, front - back) * 0.9;
-  orbit.radius = Math.max(fitRadius(camera, orbit, floorCorners(rows)), handTuned);
+  orbit.radius = Math.max(fitRadius(camera, orbit, floorCorners(rows, preset)), handTuned);
   orbit.maxRadius = Math.max(ZOOM.max, orbit.radius);
   placeCamera(camera, orbit);
 }

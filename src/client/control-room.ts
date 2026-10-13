@@ -17,18 +17,20 @@ const ROOM = { left: -11, right: 11, back: -8.6 };
 const FOCUS: Point = { x: 0, z: -10.5 };
 const FIRST_RADIUS = 7.6;
 const TIER_GAP = 3.0;
-const TIER_RISE = 0.4;
+export const TIER_RISE = 0.4;
+/** The screen wall is the room's tallest part. */
+const SCREEN_WALL_HEIGHT = 6.4;
 /** A tier's floor runs from this far in front of its consoles back to the next tier. */
 const TIER_FRONT = 0.8;
 /** Half a tier's width, as an arc at its consoles. */
-const TIER_HALF_ARC = 6.0;
+export const TIER_HALF_ARC = 6.0;
 const CONSOLE = { w: 1.48, d: 0.7 };
 /** Console centre to centre along the arc. */
 const SEAT_SPACING = 1.55;
 /** Half the stair aisle up the middle of the tiers. */
 const AISLE_HALF = 0.7;
 const CHAIR_BEHIND = 1.0;
-const APPROACH = 0.6;
+const APPROACH = 0.7;
 /** Each tier's walkway, behind its chairs. */
 const LANE_BEHIND = 1.9;
 /** The walkway across the pit, from the entrance to the side door. */
@@ -68,6 +70,8 @@ export function controlRoomLayout(rows: number) {
   const loungeFront = FOCUS.z + tiers.at(-1)!.outer;
   const crewLounge = {
     name: 'crew lounge', x0: ROOM.left, x1: ROOM.right, z0: loungeFront, z1: loungeFront + LOUNGE_DEPTH, height: (tierCount + 1) * TIER_RISE,
+    /** Its side walls rise this far above its floor (the dart board hangs on the left one). */
+    wallHeight: 2.6,
   };
   /** A point in the lounge, `u` behind the rail. */
   const inLounge = (x: number, u: number): Point => ({ x, z: loungeFront + u });
@@ -123,7 +127,7 @@ export function controlRoomLayout(rows: number) {
     wallArt: [] as number[],
     props,
     room: { ...ROOM, front: crewLounge.z1 },
-    screenWall: { z: ROOM.back, focus: FOCUS },
+    screenWall: { z: ROOM.back, focus: FOCUS, height: SCREEN_WALL_HEIGHT },
     tiers,
     /** Console footprints, `w` across and `d` deep, turned to `yaw` like their seats. */
     consoles: seats.map((s) => ({ ...s.desk, yaw: s.yaw, ...CONSOLE })),

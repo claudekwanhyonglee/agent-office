@@ -12,11 +12,14 @@ import {
   WORKTOP, buildCounter, buildEspressoMachine, buildFruitBowl, buildKettle, buildToaster, buildVase, buildWallCabinet,
 } from './kitchen.ts';
 import type { AgentRecord } from '../shared/agent.ts';
+import { buildControlRoom, type StatusLight } from './control-room-3d.ts';
 
 export { SCREEN_OFF };
 
 export interface Seat extends SeatSpot {
   screen: DeskScreen;
+  /** The console's status light (Control room). */
+  light?: StatusLight;
 }
 
 /**
@@ -26,6 +29,7 @@ export interface Seat extends SeatSpot {
 export function updateScreens(seats: Seat[], occupants: Map<number, AgentRecord>, now: number) {
   for (const seat of seats) {
     seat.screen.show(screenContent(occupants.get(seat.index)), now);
+    seat.light?.show(occupants.get(seat.index)?.state ?? null);
   }
 }
 
@@ -37,6 +41,7 @@ export function updateBackWall(office: { backWall: THREE.Object3D; layout: Offic
 /** The office for preset `preset` (classic if unknown) with `rows` curved rows of desks. Builds without a DOM or WebGL. */
 export function buildOffice(rows: number, preset = 'classic') {
   const layout = officeLayout(rows, preset);
+  if (layout.preset === 'control-room') return buildControlRoom(layout);
   const group = new THREE.Group();
   const backWall = addRoom(group, layout);
   addFrontGlass(group);
@@ -61,7 +66,7 @@ export function buildOffice(rows: number, preset = 'classic') {
     row.add(screen.root);
     return { ...spot, screen };
   });
-  return { group, seats, layout, board, backWall, tv };
+  return { group, seats, layout, board, backWall, tv, doors: null };
 }
 
 const turned = <T extends THREE.Object3D>(obj: T, yaw: number) => {
@@ -203,7 +208,12 @@ function addKitchen(group: THREE.Group, layout: OfficeLayout, backWall: THREE.Gr
   kitchen.add(at(buildKettle(), counter.x - 0.3, WORKTOP, counter.z - 0.05));
   kitchen.add(at(buildFruitBowl(), counter.x + 0.05, WORKTOP, counter.z + 0.02));
   backWall.add(at(buildWallCabinet(), counter.x, 0, layout.bounds.back));
+  addBistro(kitchen, table);
+  group.add(kitchen);
+}
 
+/** The kitchen's bistro table with a vase, and a stool either side. */
+export function addBistro(kitchen: THREE.Group, table: { x: number; z: number }) {
   const bistro = tag(new THREE.Group(), 'kitchen-table');
   bistro.add(at(cyl(0.45, 0.45, 0.06, '#F4EEE2'), 0, 0.74, 0));
   bistro.add(at(cyl(0.05, 0.05, 0.72, INK, { outline: 0 }), 0, 0.36, 0));
@@ -216,11 +226,13 @@ function addKitchen(group: THREE.Group, layout: OfficeLayout, backWall: THREE.Gr
     stool.add(at(cyl(0.04, 0.04, 0.52, INK, { outline: 0 }), 0, 0.26, 0));
     kitchen.add(at(stool, table.x + dx, 0, table.z));
   }
-  group.add(kitchen);
 }
 
-/** The TV on the back wall (returned, for the scene to switch on and off, #61) with a sofa facing it. */
-function addLounge(group: THREE.Group, layout: OfficeLayout) {
+/**
+ * The TV (returned, for the scene to switch on and off, #61) with a sofa facing it. `tvFacing`: 1 when
+ * the TV faces +z (on classic's back wall), -1 when it faces -z.
+ */
+export function addLounge(group: THREE.Group, layout: OfficeLayout, tvFacing: 1 | -1 = 1) {
   const { tv, sofa: sofaAt, rug } = layout.lounge;
   const lounge = tag(new THREE.Group(), 'lounge');
   const mat = tag(at(cyl(1, 1, 0.03, '#F0A3B5', { outline: 0.02, shadow: false }, 48), rug.x, 0.015, rug.z), 'rug');
@@ -231,7 +243,7 @@ function addLounge(group: THREE.Group, layout: OfficeLayout) {
   screen.add(at(box(tv.w, 1.3, 0.1, INK), 0, 1.6, 0));
   const picture = at(new THREE.Mesh(new THREE.PlaneGeometry(tv.w - 0.16, 1.14), new THREE.MeshBasicMaterial()), 0, 1.6, 0.06);
   screen.add(picture);
-  lounge.add(at(screen, tv.x, 0, tv.z));
+  lounge.add(turned(at(screen, tv.x, 0, tv.z), tvFacing > 0 ? 0 : Math.PI));
 
   const w = sofaAt.w;
   const sofa = tag(new THREE.Group(), 'sofa');
@@ -240,7 +252,7 @@ function addLounge(group: THREE.Group, layout: OfficeLayout) {
   sofa.add(at(box(0.25, 0.5, 0.85, '#4C6B9C'), -w / 2 + 0.125, 0.4, 0));
   sofa.add(at(box(0.25, 0.5, 0.85, '#4C6B9C'), w / 2 - 0.125, 0.4, 0));
   for (const dx of [-0.75, 0, 0.75]) sofa.add(part(at(box(0.7, 0.12, 0.6, '#6E90C4'), dx, 0.5, 0.05), 'cushion'));
-  lounge.add(turned(at(sofa, sofaAt.x, 0, sofaAt.z), Math.PI)); // faces the TV
+  lounge.add(turned(at(sofa, sofaAt.x, 0, sofaAt.z), tvFacing > 0 ? Math.PI : 0)); // faces the TV
   group.add(lounge);
   return new LoungeTv(picture);
 }
@@ -254,12 +266,20 @@ function addBackWallPieces(group: THREE.Group, layout: OfficeLayout) {
   frame.add(at(board.mesh, 0, 2.05, 0.06));
   group.add(at(frame, layout.board.x, 0, back + 0.05));
 
+  group.add(at(buildCooler(), layout.cooler.x, 0, layout.cooler.z));
+  const { x, z, length } = layout.bookshelf;
+  group.add(turned(at(buildBookshelf(length), x, 0, z), Math.PI / 2)); // against the left wall
+  return board;
+}
+
+export function buildCooler() {
   const cooler = tag(new THREE.Group(), 'water-cooler');
   cooler.add(at(box(0.4, 0.75, 0.4, '#E9E3F5'), 0, 0.38, 0));
   cooler.add(at(cyl(0.18, 0.18, 0.45, '#8FD3F2', { outline: 0.04 }), 0, 0.98, 0));
-  group.add(at(cooler, layout.cooler.x, 0, layout.cooler.z));
+  return cooler;
+}
 
-  const { x, z, length } = layout.bookshelf;
+export function buildBookshelf(length: number) {
   const shelf = tag(new THREE.Group(), 'bookshelf');
   shelf.add(at(box(length, 1.4, 0.4, WOOD), 0, 0.7, 0));
   const spines = ['#4D86FF', '#F07A4A', '#5BA37A', '#E2B347', '#C25B7A', '#7E6BD6', '#3FB3A6'];
@@ -270,8 +290,7 @@ function addBackWallPieces(group: THREE.Group, layout: OfficeLayout) {
       shelf.add(at(book, -0.57 + i * 0.19, y - 0.17 + h / 2, 0.06));
     }
   });
-  group.add(turned(at(shelf, x, 0, z), Math.PI / 2)); // against the left wall
-  return board;
+  return shelf;
 }
 
 const ART = [['#F07A4A', '#E2B347'], ['#4D86FF', '#8FD3F2'], ['#5BA37A', '#F0A3B5']];
@@ -291,15 +310,18 @@ function addWallArt(group: THREE.Group, layout: OfficeLayout) {
 }
 
 function addPlants(group: THREE.Group, layout: OfficeLayout) {
-  layout.plants.forEach(({ x, z }, i) => {
-    const plant = tag(new THREE.Group(), 'plant');
-    plant.add(at(cyl(0.22, 0.17, 0.36, '#D9774B'), 0, 0.18, 0));
-    for (const [px, py, pz, r] of [[0, 0.62, 0, 0.26], [0.14, 0.5, 0.08, 0.2], [-0.13, 0.52, -0.06, 0.2], [0.02, 0.82, -0.04, 0.17]]) {
-      plant.add(at(ball(r, '#5FA35A'), px, py, pz));
-    }
-    plant.scale.setScalar(0.85 + (i % 3) * 0.15);
-    group.add(at(plant, x, 0, z));
-  });
+  layout.plants.forEach(({ x, z }, i) => group.add(at(buildPlant(i), x, 0, z)));
+}
+
+/** A potted plant; `i` varies its size. */
+export function buildPlant(i: number) {
+  const plant = tag(new THREE.Group(), 'plant');
+  plant.add(at(cyl(0.22, 0.17, 0.36, '#D9774B'), 0, 0.18, 0));
+  for (const [px, py, pz, r] of [[0, 0.62, 0, 0.26], [0.14, 0.5, 0.08, 0.2], [-0.13, 0.52, -0.06, 0.2], [0.02, 0.82, -0.04, 0.17]]) {
+    plant.add(at(ball(r, '#5FA35A'), px, py, pz));
+  }
+  plant.scale.setScalar(0.85 + (i % 3) * 0.15);
+  return plant;
 }
 
 /** A desk whose sitter is on its -z side, facing +z (the screen side), so their right is -x. 0.7 m deep, so 1.5 m stays clear between rows. */
@@ -315,7 +337,7 @@ function buildDesk() {
 }
 
 /** A chair facing +z (its back on the -z side). */
-function buildChair() {
+export function buildChair() {
   const chair = tag(new THREE.Group(), 'chair');
   chair.add(at(cyl(0.3, 0.3, 0.09, '#6B5B95'), 0, 0.42, 0));
   chair.add(at(box(0.55, 0.5, 0.09, '#6B5B95'), 0, 0.72, -0.3));
