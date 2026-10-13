@@ -10,7 +10,7 @@ import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
 import { ROD_HAND, ROD_LENGTH, rodPitch, type Cast } from './fishing.ts';
 import { HANDS, shotAt } from './hoops.ts';
 import { STRIKE_AT } from './pool.ts';
-import { BOARD, COLLECT_FROM, DART, PULL as DARTS_PULL, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, WALK as DARTS_WALK, dartsAt } from './darts.ts';
+import { COLLECT_WALK, DART, PULL as DARTS_PULL, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, WALK as DARTS_WALK, dartsAt } from './darts.ts';
 import { RELEASE_AT as BALL_RELEASE_AT } from './fetch.ts';
 
 const SEAT_Y = 0.38;
@@ -521,8 +521,8 @@ export class Character {
   /** Darts (#54): after a round, walk up to the board to pull the darts out, then back to the line. */
   private collectDarts(place: HangoutPlace) {
     const { walk, turn } = dartsAt(this.placeTime);
-    const to = BOARD.x + COLLECT_FROM;
-    this.root.position.set(place.x + (to - place.x) * walk, 0, place.z);
+    const step = COLLECT_WALK * walk;
+    this.root.position.set(place.x + Math.sin(place.yaw) * step, 0, place.z + Math.cos(place.yaw) * step);
     this.root.rotation.y = place.yaw + Math.PI * turn;
   }
 

@@ -1,7 +1,7 @@
 // Hoops (#73): a shot every few seconds; the shooter jumps, lets go at the top and the ball arcs
 // into the bin, where it stays until the next one lands. A function of seconds since the shooter
 // got to the line, so the hands, the ball in them and the ball in the air agree.
-import { BREAK_ROOM, type HangoutPlace } from './layout.ts';
+import { BREAK_ROOM, type HangoutPlace, type Point } from './layout.ts';
 import { fromThrower } from './darts.ts';
 
 export const SHOT_EVERY = 3;
@@ -33,8 +33,8 @@ export function shotAt(t: number) {
 /** The ball between the hands, in the shooter's frame, `t` seconds in. */
 export const ballInHands = (t: number) => ({ x: 0, y: shotAt(t).hands + HANDS.under, z: HANDS.forward });
 
-/** The ball `k` (0–1) of the way from the hands at release to resting in the bin. */
-export function ballFlight(place: HangoutPlace, k: number) {
-  const from = fromThrower(place, ballInHands(RELEASE_AT)), to = { x: BREAK_ROOM.bin.x, y: BIN.rest, z: BREAK_ROOM.bin.z };
+/** The ball `k` (0–1) of the way from the hands at release to resting in the bin at `bin`. */
+export function ballFlight(place: HangoutPlace, k: number, bin: Point = BREAK_ROOM.bin) {
+  const from = fromThrower(place, ballInHands(RELEASE_AT)), to = { x: bin.x, y: BIN.rest, z: bin.z };
   return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k + 4 * LIFT * k * (1 - k), z: from.z + (to.z - from.z) * k };
 }

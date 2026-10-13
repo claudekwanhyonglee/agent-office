@@ -31,12 +31,13 @@ export function createOfficeScene(host: HTMLElement) {
   let selected: string | null = null;
   const planes = new PaperPlanes(view.scene);
   const mugs = new DeskMugs(view.scene);
-  const poolBalls = new PoolBalls(view.scene);
-  const pongBall = new PongBallMesh(view.scene);
-  const boardDarts = new BoardDarts(view.scene);
-  const binBall = new BinBall(view.scene);
-  const pondFish = new PondFish(view.scene);
-  const fishingGear = new FishingGear(view.scene);
+  const props = () => office.layout.props;
+  const poolBalls = new PoolBalls(view.scene, props);
+  const pongBall = new PongBallMesh(view.scene, props);
+  const boardDarts = new BoardDarts(view.scene, props);
+  const binBall = new BinBall(view.scene, props);
+  const pondFish = new PondFish(view.scene, props);
+  const fishingGear = new FishingGear(view.scene, props);
   let pondTime = 0;
   const dog = new Dog();
   dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
@@ -156,7 +157,7 @@ export function createOfficeScene(host: HTMLElement) {
     office.tv.update([...characters.values()].some((c) => c.onSofa()), t);
     const dip = office.layout.hangouts.find((s) => s.name === 'pool-dip')!.places;
     const riders = [...characters.values(), ...leaving];
-    floatRings(office.group, dip.map((p) => riders.find((c) => c.place?.x === p.x && c.place.z === p.z)?.floatOffset() ?? null));
+    floatRings(office.group, dip.map((p) => riders.find((c) => c.place?.x === p.x && c.place.z === p.z)?.floatOffset() ?? null), props().pool);
     boardDarts.update([...characters.values()].map((c) => c.dartsThrower()).find((d) => d) ?? null);
     binBall.update([...characters.values()].map((c) => c.hoopsShooter()).find((d) => d) ?? null);
     dog.update(t, dt);
@@ -188,7 +189,7 @@ export function createOfficeScene(host: HTMLElement) {
     characters.set('debug-angler', angler);
     let next = 0;
     const cast = () => {
-      const c = { landing: landingFrom(Math.random), fish: null };
+      const c = { landing: landingFrom(Math.random, props()), fish: null };
       angler.fish(c);
       fishingGear.start(c, place, pondTime);
       clearTimeout(next);

@@ -1,7 +1,7 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
 import {
   DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, fetchRun, officeLayout, overTheShoulder, pathLength, route, withoutLoops, yawTowards,
-  type DogSpot, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
+  type DogSpot, type OfficeLayout, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
 } from './layout.ts';
 import { SHOT_COUNT, SHOT_SECONDS } from './pool.ts';
 import { hitter, rallySeconds, type Rally, type Side } from './pong.ts';
@@ -144,7 +144,7 @@ const systemClock: Clock = { now: () => performance.now() / 1000, random: Math.r
 export class OfficeController {
   readonly agents = new Map<string, Occupant>();
   rows = INITIAL_ROWS;
-  layout = officeLayout(INITIAL_ROWS);
+  layout: OfficeLayout;
   private firstUpdate = true;
   /** The last set-off handed out in this update, so agents turning idle together are staggered (#59). */
   private lastSetOff = -Infinity;
@@ -163,7 +163,9 @@ export class OfficeController {
   /** When the sofa next cheers, if anyone's sitting there then (#61). */
   private cheerAt: number | null = null;
 
-  constructor(clock: Partial<Clock> = {}) {
+  /** `preset`: the office layout's preset id (classic if unknown). */
+  constructor(clock: Partial<Clock> = {}, private preset = 'classic') {
+    this.layout = officeLayout(INITIAL_ROWS, preset);
     this.clock = { ...systemClock, ...clock };
     const now = this.clock.now();
     this.dog = { spot: this.layout.dogSpots[0], lying: true, arrivesAt: now, nextAt: now + this.between(DOG_REST) };
@@ -625,7 +627,7 @@ export class OfficeController {
       return;
     }
     if (agent.place?.pose === 'fishing') {
-      const landing = landingFrom(this.clock.random);
+      const landing = landingFrom(this.clock.random, this.layout.props);
       const fish = this.clock.random() < CATCH_CHANCE ? Math.floor(this.clock.random() * FISH) : null;
       events.push({ type: 'cast', key, cast: { landing, fish } });
       agent.actAt = now + CAST_SECONDS;
@@ -699,7 +701,7 @@ export class OfficeController {
   private addRow(now: number, events: OfficeEvent[]) {
     const old = this.layout;
     this.rows += 1;
-    this.layout = officeLayout(this.rows);
+    this.layout = officeLayout(this.rows, this.preset);
     events.push({ type: 'rows', count: this.rows });
     const places = old.hangouts.flatMap((s) => s.places), moved = this.layout.hangouts.flatMap((s) => s.places);
     // The hall moves back, and the dog's hall spot with it.

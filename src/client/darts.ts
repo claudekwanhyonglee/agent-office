@@ -1,6 +1,6 @@
 // Darts (#54): rounds of three throws, then the thrower walks up and pulls them out. A function of
 // seconds since the thrower got to the throwing line, so the hand, the flights and the board agree.
-import { BREAK_ROOM, type HangoutPlace } from './layout.ts';
+import { BREAK_ROOM, DARTS_LINE, type HangoutPlace, type Point } from './layout.ts';
 
 export const THROWS = 3;
 /** Each throw: aim, let go at RELEASE_AT, fly for FLIGHT seconds into the board. */
@@ -14,9 +14,12 @@ export const PULL = 0.6;
 const TURN = 0.5;
 export const ROUND = THROWS * THROW_EVERY + 2 * WALK + PULL;
 
-/** The board's face (it faces +x, into the room) and how close the thrower walks up to it. */
-export const BOARD = { x: BREAK_ROOM.dartboard.x + 0.025, y: 1.6, z: BREAK_ROOM.dartboard.z, r: 0.3 };
+/** The face of a board hung at `dartboard` (it faces +x, into the room), and how close the thrower walks up to it. */
+const faceOf = (dartboard: Point) => ({ x: dartboard.x + 0.025, y: 1.6, z: dartboard.z, r: 0.3 });
+export const BOARD = faceOf(BREAK_ROOM.dartboard);
 export const COLLECT_FROM = 0.55;
+/** How far the thrower walks from the line to collect: the board is straight ahead. */
+export const COLLECT_WALK = DARTS_LINE - 0.025 - COLLECT_FROM;
 /** Where each throw of a round lands on the face: up and along +z from the centre. */
 const LANDINGS = [{ up: 0.06, along: -0.09 }, { up: -0.1, along: 0.03 }, { up: 0.03, along: 0.12 }];
 /** The hand at the moment of release, in the thrower's own frame (forward is +z, its right is +x). */
@@ -61,13 +64,16 @@ export function fromThrower(place: HangoutPlace, p: Vec): Vec {
   return { x: place.x + p.x * cos + p.z * sin, y: p.y, z: place.z - p.x * sin + p.z * cos };
 }
 
-/** Where throw `i`'s tip goes into the board. */
-export const landing = (i: number): Vec => ({ x: BOARD.x, y: BOARD.y + LANDINGS[i].up, z: BOARD.z + LANDINGS[i].along });
+/** Where throw `i`'s tip goes into the board at `dartboard`. */
+export function landing(i: number, dartboard: Point = BREAK_ROOM.dartboard): Vec {
+  const face = faceOf(dartboard);
+  return { x: face.x, y: face.y + LANDINGS[i].up, z: face.z + LANDINGS[i].along };
+}
 
-/** A dart's origin and pointing direction `k` (0–1) of the way through throw `i` from `place`; at 1 it's stuck. */
-export function dartFlight(place: HangoutPlace, i: number, k: number) {
+/** A dart's origin and pointing direction `k` (0–1) of the way through throw `i` from `place` at the board at `dartboard`; at 1 it's stuck. */
+export function dartFlight(place: HangoutPlace, i: number, k: number, dartboard: Point = BREAK_ROOM.dartboard) {
   // The tip starts a dart's length ahead of the hand, along the way it sets off.
-  const hand = fromThrower(place, RELEASE_HAND), to = landing(i);
+  const hand = fromThrower(place, RELEASE_HAND), to = landing(i, dartboard);
   const lift = 0.15;
   const start = { x: to.x - hand.x, y: to.y - hand.y + 4 * lift, z: to.z - hand.z };
   const len = Math.hypot(start.x, start.y, start.z);

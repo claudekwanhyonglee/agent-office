@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { at, ball, box, cyl, mesh, part, tag, toonRamp } from './toon.ts';
 import {
-  BREAK_ROOM, DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, LEFT_WALL_FACE, LEFT_WALL_HEIGHT, MEETING_ROOM, MEETING_TABLE, WALL_HEIGHT, officeLayout, type OfficeLayout, type SeatSpot,
+  DECK_Z, FLOOR, GLASS_DOORS, GLASS_Z, LEFT_WALL_FACE, LEFT_WALL_HEIGHT, MEETING_ROOM, MEETING_TABLE, WALL_HEIGHT, officeLayout, type OfficeLayout, type Props, type SeatSpot,
 } from './layout.ts';
 import { SCREEN_OFF } from './poses.ts';
 import { DeskScreen, screenContent } from './screen.ts';
@@ -34,9 +34,9 @@ export function updateBackWall(office: { backWall: THREE.Object3D; layout: Offic
   office.backWall.visible = camera.z > office.layout.bounds.back;
 }
 
-/** The office with `rows` curved rows of desks. Builds without a DOM or WebGL. */
-export function buildOffice(rows: number) {
-  const layout = officeLayout(rows);
+/** The office for preset `preset` (classic if unknown) with `rows` curved rows of desks. Builds without a DOM or WebGL. */
+export function buildOffice(rows: number, preset = 'classic') {
+  const layout = officeLayout(rows, preset);
   const group = new THREE.Group();
   const backWall = addRoom(group, layout);
   addFrontGlass(group);
@@ -46,10 +46,10 @@ export function buildOffice(rows: number) {
   const board = addBackWallPieces(group, layout);
   addWallArt(group, layout);
   addPlants(group, layout);
-  addSoloProps(group);
-  addGameTables(group);
-  addPool(group);
-  addPetCorner(group);
+  addSoloProps(group, layout.props);
+  addGameTables(group, layout.props);
+  addPool(group, layout.props);
+  addPetCorner(group, layout.props);
 
   const deskRows = Array.from({ length: rows }, () => tag(new THREE.Group(), 'desk-row'));
   group.add(...deskRows);
@@ -89,7 +89,7 @@ function addRoom(group: THREE.Group, layout: OfficeLayout) {
   // The deck, and the base under the whole floor, have holes for the sunken pool and pond (#63).
   const deck = tag(new THREE.Group(), 'deck');
   const boards = new THREE.Mesh(
-    new THREE.ShapeGeometry(withWaterHoles(rectangle(left, right, GLASS_Z, front))),
+    new THREE.ShapeGeometry(withWaterHoles(rectangle(left, right, GLASS_Z, front), layout.props)),
     new THREE.MeshToonMaterial({ color: '#D9B48A', gradientMap: toonRamp }),
   );
   boards.rotation.x = -Math.PI / 2;
@@ -97,13 +97,13 @@ function addRoom(group: THREE.Group, layout: OfficeLayout) {
   boards.receiveShadow = true;
   deck.add(tag(boards, 'floor'));
   for (let z = GLASS_Z + 0.6; z < front; z += 0.6) {
-    for (const [x0, x1] of outsideWater(left, right, z)) {
+    for (const [x0, x1] of outsideWater(left, right, z, layout.props)) {
       deck.add(at(box(x1 - x0, 0.004, 0.03, '#B98F63', { outline: 0, shadow: false }), (x0 + x1) / 2, 0.003, z));
     }
   }
   group.add(deck);
 
-  const base = mesh(new THREE.ExtrudeGeometry(withWaterHoles(rectangle(left - 0.15, right + 0.15, back - 0.15, front + 0.15)), { depth: 0.3, bevelEnabled: false }), '#4A4068', { outline: 0, shadow: false });
+  const base = mesh(new THREE.ExtrudeGeometry(withWaterHoles(rectangle(left - 0.15, right + 0.15, back - 0.15, front + 0.15), layout.props), { depth: 0.3, bevelEnabled: false }), '#4A4068', { outline: 0, shadow: false });
   base.rotation.x = -Math.PI / 2;
   base.position.y = -0.31;
   group.add(base);
@@ -332,8 +332,7 @@ function rectangle(x0: number, x1: number, z0: number, z1: number) {
 }
 
 /** The pool's and pond's water areas, cut out of a floor shape. */
-function withWaterHoles(shape: THREE.Shape) {
-  const { pool, pond } = BREAK_ROOM;
+function withWaterHoles(shape: THREE.Shape, { pool, pond }: Props) {
   const [hx, hz] = [pool.w / 2 - POOL_RIM, pool.d / 2 - POOL_RIM];
   const hole = new THREE.Path();
   hole.moveTo(pool.x - hx, -(pool.z - hz)).lineTo(pool.x - hx, -(pool.z + hz)).lineTo(pool.x + hx, -(pool.z + hz)).lineTo(pool.x + hx, -(pool.z - hz)).lineTo(pool.x - hx, -(pool.z - hz));
@@ -344,8 +343,7 @@ function withWaterHoles(shape: THREE.Shape) {
 }
 
 /** The stretches of a line across the deck at `z` (from x0 to x1) that aren't over the pool or pond. */
-function outsideWater(x0: number, x1: number, z: number): [number, number][] {
-  const { pool, pond } = BREAK_ROOM;
+function outsideWater(x0: number, x1: number, z: number, { pool, pond }: Props): [number, number][] {
   const cuts: [number, number][] = [];
   if (Math.abs(z - pool.z) < pool.d / 2 - POOL_RIM) cuts.push([pool.x - pool.w / 2 + POOL_RIM, pool.x + pool.w / 2 - POOL_RIM]);
   const k = (z - pond.z) / pond.rz;
