@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import type { AckStore } from './acknowledged.ts';
 import type { CloudLimit } from '../shared/usage.ts';
 import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentRecord } from '../shared/agent.ts';
 import { buildCloudList, type CloudSession } from '../cloud/sessions.ts';
@@ -189,18 +189,37 @@ const REFRESH_EVERY = 5 * 60_000;
 let lastRefresh = 0;
 let refreshNext = false;
 
+/** Work setups route Claude Code through an API key or gateway; those keys must never pay for the renewal. */
+export function usesWorkProvider(settings: unknown) {
+  const env = (settings as { env?: Record<string, unknown> } | null)?.env ?? {};
+  if ((settings as { apiKeyHelper?: unknown } | null)?.apiKeyHelper) return true;
+  return ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX']
+    .some((key) => env[key]);
+}
+
+const WORK_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX'];
+
 /**
  * claude.ai logins last about 8 hours. Rather than handle the refresh token ourselves (which would leave
- * `claude` holding a used one), ask the CLI to check its login, which renews it and saves the new one.
- * Work settings are left out so the check uses your claude.ai login, never an API key or gateway.
+ * `claude` holding a used one), have the CLI renew it: `claude auth status` doesn't, but any request does,
+ * so send a one-word prompt to the smallest model (a few tokens of your plan, about three times a day).
+ * Skipped when Claude Code's settings route it through a work key or gateway, so that never pays.
  */
 function askClaudeToRefresh(env: NodeJS.ProcessEnv): Promise<void> {
   if (Date.now() - lastRefresh < REFRESH_EVERY) return Promise.resolve();
   lastRefresh = Date.now();
+  if (usesWorkProvider(readJson(() => readFileSync(join(claudeConfigDir(), 'settings.json'), 'utf8')))) {
+    console.error('Not renewing the Claude login: Claude Code settings use a work API key or gateway.');
+    return Promise.resolve();
+  }
   const childEnv = { ...env };
-  for (const key of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX']) delete childEnv[key];
+  for (const key of WORK_KEYS) delete childEnv[key];
   return new Promise((resolve) => {
-    execFile(env.CLAUDE_BIN || 'claude', ['auth', 'status', '--json'], { env: childEnv, timeout: 60_000 }, () => resolve());
+    execFile(env.CLAUDE_BIN || 'claude', ['-p', 'Reply with just OK.', '--model', 'haiku'],
+      { env: childEnv, cwd: tmpdir(), timeout: 120_000 }, (error) => {
+        console.log(error ? `Couldn't renew the Claude login: ${error.message.split('\n')[0]}` : 'Renewed the Claude login.');
+        resolve();
+      });
   });
 }
 

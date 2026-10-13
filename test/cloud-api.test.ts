@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cloudAckStore, explainFetchError, normaliseSession, rememberUpdated, sessionsFromResponse, wantsCloud } from '../src/server/cloud.ts';
+import { cloudAckStore, explainFetchError, usesWorkProvider, normaliseSession, rememberUpdated, sessionsFromResponse, wantsCloud } from '../src/server/cloud.ts';
 import { mapCloudState } from '../src/cloud/sessions.ts';
 
 describe('cloud mode', () => {
@@ -60,5 +60,13 @@ describe('explainFetchError', () => {
     const error = Object.assign(new TypeError('fetch failed'), { cause: { code: 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY' } });
     expect(explainFetchError(error)).toContain('UNABLE_TO_GET_ISSUER_CERT_LOCALLY');
     expect(explainFetchError(error)).toContain('--use-system-ca');
+  });
+});
+
+describe('usesWorkProvider', () => {
+  it('spots work API settings in Claude Code settings', () => {
+    expect(usesWorkProvider({ env: { CLAUDE_CODE_USE_FOUNDRY: '1' } })).toBe(true);
+    expect(usesWorkProvider({ env: { FOO: '1' } })).toBe(false);
+    expect(usesWorkProvider(null)).toBe(false);
   });
 });
