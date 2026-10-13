@@ -25,7 +25,8 @@ export interface CloudSession {
   };
 }
 
-const DAY = 24 * 3600_000;
+const HOUR = 3600_000;
+const DAY = 24 * HOUR;
 
 export function mapCloudState({ status_bucket: bucket, session_status: status }: CloudSession): OfficeState {
   const archived = status === 'SESSION_STATUS_ARCHIVED';
@@ -98,10 +99,13 @@ export function toCloudRecord(session: CloudSession): AgentRecord {
 /** Live sessions, plus ended ones touched in the last day (like the local office). */
 export function buildCloudList(sessions: CloudSession[], now: number) {
   return sessions.map(toCloudRecord).filter((record, i) => {
+    const updated = Date.parse(sessions[i].updated_at ?? '');
+    const age = Number.isFinite(updated) ? now - updated : Infinity;
+    // Every project has a chat agent that's always around (and can look busy when it isn't); show it for an hour after it was last active.
+    if (record.coordinator) return age < HOUR;
     // Idle sessions pile up for weeks; keep only ones working, waiting on you, or touched in the last day.
     if (record.state === 'working' || record.state === 'needs') return true;
-    const updated = Date.parse(sessions[i].updated_at ?? '');
-    return Number.isFinite(updated) && now - updated < DAY;
+    return age < DAY;
   });
 }
 
