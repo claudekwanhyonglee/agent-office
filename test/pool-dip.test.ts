@@ -162,3 +162,17 @@ describe('#57 AC5 back to the home spot before climbing out', () => {
     });
   });
 });
+
+describe('#125 varied spin in the pool', () => {
+  it('#125 AC1 across 100 drift draws both directions appear and the fastest spins 4x the slowest', () => {
+    const random = seeded(125), spins = Array.from({ length: 100 }, () => driftParams(random).spin);
+    expect(spins.some((s) => s > 0) && spins.some((s) => s < 0)).toBe(true);
+    const speeds = spins.map(Math.abs);
+    expect(Math.max(...speeds)).toBeGreaterThanOrEqual(4 * Math.min(...speeds));
+  });
+
+  it('#125 AC2 the empty rings do not all spin at the same speed and direction', () => {
+    const rates = RINGS.map((_, i) => emptyDriftAt(i, 11).spin - emptyDriftAt(i, 10).spin);
+    expect(new Set(rates.map((r) => r.toFixed(3))).size).toBeGreaterThan(1);
+  });
+});

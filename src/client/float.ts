@@ -18,7 +18,7 @@ export function driftParams(random: () => number): Drift {
     ax: between(0.5, 1) * DRIFT.x, az: between(0.5, 1) * DRIFT.z,
     wx: between(0.15, 0.3), wz: between(0.12, 0.25),
     px: between(0, Math.PI * 2), pz: between(0, Math.PI * 2),
-    spin: between(0.15, 0.4) * (random() < 0.5 ? -1 : 1),
+    spin: between(0.08, 0.45) *(random() < 0.5 ? -1 : 1),
     bob: between(0, Math.PI * 2),
   };
 }
@@ -41,5 +41,5 @@ export const CLIMBING_IN: Afloat = { x: 0, z: 0, spin: 0, bob: 0 };
 export function emptyDriftAt(ring: number, t: number): Afloat {
   let seed = (ring + 1) * 104729;
   const d = driftParams(() => (seed = (seed * 16807) % 2147483647) / 2147483647);
-  return { ...driftAt(d, t + SETTLE), spin: 0.2 * t + ring * 2.4 };
+  return { ...driftAt(d, t + SETTLE), spin: d.spin * t + ring * 2.4 };
 }
