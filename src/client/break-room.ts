@@ -8,7 +8,7 @@ type Floor = (p: Point) => number;
 const flat: Floor = () => 0;
 import { dartModel, hoopsBall } from './character.ts';
 import { ballFlight, shotAt } from './hoops.ts';
-import { THROWS, dartFlight, dartsAt } from './darts.ts';
+import { THROWS, dartFlight, dartsAt, stuckDart } from './darts.ts';
 import { emptyDriftAt, type Afloat } from './float.ts';
 import { POND_DEPTH, POOL_DEPTH, waterSurface } from './water.ts';
 import { CAST_SECONDS, castAt, type Cast, type CastFrame } from './fishing.ts';
@@ -236,7 +236,8 @@ export class BoardDarts {
       const k = !round ? null : i < round.stuck ? 1 : round.flying?.index === i ? round.flying.k : null;
       dart.visible = k != null;
       if (k == null) return;
-      const { origin, dir } = dartFlight(thrower!.place, i, k, this.props().dartboard);
+      const quiver = round!.quivering?.index === i ? round!.quivering.s : null;
+      const { origin, dir } = quiver != null ? stuckDart(thrower!.place, i, quiver, this.props().dartboard) : dartFlight(thrower!.place, i, k, this.props().dartboard);
       dart.position.set(origin.x, origin.y + this.floor(origin), origin.z);
       dart.lookAt(origin.x + dir.x, dart.position.y + dir.y, origin.z + dir.z);
     });
