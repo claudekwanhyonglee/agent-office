@@ -389,6 +389,8 @@ const EARTH_DEPTH = 1.0;
 const TV_DROP = -0.44;
 const GRASS_DEPTH = 0.1;
 const LAKE_DEPTH = 0.6;
+/** The earth under the lake stops this far below the bed, so the two never z-fight through the water. */
+const BED_GAP = 0.02;
 const WATER_Y = -0.05;
 
 /**
@@ -449,11 +451,11 @@ function buildLake(shore: Point[], deck: Area) {
   const shape = flat(outline);
   const bed = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(C.lakeBed));
   bed.rotation.x = -Math.PI / 2;
-  lake.add(at(bed, 0, -LAKE_DEPTH, 0));
-  lake.add(at(slab(shape, EARTH_DEPTH - LAKE_DEPTH, C.earth, C.earth), 0, -EARTH_DEPTH, 0));
+  lake.add(part(at(bed, 0, -LAKE_DEPTH, 0), 'lake-bed'));
+  lake.add(part(at(slab(shape, EARTH_DEPTH - LAKE_DEPTH - BED_GAP, C.earth, C.earth), 0, -EARTH_DEPTH, 0), 'lake-earth'));
   lake.add(at(waterSurface(new THREE.ShapeGeometry(shape), C.lake), 0, WATER_Y, 0));
-  // The cut faces, a hair proud of the deck's sides, each with a pale line where the water meets the cut.
-  const height = LAKE_DEPTH + WATER_Y, y = (WATER_Y - LAKE_DEPTH) / 2;
+  // The cut faces, a hair proud of the deck's sides and down to the earth, each with a pale line where the water meets the cut.
+  const height = LAKE_DEPTH + BED_GAP + WATER_Y, y = (WATER_Y - LAKE_DEPTH - BED_GAP) / 2;
   const [frontX0, rightZ0] = [shore.at(-1)!.x, shore[0].z];
   const frontW = deck.x1 - frontX0, rightD = deck.z1 - rightZ0;
   lake.add(part(at(box(frontW, height, 0.02, C.lakeCut, { outline: 0, shadow: false }), (frontX0 + deck.x1) / 2, y, deck.z1 + 0.01), 'cut-face'));
