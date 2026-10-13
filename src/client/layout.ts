@@ -194,9 +194,11 @@ export function officeLayout(rows: number) {
   const toHall = (p: Point): Point[] => [p, { x: p.x, z: hallZ }];
   const toDeck = (p: Point): Point[] => [p, { x: p.x, z: DECK_Z }];
   const sofaFront = lounge.sofa.z - 0.95;
+  /** Sitters sit forward of the sofa's middle, so their backs stay clear of the backrest (#77). */
+  const seatZ = lounge.sofa.z - 0.25;
   const sofaSeat = (x: number, spot = 'lounge', pose: HangoutPose = 'lounging'): HangoutPlace => ({
-    x, z: lounge.sofa.z, spot, yaw: Math.PI, pose, sits: true,
-    link: [{ x, z: lounge.sofa.z }, { x, z: sofaFront }, { x: 4.75, z: sofaFront }, { x: 4.75, z: hallZ }],
+    x, z: seatZ, spot, yaw: Math.PI, pose, sits: true,
+    link: [{ x, z: seatZ }, { x, z: sofaFront }, { x: 4.75, z: sofaFront }, { x: 4.75, z: hallZ }],
   });
   const standing = (spot: string, p: Point, pose: HangoutPose, yaw = Math.PI): HangoutPlace =>
     ({ ...p, spot, yaw, pose, link: toHall(p) });

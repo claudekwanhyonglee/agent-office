@@ -21,6 +21,8 @@ const HOP_SECONDS = 0.45;
 /** A sofa cheer (#61): both fists up, pumping. */
 const CHEER_SECONDS = 1.5;
 const SOFA_SPOTS = ['lounge', 'couch-co-op'];
+/** On the sofa the body is lifted onto the cushions, 0.56 m up, from the usual seat height (#77). */
+const SOFA_LIFT = 0.17;
 /** A leaving agent's bubble grows for this long, then vanishes (#49). */
 const POP_SECONDS = 0.2;
 /** Pool (#53): the cue is held level this high, over the playing surface (0.835 m); the bridge hand stops short of the table's edge, 0.85 m ahead. */
@@ -389,7 +391,7 @@ export class Character {
         hr.position.set(0.44 + Math.sin(tt * 10) * 0.09 * motion, 1.62 + Math.abs(Math.sin(tt * 10)) * 0.04, 0.12);
         bubbleY = 2.3 + Math.abs(Math.sin(tt * 3.2)) * 0.12 * motion;
       } else if (pose === 'sipping') {
-        p.rotation.x = -0.2;
+        p.rotation.x = -0.15;
         const sipping = (tt % 6) / 6 < 0.22;
         head.rotation.x = sipping ? -0.28 : -0.05;
         hl.position.set(-0.32, 0.45, 0.28);
@@ -452,7 +454,8 @@ export class Character {
     if (place.pose === 'lounging') {
       fl.position.set(-0.16, -0.24, 0.34);
       fr.position.set(0.16, -0.24, 0.34);
-      p.rotation.x = -0.28;
+      p.position.y = SOFA_LIFT;
+      p.rotation.x = -0.15;
       head.rotation.x = -0.1 + Math.sin(tt * 0.8) * 0.05 * motion;
       hl.position.set(-0.4, 0.42, 0.2);
       hr.position.set(0.34, 0.62, 0.36);
@@ -911,6 +914,7 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
   gaming: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
     // On the sofa, leaning in, thumbs going.
     const mash = Math.max(0, Math.sin(tt * 14)) * 0.025 * motion;
+    pivot.position.y = SOFA_LIFT;
     pivot.rotation.x = 0.12;
     pivot.rotation.z = Math.sin(tt * 0.9) * 0.08 * motion;
     head.rotation.x = -0.05;

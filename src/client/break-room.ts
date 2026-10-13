@@ -1,6 +1,6 @@
 // Break-room props (#29), at their plan C positions. Each is tagged so route tests treat it as furniture.
 import * as THREE from 'three';
-import { at, ball, box, cyl, mesh, tag } from './toon.ts';
+import { at, ball, box, cyl, mesh, part, tag } from './toon.ts';
 import { BREAK_ROOM, type HangoutPlace, type SeatSpot } from './layout.ts';
 import { dartModel, hoopsBall } from './character.ts';
 import { ballFlight, shotAt } from './hoops.ts';
@@ -38,12 +38,6 @@ const WOOD = '#C98A55';
 const WATER = '#8FD3F2';
 const FELT_TOP = 0.835;
 const RING_Y = 0.1;
-
-/** Marks a piece of a prop (not furniture of its own, so not tagged). */
-const part = <T extends THREE.Object3D>(obj: T, name: string) => {
-  obj.userData.part = name;
-  return obj;
-};
 
 /** The hammock trees' trunks taper from bottom to top; the ropes are tied on this high (#55). */
 const TRUNK = { bottom: 0.16, top: 0.11, height: 1.9 };
