@@ -1,7 +1,7 @@
 // See-through water for the pool and the pond (#63): a semi-transparent surface with drifting
 // highlights over a sunken bottom, and a couple of fish in the pond.
 import * as THREE from 'three';
-import { BREAK_ROOM } from './layout.ts';
+import { BREAK_ROOM, type Props } from './layout.ts';
 import { at, ball, mesh } from './toon.ts';
 
 export const WATER_OPACITY = 0.6;
@@ -45,9 +45,8 @@ export function waterSurface(geometry: THREE.BufferGeometry, color: string) {
 
 export const FISH = 2;
 
-/** Where fish `i` is `t` seconds in: a slow loop well inside the pond, a little below the surface. */
-export function fishAt(i: number, t: number) {
-  const { pond } = BREAK_ROOM;
+/** Where fish `i` is `t` seconds in: a slow loop well inside `pond`, a little below the surface. */
+export function fishAt(i: number, t: number, pond: Props['pond'] = BREAK_ROOM.pond) {
   const w = 0.12 + i * 0.03, phase = i * 2.1;
   const pos = (s: number) => ({
     x: pond.x + 0.62 * pond.rx * Math.sin(w * s + phase),
@@ -84,7 +83,8 @@ export class PondFish {
   readonly fish = ['#F07A4A', '#E2B347'].slice(0, FISH).map(fishModel);
   readonly alerts = this.fish.map(alertMark);
 
-  constructor(parent: THREE.Object3D) {
+  /** `props`: the layout's props, read as it changes. */
+  constructor(parent: THREE.Object3D, private props: () => Props = () => BREAK_ROOM) {
     parent.add(...this.fish, ...this.alerts);
     this.update(0);
   }
@@ -92,7 +92,7 @@ export class PondFish {
   /** `caught`: a fish taking part in a catch, where the cast puts it. */
   update(t: number, caught: { index: number; at: { x: number; y: number; z: number }; heading: number; alert: boolean } | null = null) {
     this.fish.forEach((f, i) => {
-      const at = caught?.index === i ? { ...caught.at, heading: caught.heading } : fishAt(i, t);
+      const at = caught?.index === i ? { ...caught.at, heading: caught.heading } : fishAt(i, t, this.props().pond);
       f.position.set(at.x, at.y, at.z);
       f.rotation.y = at.heading;
       this.alerts[i].visible = caught?.index === i && caught.alert;

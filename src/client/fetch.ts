@@ -38,14 +38,15 @@ export class FetchBall {
   readonly mesh = mesh(new THREE.SphereGeometry(BALL_R, 12, 10), '#C8E04A', { outline: 0.08 });
   private phase: Phase = { kind: 'hand' };
 
-  constructor(parent: THREE.Object3D) {
+  /** `floor`: the floor's height under a point (#103). */
+  constructor(parent: THREE.Object3D, private floor: (p: Point) => number = () => 0) {
     this.mesh.visible = false;
     parent.add(this.mesh);
   }
 
   /** A fetch starts now: the ball will be thrown to `to`. */
   throw(to: Point) {
-    this.phase = { kind: 'throw', t: 0, to: new THREE.Vector3(to.x, BALL_R, to.z), from: null };
+    this.phase = { kind: 'throw', t: 0, to: new THREE.Vector3(to.x, this.floor(to) + BALL_R, to.z), from: null };
   }
 
   /** `thrower`: whoever is playing fetch, if anyone. */

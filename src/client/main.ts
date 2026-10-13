@@ -91,6 +91,8 @@ if (!import.meta.env.VITEST) {
   startUsagePanel(document.getElementById('usage')!);
   startClock(document.querySelector('.brand h1')!);
   const app = boot();
+  // Dev only (#102): `officeFeed([...records])` feeds the office by hand, e.g. to fill the screen wall.
+  if (import.meta.env.DEV && app) Object.assign(window, { officeFeed: app.applyFeed });
   if (app && idleDemo) {
     app.applyFeed(Array.from({ length: idleDemo }, (_, i) => ({
       id: `idle-${i}`, sessionId: `idle-${i}`, name: `agent ${i + 1}`, project: 'demo', cwd: '/demo',

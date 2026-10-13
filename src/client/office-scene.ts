@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { AgentRecord } from '../shared/agent.ts';
 import { createView } from './view.ts';
 import { OfficeController, type OfficeEvent } from './controller.ts';
-import { INITIAL_ROWS } from './layout.ts';
 import { Character } from './character.ts';
 import { PaperPlanes } from './paper-planes.ts';
 import { BinBall, BoardDarts, DeskMugs, FishingGear, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
@@ -11,7 +10,10 @@ import { Dog } from './dog.ts';
 import { FetchBall } from './fetch.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
+import { doorsOpen } from './control-room-3d.ts';
 import { CAST_SECONDS, landingFrom } from './fishing.ts';
+import { bindLayoutPicker, savedLayout } from './layout-picker.ts';
+import { floorAt, planeLanding, type Point } from './layout.ts';
 
 /** The agent a picked mesh belongs to, if any. */
 export function agentKeyOf(object: THREE.Object3D | null | undefined): string | null {
@@ -23,25 +25,44 @@ export function agentKeyOf(object: THREE.Object3D | null | undefined): string | 
 /** The live office: the 3D view plus a character for every listed agent. */
 export function createOfficeScene(host: HTMLElement) {
   const view = createView(host);
-  const controller = new OfficeController();
+  const picker = document.getElementById('layout-picker');
+  let preset = picker ? bindLayoutPicker(picker, switchLayout) : savedLayout();
+  let controller = new OfficeController({}, preset);
+  /** The feed as last shown, to place everyone again when the layout changes. */
+  let records: AgentRecord[] = [];
   const characters = new Map<string, Character>();
   /** Walking out; kept until they're through the door. */
   const leaving = new Set<Character>();
-  let office = view.setRows(INITIAL_ROWS);
+  let office = view.setRows(controller.rows, preset);
   let selected: string | null = null;
   const planes = new PaperPlanes(view.scene);
-  const mugs = new DeskMugs(view.scene);
-  const poolBalls = new PoolBalls(view.scene);
-  const pongBall = new PongBallMesh(view.scene);
-  const boardDarts = new BoardDarts(view.scene);
-  const binBall = new BinBall(view.scene);
-  const pondFish = new PondFish(view.scene);
-  const fishingGear = new FishingGear(view.scene);
+  /** The floor's height under a point, in the office as it is now (#103). */
+  const floor = (p: Point) => floorAt(office.layout, p);
+  const mugs = new DeskMugs(view.scene, floor);
+  const props = () => office.layout.props;
+  const poolBalls = new PoolBalls(view.scene, props, floor);
+  const pongBall = new PongBallMesh(view.scene, props, floor);
+  const boardDarts = new BoardDarts(view.scene, props, floor);
+  const binBall = new BinBall(view.scene, props, floor);
+  const pondFish = new PondFish(view.scene, props);
+  const fishingGear = new FishingGear(view.scene, props);
   let pondTime = 0;
   const dog = new Dog();
+  dog.ground = floor;
   dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
   view.scene.add(dog.root);
-  const fetchBall = new FetchBall(view.scene);
+  const fetchBall = new FetchBall(view.scene, floor);
+  /** A new character, standing on the floor. */
+  const newCharacter = (key: string) => {
+    const character = new Character(lookFor(key));
+    character.ground = floor;
+    return character;
+  };
+  /** `character` throws a paper plane at desk `desk` (it lands where the layout says, #103). */
+  const throwPlane = (character: Character, desk: number) => {
+    const { at, onFloor } = planeLanding(office.layout, office.seats[desk]);
+    character.throwPlane((from) => planes.throw(from, at, onFloor));
+  };
 
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.55, 0.68, 40),
@@ -53,21 +74,36 @@ export function createOfficeScene(host: HTMLElement) {
 
   const debugActivity = import.meta.env.DEV ? new URLSearchParams(location.search).get('activity') : null;
 
-  function show(records: AgentRecord[]) {
+  function show(latest: AgentRecord[]) {
+    records = latest;
     if (debugActivity) return; // the dev scene stays as set up, whatever the feed says
+    apply(controller.update(records));
+  }
+
+  /** Rebuilds the office as preset `next` and seats everyone there afresh, as if the page had just opened (#104). */
+  function switchLayout(next: string) {
+    preset = next;
+    for (const character of [...characters.values(), ...leaving]) view.scene.remove(character.root);
+    characters.clear();
+    leaving.clear();
+    mugs.clear();
+    fishingGear.stop();
+    controller = new OfficeController({}, preset);
+    office = view.setRows(controller.rows, preset);
+    dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
     apply(controller.update(records));
   }
 
   function apply(events: OfficeEvent[]) {
     for (const event of events) {
       if (event.type === 'rows') {
-        office = view.setRows(event.count);
+        office = view.setRows(event.count, preset);
       } else if (event.type === 'place') {
         const character = characters.get(event.key)!;
         if (event.place) character.placeAt(event.seat, event.state, event.place);
         else character.sitAt(event.seat, event.state);
       } else if (event.type === 'arrive') {
-        const character = new Character(lookFor(event.key));
+        const character = newCharacter(event.key);
         character.root.userData.agentKey = event.key;
         view.scene.add(character.root);
         characters.set(event.key, character);
@@ -79,8 +115,8 @@ export function createOfficeScene(host: HTMLElement) {
       } else if (event.type === 'state') {
         characters.get(event.key)?.setState(event.state);
       } else if (event.type === 'plane') {
-        const desk = office.seats[event.desk].desk;
-        characters.get(event.key)?.throwPlane((from) => planes.throw(from, desk));
+        const thrower = characters.get(event.key);
+        if (thrower) throwPlane(thrower, event.desk);
       } else if (event.type === 'high-five') {
         characters.get(event.key)?.highFive();
         characters.get(event.to)?.highFive();
@@ -156,7 +192,7 @@ export function createOfficeScene(host: HTMLElement) {
     office.tv.update([...characters.values()].some((c) => c.onSofa()), t);
     const dip = office.layout.hangouts.find((s) => s.name === 'pool-dip')!.places;
     const riders = [...characters.values(), ...leaving];
-    floatRings(office.group, dip.map((p) => riders.find((c) => c.place?.x === p.x && c.place.z === p.z)?.floatOffset() ?? null));
+    floatRings(office.group, dip.map((p) => riders.find((c) => c.place?.x === p.x && c.place.z === p.z)?.floatOffset() ?? null), props().pool);
     boardDarts.update([...characters.values()].map((c) => c.dartsThrower()).find((d) => d) ?? null);
     binBall.update([...characters.values()].map((c) => c.hoopsShooter()).find((d) => d) ?? null);
     dog.update(t, dt);
@@ -168,11 +204,12 @@ export function createOfficeScene(host: HTMLElement) {
     const occupants = controller.occupants();
     updateScreens(office.seats, occupants, t);
     updateBackWall(office, view.camera.position);
+    office.doors?.update(doorsOpen(office.layout.door, [...characters.values(), ...leaving].map((c) => c.root.position)), dt);
     office.board.update(occupants);
     const target = selected ? characters.get(selected) : undefined;
     ring.visible = !!target;
     if (target) {
-      ring.position.set(target.root.position.x, 0.02, target.root.position.z);
+      ring.position.set(target.root.position.x, floor(target.root.position) + 0.02, target.root.position.z);
       ring.scale.setScalar(1 + Math.sin(t * 4) * 0.05);
     }
   });
@@ -182,13 +219,13 @@ export function createOfficeScene(host: HTMLElement) {
   /** Dev only (#84): `?activity=fishing` puts an angler on the jetty, casting over and over, with the camera on the pond. */
   function fishForever() {
     const place = office.layout.hangouts.find((s) => s.name === 'fishing')!.places[0];
-    const angler = new Character(lookFor('debug-angler'));
+    const angler = newCharacter('debug-angler');
     angler.placeAt(office.seats[0], 'done', place);
     view.scene.add(angler.root);
     characters.set('debug-angler', angler);
     let next = 0;
     const cast = () => {
-      const c = { landing: landingFrom(Math.random), fish: null };
+      const c = { landing: landingFrom(Math.random, props()), fish: null };
       angler.fish(c);
       fishingGear.start(c, place, pondTime);
       clearTimeout(next);
@@ -205,24 +242,23 @@ export function createOfficeScene(host: HTMLElement) {
   function showActivity(name: string | null) {
     const place = office.layout.hangouts.find((s) => s.name === name)?.places[0];
     if (!place) return;
-    const character = new Character(lookFor('stand-in'));
+    const character = newCharacter('stand-in');
     character.placeAt(office.seats[0], 'done', place);
     view.scene.add(character.root);
     characters.set('stand-in', character);
     const forward = new THREE.Vector3(Math.sin(place.yaw), 0, Math.cos(place.yaw)), right = new THREE.Vector3(forward.z, 0, -forward.x);
-    const ahead = new THREE.Vector3(place.x, 1.3, place.z).addScaledVector(forward, 1);
-    view.camera.position.copy(ahead).addScaledVector(right, 3).addScaledVector(forward, -3.5).setY(2.6);
+    const ahead = new THREE.Vector3(place.x, floor(place) + 1.3, place.z).addScaledVector(forward, 1);
+    view.camera.position.copy(ahead).addScaledVector(right, 3).addScaledVector(forward, -3.5).setY(ahead.y + 1.3);
     view.camera.lookAt(ahead);
   }
   /** Dev only (#86): `?activity=planes` puts a thrower at every paper-plane place, each throwing every few seconds. */
   function showPlaneThrowers() {
     office.layout.hangouts.find((s) => s.name === 'planes')!.places.forEach((place, i) => {
-      const character = new Character(lookFor(`planes-${i}`));
+      const character = newCharacter(`planes-${i}`);
       character.placeAt(office.seats[0], 'done', place);
       view.scene.add(character.root);
       characters.set(`planes-${i}`, character);
-      const desk = office.seats[(i * 5) % office.seats.length].desk;
-      setInterval(() => character.throwPlane((from) => planes.throw(from, desk)), 2500 + i * 300);
+      setInterval(() => throwPlane(character, (i * 5) % office.seats.length), 2500 + i * 300);
     });
   }
   if (debugActivity === 'fishing') fishForever();

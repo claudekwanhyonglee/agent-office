@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { OfficeState } from '../shared/agent.ts';
 import { at, ball, cyl, mesh, tag } from './toon.ts';
 import type { Look, HatKind } from './look.ts';
-import { BREAK_ROOM, WALK_SPEED, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
+import { BREAK_ROOM, WALK_SPEED, rejoin, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
 import { HIT, hitTimes, hitter, rallySeconds, type Rally, type Side } from './pong.ts';
@@ -10,7 +10,7 @@ import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
 import { ROD_HAND, ROD_LENGTH, rodPitch, type Cast } from './fishing.ts';
 import { HANDS, shotAt } from './hoops.ts';
 import { STRIKE_AT } from './pool.ts';
-import { BOARD, COLLECT_FROM, DART, PULL as DARTS_PULL, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, WALK as DARTS_WALK, dartsAt } from './darts.ts';
+import { COLLECT_WALK, DART, PULL as DARTS_PULL, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, WALK as DARTS_WALK, dartsAt } from './darts.ts';
 import { RELEASE_AT as BALL_RELEASE_AT } from './fetch.ts';
 
 const SEAT_Y = 0.38;
@@ -56,6 +56,8 @@ export class Character {
   bubbleKind: BubbleKind | null = null;
   seat?: SeatSpot;
   place: HangoutPlace | null = null;
+  /** The floor's height under a point; every height the agent takes is above it (#103). */
+  ground: (p: Point) => number = () => 0;
 
   readonly pivot = new THREE.Group();
   readonly head = new THREE.Group();
@@ -68,6 +70,8 @@ export class Character {
   private held = heldProps();
   readonly bubble: THREE.Sprite;
   private path: THREE.Vector3[] = [];
+  /** Where the current walk started and the points it has passed since. */
+  private trail: Point[] = [];
   private onArrive?: () => void;
   private hopTween?: { from: THREE.Vector3; to: THREE.Vector3; fromYaw: number; yaw: number; k: number; then: () => void };
   private blinkAt = 1 + Math.random() * 3;
@@ -183,7 +187,7 @@ export class Character {
   /** Walk along `path` to a hangout `place`, or back to the desk when it's null. */
   go(path: Point[], place: HangoutPlace | null) {
     if (!place) this.setOff(path, path.length - 1, () => this.hopToPlace());
-    else if (place.sits) this.setOff(path, path.length - 1, () => this.hop(vec(place, SEAT_Y), place.yaw, () => this.hangAt(place)));
+    else if (place.sits) this.setOff(path, path.length - 1, () => this.hop(this.above(place, SEAT_Y), place.yaw, () => this.hangAt(place)));
     else this.setOff(path, path.length, () => this.hangAt(place));
   }
 
@@ -191,7 +195,7 @@ export class Character {
   arrive(seat: SeatSpot, state: OfficeState, path: Point[]) {
     this.seat = seat;
     this.state = state;
-    this.root.position.copy(vec(path[0]));
+    this.root.position.copy(this.above(path[0]));
     this.scale = 0.01;
     this.growing = true;
     this.walk(path.slice(1, -1), () => this.hopToPlace());
@@ -298,9 +302,10 @@ export class Character {
     }
     const walkFrom = (from: number) => this.walk(path.slice(from, end), then);
     const offFurniture = this.mode === 'seated' || this.mode === 'standing' || (this.mode === 'hanging' && this.place!.sits);
-    if (offFurniture) this.hop(vec(path[1] ?? path[0]), this.root.rotation.y, () => walkFrom(2));
+    if (offFurniture) this.hop(this.above(path[1] ?? path[0]), this.root.rotation.y, () => walkFrom(2));
     else if (this.mode === 'hanging') walkFrom(1);
     else if (this.mode === 'hopping') this.hopTween!.then = () => walkFrom(0);
+    else if (this.mode === 'walking') this.walk(rejoin(this.root.position, this.trail, this.path, path.slice(0, end)), then);
     else walkFrom(0);
     this.place = null;
     this.rally = null;
@@ -314,7 +319,7 @@ export class Character {
     this.place = place;
     this.mode = 'hanging';
     this.placeTime = 0;
-    this.root.position.copy(vec(place, place.sits ? SEAT_Y : 0));
+    this.root.position.copy(this.above(place, place.sits ? SEAT_Y : 0));
     this.root.rotation.y = place.yaw;
   }
 
@@ -322,14 +327,19 @@ export class Character {
     const seat = this.seat!;
     const standing = this.state === 'finished';
     this.mode = standing ? 'standing' : 'seated';
-    this.root.position.copy(standing ? vec(seat.standSpot) : vec(seat.sit, SEAT_Y));
+    this.root.position.copy(standing ? this.above(seat.standSpot) : this.above(seat.sit, SEAT_Y));
     this.root.rotation.y = standing ? 0 : seat.yaw;
   }
 
   private hopToPlace() {
     const seat = this.seat!;
     const standing = this.state === 'finished';
-    this.hop(standing ? vec(seat.standSpot) : vec(seat.sit, SEAT_Y), standing ? 0 : seat.yaw, () => this.settle());
+    this.hop(standing ? this.above(seat.standSpot) : this.above(seat.sit, SEAT_Y), standing ? 0 : seat.yaw, () => this.settle());
+  }
+
+  /** `y` above the floor at `p`. */
+  private above(p: Point, y = 0) {
+    return vec(p, this.ground(p) + y);
   }
 
   private hop(to: THREE.Vector3, yaw: number, then: () => void) {
@@ -339,6 +349,7 @@ export class Character {
 
   private walk(points: Point[], then: () => void) {
     this.mode = 'walking';
+    this.trail = [{ x: this.root.position.x, z: this.root.position.z }];
     this.path = points.map((p) => vec(p));
     this.onArrive = then;
   }
@@ -410,7 +421,7 @@ export class Character {
     } else if (this.mode === 'standing') {
       const hopT = (tt % 3.2) / 3.2;
       const hopY = hopT < 0.16 ? Math.sin((hopT / 0.16) * Math.PI) * 0.22 * motion : 0;
-      this.root.position.y = hopY;
+      this.root.position.y = this.ground(this.root.position) + hopY;
       p.scale.y = hopT > 0.16 && hopT < 0.22 ? 0.92 : 1;
       hl.position.set(-0.47, 0.6 + hopY * 0.6, 0.06);
       hr.position.set(0.47, 0.6 + hopY * 0.6 + (hopY > 0 ? 0.25 : 0), 0.06);
@@ -514,15 +525,15 @@ export class Character {
       if (this.returning.k >= 1) return this.returning.then();
     }
     const afloat = this.floatOffset()!;
-    this.root.position.set(place.x + afloat.x, SEAT_Y + afloat.bob * motion, place.z + afloat.z);
+    this.root.position.copy(this.above({ x: place.x + afloat.x, z: place.z + afloat.z }, SEAT_Y + afloat.bob * motion));
     this.root.rotation.y = place.yaw + afloat.spin;
   }
 
   /** Darts (#54): after a round, walk up to the board to pull the darts out, then back to the line. */
   private collectDarts(place: HangoutPlace) {
     const { walk, turn } = dartsAt(this.placeTime);
-    const to = BOARD.x + COLLECT_FROM;
-    this.root.position.set(place.x + (to - place.x) * walk, 0, place.z);
+    const step = COLLECT_WALK * walk;
+    this.root.position.copy(this.above({ x: place.x + Math.sin(place.yaw) * step, z: place.z + Math.cos(place.yaw) * step }));
     this.root.rotation.y = place.yaw + Math.PI * turn;
   }
 
@@ -561,7 +572,7 @@ export class Character {
     const dx = target.x - pos.x, dz = target.z - pos.z;
     const dist = Math.hypot(dx, dz);
     if (dist < 0.05) {
-      this.path.shift();
+      this.trail.push(this.path.shift()!);
       return;
     }
     const step = Math.min(dist, WALK_SPEED * dt);
@@ -570,7 +581,7 @@ export class Character {
     this.root.rotation.y = lerpAngle(this.root.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 10));
     this.walkPhase += dt * 11;
     const s = Math.sin(this.walkPhase);
-    pos.y = Math.abs(s) * 0.09 * motion;
+    pos.y = this.ground(pos) + Math.abs(s) * 0.09 * motion;
     p.rotation.z = s * 0.09 * motion;
     p.rotation.x = 0.08;
     fl.position.set(-0.17, 0.06 + Math.max(0, s) * 0.1, 0.04 + s * 0.16);

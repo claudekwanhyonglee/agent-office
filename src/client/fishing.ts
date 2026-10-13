@@ -2,7 +2,7 @@
 // the float flies out and lands with a ripple, then bobs; on some casts (the controller decides,
 // with its injectable random) one of the pond's fish comes over, bites, is lifted out over the
 // jetty for a moment, and drops back in.
-import { BREAK_ROOM, type HangoutPlace, type Point } from './layout.ts';
+import { BREAK_ROOM, type HangoutPlace, type Point, type Props } from './layout.ts';
 import { fishAt } from './water.ts';
 
 export interface Cast { landing: Point; fish: number | null }
@@ -53,8 +53,8 @@ export interface CastFrame {
   fish: { index: number; at: Vec; heading: number; alert: boolean } | null;
 }
 
-/** Everything about a cast by an angler at `place`, `t` seconds after it began (cast at `start` seconds on the pond's clock). */
-export function castAt(cast: Cast, t: number, place: HangoutPlace, start = 0): CastFrame {
+/** Everything about a cast by an angler at `place` into `pond`, `t` seconds after it began (cast at `start` seconds on the pond's clock). */
+export function castAt(cast: Cast, t: number, place: HangoutPlace, start = 0, pond: Props['pond'] = BREAK_ROOM.pond): CastFrame {
   const tip = rodTip(place, rodPitch(cast, t));
   const landing = { x: cast.landing.x, y: SURFACE, z: cast.landing.z };
   const hanging = (pitchTip: Vec): Vec => ({ x: pitchTip.x, y: pitchTip.y - LINE_DROP, z: pitchTip.z });
@@ -70,7 +70,7 @@ export function castAt(cast: Cast, t: number, place: HangoutPlace, start = 0): C
   let fish: CastFrame['fish'] = null;
   if (cast.fish != null && t >= T.alert && t < CAST_SECONDS) {
     const index = cast.fish;
-    const natural = (s: number) => { const f = fishAt(index, start + s); return { at: { x: f.x, y: f.y, z: f.z }, heading: f.heading }; };
+    const natural = (s: number) => { const f = fishAt(index, start + s, pond); return { at: { x: f.x, y: f.y, z: f.z }, heading: f.heading }; };
     const nearFloat = { x: landing.x, y: -0.1, z: landing.z };
     const hooked = hanging(tip);
     let at: Vec, heading: number;
@@ -111,11 +111,11 @@ function flight(cast: Cast, place: HangoutPlace, landing: Vec, s: number): Vec {
   return { ...mix(from, landing, s / d), y: from.y + vy * s - (gravity / 2) * s * s };
 }
 
-/** Landing points stay in the pond, beyond the jetty's end and in the rod's reach. */
-export function landingFrom(random: () => number): Point {
-  const { pond, jetty } = BREAK_ROOM;
+/** Landing points stay in the pond, beyond the jetty's end (the end towards the pond) and in the rod's reach. */
+export function landingFrom(random: () => number, { pond, jetty }: Pick<Props, 'pond' | 'jetty'> = BREAK_ROOM): Point {
+  const towardsPond = Math.sign(pond.x - jetty.x);
   for (;;) {
-    const p = { x: jetty.x - jetty.w / 2 - 0.5 - random() * 1.6, z: pond.z - 0.7 + random() * 1.4 };
+    const p = { x: jetty.x + towardsPond * (jetty.w / 2 + 0.5 + random() * 1.6), z: pond.z - 0.7 + random() * 1.4 };
     if (((p.x - pond.x) / pond.rx) ** 2 + ((p.z - pond.z) / pond.rz) ** 2 < 0.6) return p;
   }
 }

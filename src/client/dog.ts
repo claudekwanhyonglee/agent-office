@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { at, ball, cyl, mesh, tag } from './toon.ts';
-import { DOG_SPEED, type Point } from './layout.ts';
+import { DOG_SPEED, rejoin, type Point } from './layout.ts';
 
 const FUR = '#D9A066';
 const DARK = '#8C5A3A';
@@ -16,6 +16,8 @@ export class Dog {
   private tail: THREE.Object3D;
   private legs: THREE.Object3D[];
   private path: THREE.Vector3[] = [];
+  /** Where the current run started and the points it has passed since. */
+  private trail: Point[] = [];
   private lieOnArrival = false;
   /** Seconds left before it sets off along `path`. */
   private wait = 0;
@@ -46,16 +48,23 @@ export class Dog {
     });
   }
 
+  /** The floor's height under a point (#103). */
+  ground: (p: Point) => number = () => 0;
+
   /** Put straight at `p`. */
   placeAt(p: Point, lie: boolean) {
-    this.root.position.set(p.x, 0, p.z);
+    this.root.position.set(p.x, this.ground(p), p.z);
     this.path = [];
+    this.trail = [];
     this.lying = lie;
   }
 
   /** After `wait` seconds, run along `path` (from where it is), then lie down or stand. */
   go(path: Point[], lie: boolean, wait = 0) {
-    this.path = path.map((p) => new THREE.Vector3(p.x, 0, p.z));
+    // Still running: it keeps to the way it knows is clear (see rejoin).
+    const way = this.path.length ? rejoin(this.root.position, this.trail, this.path, path) : path;
+    this.trail = [{ x: this.root.position.x, z: this.root.position.z }];
+    this.path = way.map((p) => new THREE.Vector3(p.x, 0, p.z));
     this.lieOnArrival = lie;
     this.lying = false;
     this.wait = wait;
@@ -84,11 +93,12 @@ export class Dog {
     this.body.rotation.z = 0;
     if (target) {
       const dx = target.x - pos.x, dz = target.z - pos.z, dist = Math.hypot(dx, dz);
-      if (dist < 0.03) this.path.shift();
+      if (dist < 0.03) this.trail.push(this.path.shift()!);
       else {
         const step = Math.min(dist, DOG_SPEED * dt);
         pos.x += (dx / dist) * step;
         pos.z += (dz / dist) * step;
+        pos.y = this.ground(pos);
         this.turnTowards(Math.atan2(dx, dz), dt);
       }
       this.phase += dt * 16;

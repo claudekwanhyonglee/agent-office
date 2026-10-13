@@ -1,7 +1,7 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
 import {
   DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, fetchRun, officeLayout, overTheShoulder, pathLength, route, withoutLoops, yawTowards,
-  type DogSpot, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
+  type DogSpot, type OfficeLayout, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
 } from './layout.ts';
 import { SHOT_COUNT, SHOT_SECONDS } from './pool.ts';
 import { hitter, rallySeconds, type Rally, type Side } from './pong.ts';
@@ -144,7 +144,7 @@ const systemClock: Clock = { now: () => performance.now() / 1000, random: Math.r
 export class OfficeController {
   readonly agents = new Map<string, Occupant>();
   rows = INITIAL_ROWS;
-  layout = officeLayout(INITIAL_ROWS);
+  layout: OfficeLayout;
   private firstUpdate = true;
   /** The last set-off handed out in this update, so agents turning idle together are staggered (#59). */
   private lastSetOff = -Infinity;
@@ -163,7 +163,10 @@ export class OfficeController {
   /** When the sofa next cheers, if anyone's sitting there then (#61). */
   private cheerAt: number | null = null;
 
-  constructor(clock: Partial<Clock> = {}) {
+  /** `preset`: the office layout's preset id (classic if unknown). */
+  constructor(clock: Partial<Clock> = {}, private preset = 'classic') {
+    this.layout = officeLayout(INITIAL_ROWS, preset);
+    this.rows = this.layout.rows;
     this.clock = { ...systemClock, ...clock };
     const now = this.clock.now();
     this.dog = { spot: this.layout.dogSpots[0], lying: true, arrivesAt: now, nextAt: now + this.between(DOG_REST) };
@@ -625,7 +628,7 @@ export class OfficeController {
       return;
     }
     if (agent.place?.pose === 'fishing') {
-      const landing = landingFrom(this.clock.random);
+      const landing = landingFrom(this.clock.random, this.layout.props);
       const fish = this.clock.random() < CATCH_CHANCE ? Math.floor(this.clock.random() * FISH) : null;
       events.push({ type: 'cast', key, cast: { landing, fish } });
       agent.actAt = now + CAST_SECONDS;
@@ -699,9 +702,11 @@ export class OfficeController {
   private addRow(now: number, events: OfficeEvent[]) {
     const old = this.layout;
     this.rows += 1;
-    this.layout = officeLayout(this.rows);
+    this.layout = officeLayout(this.rows, this.preset);
     events.push({ type: 'rows', count: this.rows });
-    const places = old.hangouts.flatMap((s) => s.places), moved = this.layout.hangouts.flatMap((s) => s.places);
+    // Pool turns too: a player mid-game may be at any of them, and a layout can move the table (#100).
+    const placesIn = (l: OfficeLayout) => [...l.hangouts.flatMap((s) => s.places), ...l.poolTurns.flatMap((t) => [t.shoot, t.wait])];
+    const places = placesIn(old), moved = placesIn(this.layout);
     // The hall moves back, and the dog's hall spot with it.
     this.dog.spot = this.layout.dogSpots.find((s) => s.name === this.dog.spot.name)!;
     this.dog.arrivesAt = now;
@@ -710,13 +715,24 @@ export class OfficeController {
       agent.seat = this.layout.seats[agent.seat.index];
       const walking = agent.walk && now < agent.arrivesAt;
       if (!agent.place && !walking) continue;
-      agent.place = agent.place && (moved[places.indexOf(agent.place)] ?? agent.place); // errand places don't move
+      // Errand places by a desk stay put (seats don't move); one by the dog moves with its spot.
+      agent.place = agent.place && (moved[places.indexOf(agent.place)] ?? this.movedDogVisit(agent.place, old) ?? agent.place);
       agent.walk = undefined;
       agent.queued = undefined;
       agent.arrivesAt = now;
       if (agent.place && agent.nextAt == null) agent.nextAt = this.stagger(now, STAY, [agent]);
       events.push({ type: 'place', key, seat: agent.seat, state: agent.record.state, place: agent.place });
     }
+  }
+
+  /** Where a visit to the dog at `place` in layout `old` is now (the lounge moves back with a new tier); null if it isn't one. */
+  private movedDogVisit(place: HangoutPlace, old: OfficeLayout) {
+    if (place.spot !== 'dog') return null;
+    const at = (v: { at: Point }) => v.at.x === place.x && v.at.z === place.z;
+    const spot = old.dogSpots.findIndex((d) => d.visitors.some(at));
+    if (spot < 0) return null;
+    const visit = this.layout.dogSpots[spot].visitors[old.dogSpots[spot].visitors.findIndex(at)];
+    return errandPlace('dog', place.pose, visit.at, visit.link, yawTowards(visit.at, this.layout.dogSpots[spot].dog));
   }
 }
 
