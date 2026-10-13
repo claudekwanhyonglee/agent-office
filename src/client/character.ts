@@ -23,6 +23,8 @@ const CHEER_SECONDS = 1.5;
 const SOFA_SPOTS = ['lounge', 'couch-co-op'];
 /** On the sofa the body is lifted onto the cushions, 0.56 m up, from the usual seat height (#77). */
 const SOFA_LIFT = 0.17;
+/** The TV remote (#113): the left hand comes up to here, pointing it at the TV; it clicks, then goes down by `end`. */
+const REMOTE = { raise: 0.35, click: 0.8, end: 1.3, hand: new THREE.Vector3(-0.22, 1.2, 0.6) };
 /** A leaving agent's bubble grows for this long, then vanishes (#49). */
 const POP_SECONDS = 0.2;
 /** Pool (#53): the cue is held level this high, over the playing surface (0.835 m); the bridge hand stops short of the table's edge, 0.85 m ahead. */
@@ -75,6 +77,9 @@ export class Character {
   private snack: THREE.Mesh;
   /** Things held in the right hand for one pose: a fishing rod, dart, ball or paper plane. */
   private held = heldProps();
+  private remote = remoteModel();
+  /** Pointing the remote at the TV (#113): seconds in, the click still to come, and the walk waiting for the hand to come down. */
+  private remoteUse: { t: number; click: (() => void) | null; then: (() => void) | null } | null = null;
   readonly bubble: THREE.Sprite;
   private path: THREE.Vector3[] = [];
   /** Where the current walk started and the points it has passed since. */
@@ -164,6 +169,7 @@ export class Character {
     this.snack.position.set(-0.02, 0.1, 0.06);
     this.hands[0].add(this.snack);
     for (const prop of Object.values(this.held)) this.hands[1].add(prop);
+    this.hands[0].add(this.remote);
 
     this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true }));
     this.bubble.center.set(0.5, 0);
@@ -289,6 +295,16 @@ export class Character {
     return this.mode === 'hanging' && SOFA_SPOTS.includes(this.place!.spot);
   }
 
+  /** Point the remote at the TV (#113): `click` switches it as the hand is up; walking off waits for the hand to come down. */
+  useRemote(click: () => void) {
+    this.remoteUse = { t: 0, click, then: this.remoteUse?.then ?? null };
+    this.remote.visible = true;
+  }
+
+  usingRemote() {
+    return !!this.remoteUse;
+  }
+
   /** Fist-pump with everyone else on the sofa (#61). */
   cheer() {
     this.cheering = CHEER_SECONDS;
@@ -310,6 +326,10 @@ export class Character {
    * it's walking) and walk up to point `end`: hop off a chair or sofa first, or turn round mid-walk.
    */
   private setOff(path: Point[], end: number, then: () => void) {
+    if (this.remoteUse) {
+      this.remoteUse.then = () => this.setOff(path, end, then);
+      return;
+    }
     const afloat = this.floatOffset();
     if (afloat && (afloat.x || afloat.z) && !this.returning) {
       // Paddle back to the ring's home spot first (#57).
@@ -382,6 +402,7 @@ export class Character {
     this.mug.visible = false;
     this.snack.visible = false;
     for (const prop of Object.values(this.held)) prop.visible = false;
+    this.remote.visible = false;
     // Every agent keeps its state's bubble, wherever it is, until it pops on leaving.
     if (this.leftFor != null) this.leftFor += dt;
     if (this.shotTime != null) this.shotTime += dt;
@@ -450,6 +471,7 @@ export class Character {
       bubbleY = this.hangingPose(this.place!, tt, dt);
     }
 
+    if (this.remoteUse) this.pointRemote(dt);
     if (this.cheering > 0) {
       this.cheering -= dt;
       const pump = Math.abs(Math.sin(this.cheering * 9)) * 0.15 * motion;
@@ -524,6 +546,21 @@ export class Character {
       (eating ? this.snack : this.mug).visible = true;
     }
     return 2.2 + Math.sin(tt * 1.6) * 0.04 * motion;
+  }
+
+  /** The left hand raises the remote toward the TV, clicks it, and lowers it again; then any waiting walk starts (#113). */
+  private pointRemote(dt: number) {
+    const use = this.remoteUse!;
+    use.t += dt;
+    if (use.t >= REMOTE.click && use.click) { use.click(); use.click = null; }
+    if (use.t >= REMOTE.end) {
+      this.remoteUse = null;
+      use.then?.();
+      return;
+    }
+    const k = Math.min(1, use.t / REMOTE.raise, (REMOTE.end - use.t) / (REMOTE.end - REMOTE.click));
+    this.hands[0].position.lerp(REMOTE.hand, k * k * (3 - 2 * k));
+    this.remote.visible = true;
   }
 
   /** Paper planes (#74): note where the held plane is until the arm lets go, then launch it from there. */
@@ -1033,6 +1070,16 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
     'cue-shot': holding(cue()), 'cue-wait': holding(cue()), paddle: bat, gaming: gamepad(),
     feeding: at(mesh(new THREE.BoxGeometry(0.14, 0.2, 0.08), '#F07A4A', { outline: 0.06 }), 0, 0.1, 0.05),
   };
+}
+
+/** A TV remote (#113), held pointing forward out of the left hand. */
+function remoteModel() {
+  const remote = new THREE.Group();
+  remote.userData.kind = 'remote';
+  remote.add(at(mesh(new THREE.BoxGeometry(0.06, 0.03, 0.18), INK_DARK, { outline: 0.06 }), 0, 0.03, 0.1));
+  remote.add(at(ball(0.015, '#FF5A5A', { outline: 0, shadow: false }), 0, 0.05, 0.16));
+  remote.visible = false;
+  return remote;
 }
 
 /** A game controller, held in both hands (it hangs off the right one). */

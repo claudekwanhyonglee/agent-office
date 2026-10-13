@@ -13,6 +13,7 @@ import { updateBackWall, updateScreens } from './office.ts';
 import { doorsOpen } from './control-room-3d.ts';
 import { CAST_SECONDS, landingFrom } from './fishing.ts';
 import { CLIMBING_IN } from './float.ts';
+import { SofaRemote } from './tv.ts';
 import { bindLayoutPicker, savedLayout } from './layout-picker.ts';
 import { fetchRun, floorAt, planeLanding, yawTowards, type Point } from './layout.ts';
 
@@ -53,6 +54,9 @@ export function createOfficeScene(host: HTMLElement) {
   dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
   view.scene.add(dog.root);
   const fetchBall = new FetchBall(view.scene, floor);
+  let remote = new SofaRemote();
+  /** Everyone sitting on the sofa, including anyone about to walk out of the office from it. */
+  const sofaSitters = () => [...characters.values(), ...leaving].filter((c) => c.onSofa());
   /** A new character, standing on the floor. */
   const newCharacter = (key: string) => {
     const character = new Character(lookFor(key));
@@ -90,6 +94,7 @@ export function createOfficeScene(host: HTMLElement) {
     mugs.clear();
     fishingGear.stop();
     controller = new OfficeController({}, preset);
+    remote = new SofaRemote();
     office = view.setRows(controller.rows, preset);
     dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
     apply(controller.update(records));
@@ -112,7 +117,9 @@ export function createOfficeScene(host: HTMLElement) {
         else if (event.place) character.placeAt(event.seat, event.record.state, event.place);
         else character.sitAt(event.seat, event.record.state);
       } else if (event.type === 'walk') {
-        characters.get(event.key)?.go(event.path, event.place);
+        const character = characters.get(event.key);
+        if (character) remote.gettingUp(character, sofaSitters());
+        character?.go(event.path, event.place);
       } else if (event.type === 'state') {
         characters.get(event.key)?.setState(event.state);
       } else if (event.type === 'plane') {
@@ -149,6 +156,7 @@ export function createOfficeScene(host: HTMLElement) {
         const character = characters.get(event.key)!;
         characters.delete(event.key);
         leaving.add(character);
+        remote.gettingUp(character, sofaSitters());
         character.leave(event.path);
       }
     }
@@ -190,7 +198,8 @@ export function createOfficeScene(host: HTMLElement) {
     if ([...characters.values()].some((c) => c.fishing())) fishingGear.update(dt);
     else fishingGear.stop();
     pondFish.update(t, fishingGear.frame()?.fish ?? null);
-    office.tv.update([...characters.values()].some((c) => c.onSofa()), t);
+    remote.update(sofaSitters());
+    office.tv.update(remote.on, t);
     const dip = office.layout.hangouts.find((s) => s.name === 'pool-dip')!.places;
     const riders = [...characters.values(), ...leaving];
     floatRings(office.group, dip.map((p) => {
@@ -256,6 +265,9 @@ export function createOfficeScene(host: HTMLElement) {
     });
     const [place] = places;
     if (!place) return;
+    // `officeDebug.standUp()` gets the stand-ins off the sofa (or wherever they are) and back to a desk (#113).
+    const standUp = () => apply(places.map((p, i) => ({ type: 'walk' as const, key: `stand-in-${i}`, path: [{ x: p.x, z: p.z }, ...p.link.slice(1)], place: null })));
+    Object.assign(window, { officeDebug: { ...(window as unknown as { officeDebug: object }).officeDebug, standIn: characters.get('stand-in-0'), standUp } });
     const forward = new THREE.Vector3(Math.sin(place.yaw), 0, Math.cos(place.yaw)), right = new THREE.Vector3(forward.z, 0, -forward.x);
     const ahead = new THREE.Vector3(place.x, floor(place) + 1.3, place.z).addScaledVector(forward, 1);
     view.camera.position.copy(ahead).addScaledVector(right, 3).addScaledVector(forward, -3.5).setY(ahead.y + 1.3);
