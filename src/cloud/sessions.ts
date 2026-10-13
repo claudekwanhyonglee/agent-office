@@ -91,6 +91,7 @@ export function toCloudRecord(session: CloudSession): AgentRecord {
     activity: [summary.recent_action, summary.status_detail].filter((line): line is string => !!line),
     progress: cloudProgress(session),
     links: cloudLinks(session),
+    ...(session.tags?.includes('hearth-overview') && { coordinator: true }),
   };
 }
 

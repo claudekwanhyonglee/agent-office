@@ -550,6 +550,14 @@ function hat(kind: HatKind, color: string) {
     for (const [x, y, z, r] of [[0, 0.66, 0, 0.2], [0.17, 0.62, 0.05, 0.16], [-0.17, 0.62, 0.05, 0.16], [0, 0.62, -0.16, 0.16]]) {
       g.add(at(ball(r, '#FFFFFF'), x, y, z));
     }
+  } else if (kind === 'crown') {
+    g.add(at(dome(0.395, 0.42, '#4A3A2E'), 0, 0.01, 0));
+    g.add(at(cyl(0.32, 0.3, 0.16, color, { outline: 0.05 }), 0, 0.36, 0));
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      g.add(at(mesh(new THREE.ConeGeometry(0.07, 0.18, 8), color, { outline: 0.05 }), Math.sin(a) * 0.29, 0.52, Math.cos(a) * 0.29));
+      g.add(at(ball(0.035, '#E0475A'), Math.sin(a) * 0.32, 0.37, Math.cos(a) * 0.32));
+    }
   } else if (kind === 'tuft') {
     g.add(at(dome(0.395, 0.45, color), 0, 0.01, 0));
     for (const [x, y, z, r] of [[0, 0.4, 0.12, 0.09], [0.08, 0.43, 0.05, 0.08], [-0.07, 0.42, 0.02, 0.07]]) {

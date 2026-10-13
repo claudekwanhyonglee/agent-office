@@ -45,3 +45,14 @@ describe('cloud session extras', () => {
     expect(limit).toEqual({ status: 'allowed', resetsAt: 100_000, window: 'five_hour', overage: false });
   });
 });
+
+describe('coordinators', () => {
+  it('are marked on the record and get the crown look', async () => {
+    const { toCloudRecord } = await import('../src/cloud/sessions.ts');
+    const { lookFor } = await import('../src/client/look.ts');
+    expect(toCloudRecord({ id: 'cse_c', tags: ['hearth-overview'] }).coordinator).toBe(true);
+    expect(toCloudRecord({ id: 'cse_t', tags: ['hearth-thread'] }).coordinator).toBeUndefined();
+    expect(lookFor('cse_c', true).hat).toBe('crown');
+    expect(lookFor('cse_c').hat).not.toBe('crown');
+  });
+});

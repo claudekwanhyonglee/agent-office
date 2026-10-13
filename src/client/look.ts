@@ -1,6 +1,6 @@
 // An agent's look comes from its session id, so it's the same on every reload.
 
-export type HatKind = 'headphones' | 'cap' | 'beanie' | 'chef' | 'tuft' | 'bun';
+export type HatKind = 'headphones' | 'cap' | 'beanie' | 'chef' | 'tuft' | 'bun' | 'crown';
 
 export interface Look {
   shirt: string;
@@ -21,8 +21,10 @@ function hash(text: string) {
   return h >>> 0;
 }
 
-export function lookFor(sessionId: string): Look {
+/** Project coordinators all wear the same gold crown and navy shirt, so they stand out from thread agents. */
+export function lookFor(sessionId: string, coordinator = false): Look {
   const h = hash(sessionId);
+  if (coordinator) return { shirt: '#2E3A66', hat: 'crown', hatColor: '#F5C242', skin: SKIN[Math.floor(h / 2 ** 12) % SKIN.length] };
   const pick = <T>(list: T[], shift: number) => list[Math.floor(h / 2 ** shift) % list.length];
   const hat = pick(HATS, 4);
   return {

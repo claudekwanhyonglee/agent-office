@@ -60,7 +60,7 @@ export function createOfficeScene(host: HTMLElement) {
         if (event.place) character.placeAt(event.seat, event.state, event.place);
         else character.sitAt(event.seat, event.state);
       } else if (event.type === 'arrive') {
-        const character = new Character(lookFor(event.key));
+        const character = new Character(lookFor(event.key, event.record.coordinator));
         character.root.userData.agentKey = event.key;
         view.scene.add(character.root);
         characters.set(event.key, character);
