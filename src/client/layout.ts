@@ -213,6 +213,7 @@ export function officeLayout(rows: number) {
     return { name, chat: true, places: [place(a, c), place(c, a)] };
   };
   const cooler2 = { x: -4.0, z: -3.9 + b };
+  const seats = seatsFor(rows);
 
   const hangouts: HangoutSpot[] = [
     {
@@ -234,6 +235,7 @@ export function officeLayout(rows: number) {
     chatSpot('chat-deck', { x: -1.2, z: 8.3 }, toDeck),
     chatSpot('chat-deck-right', { x: 2.4, z: 8.3 }, toDeck),
     ...soloSpots(),
+    planeSpot(seats, hallZ),
     ...pairGames(),
     {
       name: 'pool-dip',
@@ -263,7 +265,7 @@ export function officeLayout(rows: number) {
     door,
     /** From the door out to the hall. */
     doorLink: [{ ...door }, { x: door.x, z: hallZ }] as Point[],
-    seats: seatsFor(rows),
+    seats,
     hangouts,
     walkways,
     dogSpots: dogSpots(hallZ),
@@ -309,8 +311,29 @@ function soloSpots(): HangoutSpot[] {
     solo('trampoline', 'bouncing', trampoline, 0, [{ x: 6.5, z: trampoline.z }, { x: RIGHT_DECK_X, z: trampoline.z }, { x: RIGHT_DECK_X, z: DECK_Z }], true),
     solo('darts', 'throwing-darts', { x: -6.6, z: BREAK_ROOM.dartboard.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.dartboard.z }]),
     solo('hoops', 'shooting-hoops', { x: -6.8, z: BREAK_ROOM.bin.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.bin.z }]),
-    solo('planes', 'throwing-plane', { x: 6.25, z: 4.4 }, left, [{ x: AISLE_X, z: 4.4 }]),
   ];
+}
+
+/** Paper planes (#86): one place on each side aisle, one in front of the desks and one behind them, each facing the desks. */
+function planeSpot(seats: SeatSpot[], hallZ: number): HangoutSpot {
+  const centre = {
+    x: seats.reduce((sum, s) => sum + s.desk.x, 0) / seats.length,
+    z: seats.reduce((sum, s) => sum + s.desk.z, 0) / seats.length,
+  };
+  const place = (p: Point, link: Point[]): HangoutPlace =>
+    ({ ...p, spot: 'planes', pose: 'throwing-plane', yaw: yawTowards(p, centre), link: [p, ...link] });
+  const back = { x: 2.8, z: hallZ - 1.0 };
+  return {
+    name: 'planes',
+    chat: false,
+    places: [
+      place({ x: 6.25, z: 4.4 }, [{ x: AISLE_X, z: 4.4 }]),
+      place({ x: -6.8, z: 3.05 }, [{ x: -AISLE_X, z: 3.05 }]),
+      // Out between the end desks' corners and the glass wall.
+      place({ x: 0, z: 5.7 }, [{ x: 0, z: 6.45 }, { x: AISLE_X, z: 6.45 }]),
+      place(back, [{ x: back.x, z: hallZ }]),
+    ],
+  };
 }
 
 /** A pool shooter stands this far from the cue ball, behind it (#53). */

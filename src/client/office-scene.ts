@@ -200,8 +200,6 @@ export function createOfficeScene(host: HTMLElement) {
     view.camera.position.set(ahead.x + 6 * Math.cos(place.yaw), 2, ahead.z - 6 * Math.sin(place.yaw));
     view.camera.lookAt(ahead.x, 1, ahead.z);
   }
-  if (debugActivity === 'fishing') fishForever();
-  if (debugActivity && debugActivity !== 'fishing') showActivity(debugActivity);
 
   /** Dev only (#87): `?activity=darts` puts a stand-in agent at that hangout and looks over its right shoulder. */
   function showActivity(name: string | null) {
@@ -216,6 +214,20 @@ export function createOfficeScene(host: HTMLElement) {
     view.camera.position.copy(ahead).addScaledVector(right, 3).addScaledVector(forward, -3.5).setY(2.6);
     view.camera.lookAt(ahead);
   }
+  /** Dev only (#86): `?activity=planes` puts a thrower at every paper-plane place, each throwing every few seconds. */
+  function showPlaneThrowers() {
+    office.layout.hangouts.find((s) => s.name === 'planes')!.places.forEach((place, i) => {
+      const character = new Character(lookFor(`planes-${i}`));
+      character.placeAt(office.seats[0], 'done', place);
+      view.scene.add(character.root);
+      characters.set(`planes-${i}`, character);
+      const desk = office.seats[(i * 5) % office.seats.length].desk;
+      setInterval(() => character.throwPlane((from) => planes.throw(from, desk)), 2500 + i * 300);
+    });
+  }
+  if (debugActivity === 'fishing') fishForever();
+  else if (debugActivity === 'planes') showPlaneThrowers();
+  else if (debugActivity) showActivity(debugActivity);
 
   return { show, onPick, onHover, select: (key: string | null) => { selected = key; } };
 }

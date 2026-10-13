@@ -30,15 +30,16 @@ describe('#30 AC1 solo props and poses', () => {
       if (s.prop) expect(props).toHaveLength(s.at.length);
       const near = (p: { x: number; z: number }) => (s.prop ? Math.min(...props.map((o) => distance(centre(o), p))) : Math.min(...places.map((q) => distance(q, p))));
       for (const p of s.at) expect(near(p), `${s.prop ?? s.spot} near (${p.x}, ${p.z})`).toBeLessThan(s.prop ? 0.35 : 1);
-      expect(spot(s.spot).places.map((p) => p.pose)).toEqual(s.at.map(() => s.pose));
+      for (const p of spot(s.spot).places) expect(p.pose).toBe(s.pose);
     });
   }
 });
 
 describe('#30 AC2 one agent per place', () => {
-  it('#30 AC2 the loungers have 2 places, every other solo activity 1, and none is a chat spot', () => {
+  it('#30 AC2 the loungers have 2 places, paper planes 4 (#86), every other solo activity 1, and none is a chat spot', () => {
+    const counts: Record<string, number> = { loungers: 2, planes: 4 };
     for (const s of SOLO) {
-      expect(spot(s.spot).places, s.spot).toHaveLength(s.spot === 'loungers' ? 2 : 1);
+      expect(spot(s.spot).places, s.spot).toHaveLength(counts[s.spot] ?? 1);
       expect(spot(s.spot).chat).toBe(false);
     }
   });
