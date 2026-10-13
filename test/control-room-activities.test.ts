@@ -8,6 +8,7 @@ import { Dog } from '../src/client/dog.ts';
 import { FetchBall } from '../src/client/fetch.ts';
 import { PaperPlanes } from '../src/client/paper-planes.ts';
 import { BinBall, BoardDarts, DeskMugs, PongBallMesh, PoolBalls } from '../src/client/break-room.ts';
+import { landingFrom } from '../src/client/fishing.ts';
 import { find } from './office-sim.ts';
 
 const layout = officeLayout(3, 'control-room') as ControlRoomLayout;
@@ -65,6 +66,18 @@ describe('#103 AC1 each activity plays at its new spot', () => {
     const { jetty, pond } = layout.props;
     expect(Math.abs(angler.x - jetty.x)).toBeLessThan(jetty.w / 2);
     expect(Math.hypot(angler.x + Math.sin(angler.yaw) * 1.5 - pond.x, angler.z + Math.cos(angler.yaw) * 1.5 - pond.z)).toBeLessThan(Math.hypot(angler.x - pond.x, angler.z - pond.z));
+  });
+
+  it('#101 AC1 the angler casts from the jetty into the lake: every landing is in the fish\'s water, beyond the jetty\'s lake end', () => {
+    const { jetty, pond } = layout.props;
+    let seed = 7;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const lakeSide = Math.sign(pond.x - jetty.x);
+    for (let i = 0; i < 50; i++) {
+      const p = landingFrom(random, layout.props);
+      expect(((p.x - pond.x) / pond.rx) ** 2 + ((p.z - pond.z) / pond.rz) ** 2).toBeLessThan(1);
+      expect(lakeSide * (p.x - jetty.x)).toBeGreaterThan(jetty.w / 2);
+    }
   });
 
   it('#103 AC1 seated agents sit on their tier, at the height of their chair', () => {

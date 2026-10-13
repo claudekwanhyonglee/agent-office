@@ -129,7 +129,7 @@ export function controlRoomLayout(rows: number) {
     windows: [] as number[],
     plants: [
       { x: ROOM.left + 0.6, z: ROOM.back + 0.6 }, { x: ROOM.right - 0.6, z: ROOM.back + 0.6 }, inLounge(ROOM.left + 0.6, 5.8),
-      { x: 11.9, z: 7.8 }, { x: 22.0, z: 8.0 },
+      { x: 11.9, z: 7.8 }, { x: 22.0, z: -8.0 },
     ] as Point[],
     wallArt: [] as number[],
     props,
@@ -207,9 +207,10 @@ function propsFor(inLounge: (x: number, u: number) => Point): Props {
   return {
     loungers: [{ x: 15.0, z: 3.95 }, { x: 15.8, z: 3.95 }],
     lounger: BREAK_ROOM.lounger,
-    pond: { x: 16.0, z: -6.8, rx: 1.8, rz: 1.3 },
-    jetty: { x: 18.4, z: -6.8, w: 1.6, d: 0.8 },
-    hammock: { x: 19.1, z: 6.6, trees: [17.6, 20.6] },
+    /** The fish's water, in the lake at the deck's front-right corner; the jetty reaches out to it from the lake's left shore. */
+    pond: { x: 20.0, z: 6.5, rx: 1.7, rz: 1.1 },
+    jetty: { x: 17.8, z: 6.5, w: 1.6, d: 0.8 },
+    hammock: { x: 16.8, z: -6.6, trees: [15.3, 18.3] },
     yogaMat: { x: 21.0, z: -6.4, w: 1.8, d: 0.6 },
     trampoline: { x: 13.9, z: 5.6, r: 0.85 },
     /** On the lounge's left wall. */
@@ -282,9 +283,9 @@ function hangoutsFor({ props, lounge, kitchen, cooler, poolTurns, inLounge, toPr
       chat: false,
       places: loungers.map((p) => place('loungers', 'lounging-sun', p, 0, [{ x: p.x, z: DECK_FRONT_Z }], true)),
     },
-    // At the jetty's lake end, stepping off at its deck end.
-    solo('fishing', 'fishing', { x: jetty.x - 0.2, z: jetty.z }, left, [{ x: jetty.x + 1.0, z: jetty.z }, { x: jetty.x + 1.0, z: DECK_BACK_Z }]),
-    solo('hammock', 'swinging', hammock, right, [{ x: hammock.x, z: DECK_FRONT_Z }], true),
+    // At the jetty's lake end, stepping off at its shore end.
+    solo('fishing', 'fishing', { x: jetty.x + 0.2, z: jetty.z }, right, [{ x: jetty.x - 1.2, z: jetty.z }, { x: jetty.x - 1.2, z: DECK_FRONT_Z }]),
+    solo('hammock', 'swinging', hammock, right, [{ x: hammock.x, z: DECK_BACK_Z }], true),
     solo('yoga', 'yoga', yogaMat, right, [{ x: yogaMat.x, z: DECK_BACK_Z }]),
     solo('trampoline', 'bouncing', trampoline, 0, [{ x: trampoline.x, z: DECK_FRONT_Z }], true),
     solo('darts', 'throwing-darts', { x: dartboard.x + DARTS_LINE, z: dartboard.z }, left, toPromenade({ x: dartboard.x + DARTS_LINE, z: dartboard.z }).slice(1)),

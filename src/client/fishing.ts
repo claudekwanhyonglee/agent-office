@@ -111,10 +111,11 @@ function flight(cast: Cast, place: HangoutPlace, landing: Vec, s: number): Vec {
   return { ...mix(from, landing, s / d), y: from.y + vy * s - (gravity / 2) * s * s };
 }
 
-/** Landing points stay in the pond, beyond the jetty's end and in the rod's reach. */
+/** Landing points stay in the pond, beyond the jetty's end (the end towards the pond) and in the rod's reach. */
 export function landingFrom(random: () => number, { pond, jetty }: Pick<Props, 'pond' | 'jetty'> = BREAK_ROOM): Point {
+  const towardsPond = Math.sign(pond.x - jetty.x);
   for (;;) {
-    const p = { x: jetty.x - jetty.w / 2 - 0.5 - random() * 1.6, z: pond.z - 0.7 + random() * 1.4 };
+    const p = { x: jetty.x + towardsPond * (jetty.w / 2 + 0.5 + random() * 1.6), z: pond.z - 0.7 + random() * 1.4 };
     if (((p.x - pond.x) / pond.rx) ** 2 + ((p.z - pond.z) / pond.rz) ** 2 < 0.6) return p;
   }
 }

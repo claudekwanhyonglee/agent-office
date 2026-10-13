@@ -44,6 +44,24 @@ describe('#101 AC1 screen wall, tiered consoles with status lights, crew lounge,
     for (const s of screens) expect(boxOf(s).min.z).toBeGreaterThanOrEqual(layout.room.back - 0.05);
   });
 
+  it('#101 AC1 the side screens\' wall arms stay behind their faces and reach the wall', () => {
+    for (const screen of find(group, 'wall-screen').filter((s) => Math.abs(worldOf(s).x) > 1)) {
+      const [display] = parts(screen, 'display');
+      const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(display.getWorldQuaternion(new THREE.Quaternion()));
+      const face = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, worldOf(display));
+      const arms = parts(screen, 'arm');
+      expect(arms).toHaveLength(2);
+      for (const arm of arms) {
+        const corners = (arm as THREE.Mesh).geometry.attributes.position;
+        for (let i = 0; i < corners.count; i++) {
+          const p = new THREE.Vector3().fromBufferAttribute(corners, i).applyMatrix4(arm.matrixWorld);
+          expect(face.distanceToPoint(p), 'arm corner in front of the screen').toBeLessThan(-0.01);
+        }
+        expect(boxOf(arm).min.z, 'reaches the wall').toBeLessThan(layout.room.back + 0.01);
+      }
+    }
+  });
+
   it('#101 AC1 a console per seat on its tier, each tier higher than the one in front', () => {
     const consoles = find(group, 'console');
     expect(consoles).toHaveLength(18);
@@ -125,11 +143,24 @@ describe('#101 AC1 screen wall, tiered consoles with status lights, crew lounge,
       expect(c.x > layout.deck.x0 && c.x < layout.deck.x1 && c.z > layout.deck.z0 && c.z < layout.deck.z1, kind).toBe(true);
     }
     const [lake] = find(deck, 'lake');
+    // It runs off the deck's front-right corner, cut square on the right and the front edge.
     const box = boxOf(lake);
-    expect(box.min.z).toBeCloseTo(layout.deck.z0, 2);
-    const [cut] = parts(lake, 'cut-face');
-    expect(boxOf(cut).max.z).toBeCloseTo(layout.deck.z0, 1);
-    expect(boxOf(cut).min.y).toBeLessThan(-0.2);
+    expect(box.max.x).toBeCloseTo(layout.deck.x1, 1);
+    expect(box.max.z).toBeCloseTo(layout.deck.z1, 1);
+    const cuts = parts(lake, 'cut-face').map(boxOf);
+    expect(cuts).toHaveLength(2);
+    const front = cuts.find((c) => c.min.z > layout.deck.z1 - 0.05)!;
+    const right = cuts.find((c) => c.min.x > layout.deck.x1 - 0.05)!;
+    expect(front, 'front cut face').toBeDefined();
+    expect(right, 'right cut face').toBeDefined();
+    expect(front.max.x).toBeCloseTo(layout.deck.x1, 1);
+    expect(right.max.z).toBeCloseTo(layout.deck.z1, 1);
+    for (const cut of cuts) expect(cut.min.y).toBeLessThan(-0.2);
+    // The front cut face is the one the default camera sees: it faces the camera and is on screen.
+    const camera = new THREE.PerspectiveCamera(34, 1.6, 0.1, 150);
+    frameFloor(camera, initialOrbit(), layout.rows, 'control-room');
+    expect(camera.position.z).toBeGreaterThan(layout.deck.z1);
+    expect(allOnScreen(camera, [front.getCenter(new THREE.Vector3())])).toBe(true);
     // The shore: every point of the fish's pond is inside it.
     const shore = lake.userData.shore as Point[];
     const insideShore = (p: Point) => {

@@ -3,7 +3,7 @@
 // lounge behind the top tier, and the deck outside with its pool and a lake cut square at the edge.
 import * as THREE from 'three';
 import { at, box, cyl, mesh, part, tag, toon, toonRamp } from './toon.ts';
-import type { Point } from './layout.ts';
+import type { Area, Point } from './layout.ts';
 import { FLIGHT, HALF_STEP, TIER_HALF_ARC, TIER_RISE, heightAt, type ControlRoomLayout } from './control-room.ts';
 import type { OfficeState } from '../shared/agent.ts';
 import { DeskScreen, newCanvas } from './screen.ts';
@@ -156,6 +156,8 @@ function addRoom(group: THREE.Group, { room, door, sideDoor, crewLounge, screenW
 }
 
 const SCREENS = { centre: { w: 8.2, h: 3.85 }, side: { w: 4.0, h: 2.85, x: 6.85, out: 0.9, yaw: 0.35 }, y: 3.7 };
+/** Long enough to reach the wall from a side screen's back at its angle. */
+const ARM_LENGTH = 0.9;
 
 /** A wall screen (tagged), `w` × `h`, its dark display facing +z. */
 function wallScreen(w: number, h: number) {
@@ -187,9 +189,9 @@ function addScreenWall(group: THREE.Group, { room, screenWall }: ControlRoomLayo
     const x = s * side.x, out = z + side.out;
     const screen = wallScreen(side.w, side.h);
     screen.add(at((s < 0 ? board.left : board.right).mesh, 0, 0, 0.07));
+    // Arms from the screen's back into the wall: they turn with the screen, so they never poke through its face.
+    for (const dy of [-0.8, 0.8]) screen.add(part(at(box(0.12, 0.12, ARM_LENGTH, C.bezel, { outline: 0 }), 0, dy, -0.06 - ARM_LENGTH / 2), 'arm'));
     backWall.add(turned(at(screen, x, y, out), -s * side.yaw));
-    // Arms from the wall to the side screen's back.
-    for (const dy of [-0.8, 0.8]) backWall.add(at(box(0.12, 0.12, side.out - 0.1, C.bezel, { outline: 0 }), x - s * 0.3, y + dy, z + side.out / 2));
   }
   group.add(backWall);
 
@@ -375,15 +377,15 @@ const LAKE_DEPTH = 0.6;
 const WATER_Y = -0.05;
 
 /**
- * The lake's shore, from the deck's back edge round the fish's pond and back to the edge: a winding
- * line, cut off square where it meets the edge.
+ * The lake's shore: a winding line from the deck's right edge round the fish's water to its front
+ * edge, so the lake runs off the deck's front-right corner and is cut off square on both edges.
  */
 function lakeShore({ deck, props: { pond } }: ControlRoomLayout): Point[] {
-  const edge = deck.z0, { x, z, rx, rz } = pond;
+  const { x, z, rx, rz } = pond;
   const knots: Point[] = [
-    { x: x - rx - 0.8, z: edge }, { x: x - rx - 0.95, z: z - 0.6 }, { x: x - rx - 0.35, z: z + 0.5 }, { x: x - rx + 0.5, z: z + rz + 0.35 },
-    { x: x - 0.1, z: z + rz + 0.95 }, { x: x + rx - 0.6, z: z + rz + 0.65 }, { x: x + rx + 0.15, z: z + rz - 0.15 },
-    { x: x + rx + 1.05, z: z + 0.15 }, { x: x + rx + 0.95, z: z - 0.8 }, { x: x + rx + 0.35, z: edge },
+    { x: deck.x1, z: z - rz - 1.0 }, { x: x + rx - 0.4, z: z - rz - 1.35 }, { x: x + 0.3, z: z - rz - 0.95 },
+    { x: x - rx + 0.3, z: z - rz - 1.25 }, { x: x - rx - 0.6, z: z - rz - 0.4 }, { x: x - rx - 0.85, z: z + 0.2 },
+    { x: x - rx - 0.6, z: z + rz - 0.1 }, { x: x - rx - 0.95, z: deck.z1 },
   ];
   return new THREE.SplineCurve(knots.map((p) => new THREE.Vector2(p.x, p.z))).getPoints(64).map((p) => ({ x: p.x, z: p.y }));
 }
@@ -393,9 +395,7 @@ function addDeck(group: THREE.Group, layout: ControlRoomLayout) {
   const { deck: area, props: { pool } } = layout;
   const deck = tag(new THREE.Group(), 'deck');
   const shore = lakeShore(layout);
-  const outline = flat([
-    { x: area.x0, z: area.z0 }, ...shore, { x: area.x1, z: area.z0 }, { x: area.x1, z: area.z1 }, { x: area.x0, z: area.z1 },
-  ]);
+  const outline = flat([{ x: area.x0, z: area.z0 }, { x: area.x1, z: area.z0 }, ...shore, { x: area.x0, z: area.z1 }]);
   const [hx, hz] = [pool.w / 2 - POOL_RIM, pool.d / 2 - POOL_RIM];
   outline.holes.push(new THREE.Path(flat([
     { x: pool.x - hx, z: pool.z - hz }, { x: pool.x - hx, z: pool.z + hz }, { x: pool.x + hx, z: pool.z + hz }, { x: pool.x + hx, z: pool.z - hz },
@@ -421,24 +421,30 @@ function addDeck(group: THREE.Group, layout: ControlRoomLayout) {
       }
     }
   }
-  deck.add(buildLake(shore, area.z0));
+  deck.add(buildLake(shore, area));
   group.add(deck);
   return deck;
 }
 
-/** The lake inside `shore`, ending at the deck's back edge (`edge`) in a deep-blue cut face, like a diorama. */
-function buildLake(shore: Point[], edge: number) {
+/** The lake inside `shore` and the deck's front-right corner, ending at the deck's edges in a deep-blue cut face, like a diorama. */
+function buildLake(shore: Point[], deck: Area) {
   const lake = tag(new THREE.Group(), 'lake');
-  lake.userData.shore = shore;
-  const shape = flat(shore);
+  const outline = [...shore, { x: deck.x1, z: deck.z1 }];
+  lake.userData.shore = outline;
+  const shape = flat(outline);
   const bed = new THREE.Mesh(new THREE.ShapeGeometry(shape), toon(C.lakeBed));
   bed.rotation.x = -Math.PI / 2;
   lake.add(at(bed, 0, -LAKE_DEPTH, 0));
   lake.add(at(slab(shape, EARTH_DEPTH - LAKE_DEPTH, C.earth, C.earth), 0, -EARTH_DEPTH, 0));
   lake.add(at(waterSurface(new THREE.ShapeGeometry(shape), C.lake), 0, WATER_Y, 0));
-  const [x0, x1] = [shore[0].x, shore.at(-1)!.x];
-  lake.add(part(at(box(x1 - x0, LAKE_DEPTH + WATER_Y, 0.02, C.lakeCut, { outline: 0, shadow: false }), (x0 + x1) / 2, (WATER_Y - LAKE_DEPTH) / 2, edge + 0.01), 'cut-face'));
-  lake.add(at(box(x1 - x0, 0.03, 0.03, '#BFE6F5', { outline: 0, shadow: false }), (x0 + x1) / 2, WATER_Y, edge + 0.015));
+  // The cut faces, a hair proud of the deck's sides, each with a pale line where the water meets the cut.
+  const height = LAKE_DEPTH + WATER_Y, y = (WATER_Y - LAKE_DEPTH) / 2;
+  const [frontX0, rightZ0] = [shore.at(-1)!.x, shore[0].z];
+  const frontW = deck.x1 - frontX0, rightD = deck.z1 - rightZ0;
+  lake.add(part(at(box(frontW, height, 0.02, C.lakeCut, { outline: 0, shadow: false }), (frontX0 + deck.x1) / 2, y, deck.z1 + 0.01), 'cut-face'));
+  lake.add(part(at(box(0.02, height, rightD, C.lakeCut, { outline: 0, shadow: false }), deck.x1 + 0.01, y, (rightZ0 + deck.z1) / 2), 'cut-face'));
+  lake.add(at(box(frontW, 0.03, 0.03, '#BFE6F5', { outline: 0, shadow: false }), (frontX0 + deck.x1) / 2, WATER_Y, deck.z1 + 0.015));
+  lake.add(at(box(0.03, 0.03, rightD, '#BFE6F5', { outline: 0, shadow: false }), deck.x1 + 0.015, WATER_Y, (rightZ0 + deck.z1) / 2));
   // Reeds in clumps near the shore.
   const reedAt = [0.12, 0.3, 0.55, 0.8].map((k) => shore[Math.round(k * (shore.length - 1))]);
   const middle = shore.reduce((s, p) => ({ x: s.x + p.x / shore.length, z: s.z + p.z / shore.length }), { x: 0, z: 0 });
