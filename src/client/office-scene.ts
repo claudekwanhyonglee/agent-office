@@ -8,6 +8,7 @@ import { PaperPlanes } from './paper-planes.ts';
 import { BinBall, BoardDarts, DeskMugs, FishingGear, PongBallMesh, PoolBalls, floatRings } from './break-room.ts';
 import { PondFish, updateWater } from './water.ts';
 import { Dog } from './dog.ts';
+import { FetchBall } from './fetch.ts';
 import { lookFor } from './look.ts';
 import { updateBackWall, updateScreens } from './office.ts';
 
@@ -39,6 +40,7 @@ export function createOfficeScene(host: HTMLElement) {
   const dog = new Dog();
   dog.placeAt(controller.dog.spot.dog, controller.dog.lying);
   view.scene.add(dog.root);
+  const fetchBall = new FetchBall(view.scene);
 
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.55, 0.68, 40),
@@ -80,7 +82,10 @@ export function createOfficeScene(host: HTMLElement) {
         characters.get(event.to)?.highFive();
       } else if (event.type === 'dog') {
         if (event.path.length === 1) dog.placeAt(event.path[0], event.lie);
-        else dog.go(event.path, event.lie);
+        else dog.go(event.path, event.lie, event.wait);
+      } else if (event.type === 'fetch') {
+        characters.get(event.key)?.throwBall();
+        fetchBall.throw(event.to);
       } else if (event.type === 'cast') {
         const angler = characters.get(event.key);
         if (angler?.place) {
@@ -150,6 +155,7 @@ export function createOfficeScene(host: HTMLElement) {
     boardDarts.update([...characters.values()].map((c) => c.dartsThrower()).find((d) => d) ?? null);
     binBall.update([...characters.values()].map((c) => c.hoopsShooter()).find((d) => d) ?? null);
     dog.update(t, dt);
+    fetchBall.update(dt, [...characters.values()].find((c) => c.throwingBall()) ?? null, dog);
     for (const c of leaving) {
       c.update(t, dt);
       if (c.mode === 'gone') { view.scene.remove(c.root); leaving.delete(c); }

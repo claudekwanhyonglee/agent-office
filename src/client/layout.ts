@@ -423,6 +423,12 @@ export function along(path: Point[], d: number): { leg: number; done: boolean } 
 
 export const pathLength = (path: Point[]) => path.slice(1).reduce((sum, p, i) => sum + distance(path[i], p), 0);
 
+/** The dog's run from `spot` out to where a thrown ball lands, and back. */
+export function fetchRun(layout: OfficeLayout, spot: DogSpot): Point[] {
+  const out = route(layout, spot.link, [spot.fetch]);
+  return [...out, ...out.slice(0, -1).reverse()];
+}
+
 /** The dog's bed (first: it starts there), a spot on the deck, one in the hall and one in the left aisle. */
 function dogSpots(hallZ: number): DogSpot[] {
   const play: HangoutPose[] = ['petting', 'throwing-ball'];

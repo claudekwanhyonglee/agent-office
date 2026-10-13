@@ -1,6 +1,6 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
 import {
-  DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, behindChair, officeLayout, pathLength, route, withoutLoops, yawTowards,
+  DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, behindChair, fetchRun, officeLayout, pathLength, route, withoutLoops, yawTowards,
   type DogSpot, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
 } from './layout.ts';
 import { SHOT_COUNT, SHOT_SECONDS } from './pool.ts';
@@ -8,6 +8,7 @@ import { hitter, rallySeconds, type Rally, type Side } from './pong.ts';
 import { RETURN_SECONDS, driftParams, type Drift } from './float.ts';
 import { CAST_SECONDS, landingFrom, type Cast } from './fishing.ts';
 import { FISH } from './water.ts';
+import { RELEASE_AT } from './fetch.ts';
 
 /** Seconds an idle agent waits at its desk before wandering off (AC: within 3 s). */
 const SET_OFF = { min: 1, max: 2.5 };
@@ -93,10 +94,10 @@ export type OfficeEvent =
   | { type: 'high-five'; key: string; to: string }
   /** A coffee mug appears on (or is cleared from) desk `desk`. */
   | { type: 'mug'; desk: number; on: boolean }
-  /** The dog runs along `path`, then lies down (in its bed) or stands. */
-  | { type: 'dog'; path: Point[]; lie: boolean }
-  /** Agent `key` throws a ball for the dog (the dog's run follows). */
-  | { type: 'fetch'; key: string }
+  /** The dog runs along `path` (setting off after `wait` seconds), then lies down (in its bed) or stands. */
+  | { type: 'dog'; path: Point[]; lie: boolean; wait?: number }
+  /** Agent `key` throws a ball for the dog to `to` (the dog's run follows). */
+  | { type: 'fetch'; key: string; to: Point }
   /** Turn `shot` of the pool rack starts (#53); null: play stopped, the balls go back in the rack. */
   | { type: 'pool'; shot: number | null }
   /** A table-tennis rally starts (#70) between `players` (at the -x end, then the +x end); null: play stopped. */
@@ -355,11 +356,11 @@ export class OfficeController {
   /** The dog runs to where the ball lands and back. */
   private fetch(key: string, now: number, events: OfficeEvent[]) {
     const dog = this.dog;
-    const out = route(this.layout, dog.spot.link, [dog.spot.fetch]);
-    const path = [...out, ...out.slice(0, -1).reverse()];
+    const path = fetchRun(this.layout, dog.spot);
     dog.lying = false;
-    dog.arrivesAt = now + pathLength(path) / DOG_SPEED;
-    events.push({ type: 'fetch', key }, { type: 'dog', path, lie: false });
+    // It sets off as the ball leaves the hand (#75).
+    dog.arrivesAt = now + RELEASE_AT + pathLength(path) / DOG_SPEED;
+    events.push({ type: 'fetch', key, to: dog.spot.fetch }, { type: 'dog', path, lie: false, wait: RELEASE_AT });
   }
 
   /** Idle agents react to another agent's state change (#33). */
