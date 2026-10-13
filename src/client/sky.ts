@@ -408,8 +408,11 @@ export function createSky() {
     texture,
     /** Match the screen, in CSS pixels: the sky is soft enough not to need the device's full resolution. */
     resize(width: number, height: number) {
-      W = canvas.width = Math.max(1, Math.round(width));
-      H = canvas.height = Math.max(1, Math.round(height));
+      const w = Math.max(1, Math.round(width)), h = Math.max(1, Math.round(height));
+      if (w === canvas.width && h === canvas.height) return;
+      W = canvas.width = w;
+      H = canvas.height = h;
+      texture.dispose(); // GPU storage is fixed-size: drop it so the next frame uploads at the new size
     },
     draw(hour: number, today: Today, seconds: number) {
       const sunNow = sunState(hour, today), moonNow = moonState(sunNow);
