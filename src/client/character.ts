@@ -722,6 +722,36 @@ export function bounceAt(t: number) {
   return { y: low + top * rise, squash: 1, k: rise, period, flight };
 }
 
+/** Yoga (#79): facing along the mat, the yogi holds each pose for HOLD seconds, then eases into the next over EASE. */
+const YOGA = { hold: 4, ease: 1.5 };
+const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+const YOGA_POSES = [
+  // Tree: one foot on the other knee, palms together overhead.
+  { body: { y: 0, z: 0, tip: 0 }, twist: 0, look: -0.05, hands: [v(-0.07, 1.85, 0.05), v(0.07, 1.85, 0.05)], feet: [v(-0.05, 0.1, 0.04), v(0.12, 0.42, 0.12)] },
+  // Warrior II: side on, feet wide along the mat, arms out along it, looking ahead.
+  { body: { y: -0.08, z: 0, tip: 0 }, twist: Math.PI / 2, look: 0, hands: [v(0, 0.95, 0.85), v(0, 0.95, -0.85)], feet: [v(-0.05, 0.1, 0.55), v(0.05, 0.1, -0.55)] },
+  // Downward dog: hips high, hands and feet planted far apart.
+  { body: { y: 0.45, z: -0.35, tip: 1.25 }, twist: 0, look: 0.3, hands: [v(-0.25, 0.18, 0.75), v(0.25, 0.18, 0.75)], feet: [v(-0.2, 0.1, -0.7), v(0.2, 0.1, -0.7)] },
+  // Forward fold: feet together, folded over, palms on the mat.
+  { body: { y: 0.35, z: -0.1, tip: 1.5 }, twist: 0, look: 0.4, hands: [v(-0.2, 0.18, 0.45), v(0.2, 0.18, 0.45)], feet: [v(-0.15, 0.1, -0.1), v(0.15, 0.1, -0.1)] },
+];
+
+/** The yogi's body, twist, head and limbs `t` seconds onto the mat. */
+function yogaAt(t: number) {
+  const { hold, ease } = YOGA, each = hold + ease, n = YOGA_POSES.length;
+  const i = Math.floor(t / each) % n, u = t % each;
+  const a = YOGA_POSES[i], b = YOGA_POSES[(i + 1) % n];
+  const k = u < hold ? 0 : (u - hold) / ease, s = k * k * (3 - 2 * k);
+  const mix = (x: number, y: number) => x + (y - x) * s;
+  return {
+    body: { y: mix(a.body.y, b.body.y), z: mix(a.body.z, b.body.z), tip: mix(a.body.tip, b.body.tip) },
+    twist: mix(a.twist, b.twist),
+    look: mix(a.look, b.look),
+    hands: a.hands.map((h, j) => h.clone().lerp(b.hands[j], s)),
+    feet: a.feet.map((f, j) => f.clone().lerp(b.feet[j], s)),
+  };
+}
+
 /** Break-room poses (#30); each sets the body and returns the bubble height. */
 const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => number>> = {
   'lounging-sun': ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
@@ -760,14 +790,16 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
     fr.position.set(0.17, 0.08 + y, 0.04);
     return 2.3 + y;
   },
-  yoga: ({ pivot, head, hands: [hl, hr], feet: [fl, fr] }, tt) => {
-    // Tree pose: one foot on the other knee, palms together overhead, a slow sway.
-    pivot.rotation.z = Math.sin(tt * 0.7) * 0.04 * motion;
-    head.rotation.x = -0.05;
-    hl.position.set(-0.07, 1.85, 0.05);
-    hr.position.set(0.07, 1.85, 0.05);
-    fl.position.set(-0.05, 0.06, 0.04);
-    fr.position.set(0.12, 0.42, 0.12);
+  yoga: ({ pivot, head, hands: [hl, hr], feet: [fl, fr], placeTime = 0 }) => {
+    // A flow (#79): each pose held, then eased into the next, looping.
+    const { body, twist, look, hands, feet } = yogaAt(placeTime);
+    pivot.position.set(0, body.y, body.z);
+    pivot.rotation.set(body.tip, twist, 0);
+    head.rotation.set(look, -twist, 0);
+    hl.position.copy(hands[0]);
+    hr.position.copy(hands[1]);
+    fl.position.copy(feet[0]);
+    fr.position.copy(feet[1]);
     return 2.4;
   },
   fishing: ({ head, hands: [hl, hr], held, casting }) => {

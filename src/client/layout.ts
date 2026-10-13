@@ -301,7 +301,7 @@ function soloSpots(): HangoutSpot[] {
     },
     solo('fishing', 'fishing', { x: -4.4, z: 11.0 }, left, [{ x: -3.2, z: 11.0 }, { x: -3.2, z: DECK_Z }]),
     solo('hammock', 'swinging', hammock, right, [{ x: hammock.x, z: 11.7 }, { x: RIGHT_DECK_X, z: 11.7 }, { x: RIGHT_DECK_X, z: DECK_Z }], true),
-    solo('yoga', 'yoga', yogaMat, 0, [{ x: -6.4, z: yogaMat.z }, { x: -AISLE_X, z: DECK_Z }]),
+    solo('yoga', 'yoga', yogaMat, right, [{ x: -6.4, z: yogaMat.z }, { x: -AISLE_X, z: DECK_Z }]),
     solo('trampoline', 'bouncing', trampoline, 0, [{ x: 6.5, z: trampoline.z }, { x: RIGHT_DECK_X, z: trampoline.z }, { x: RIGHT_DECK_X, z: DECK_Z }], true),
     solo('darts', 'throwing-darts', { x: -6.6, z: BREAK_ROOM.dartboard.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.dartboard.z }]),
     solo('hoops', 'shooting-hoops', { x: -6.8, z: BREAK_ROOM.bin.z }, left, [{ x: -AISLE_X, z: BREAK_ROOM.bin.z }]),
