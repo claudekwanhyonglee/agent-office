@@ -4,7 +4,7 @@
 import { execFile } from 'node:child_process';
 import type { AckStore } from './acknowledged.ts';
 import type { CloudLimit } from '../shared/usage.ts';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentRecord } from '../shared/agent.ts';
@@ -199,15 +199,64 @@ export function usesWorkProvider(settings: unknown) {
 
 const WORK_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX'];
 
+// The same token endpoint and client id `claude` uses to renew its claude.ai login.
+const TOKEN_URL = 'https://platform.claude.com/v1/oauth/token';
+const CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
+const SERVICE = 'Claude Code-credentials';
+
+const security = (args: string[]) => new Promise<string | null>((resolve) =>
+  execFile('security', args, { timeout: 120_000, maxBuffer: 32 * 1024 * 1024 }, (error, stdout) => resolve(error ? null : String(stdout))));
+
+/** Applies a token-endpoint reply to the saved credentials, keeping everything else `claude` stored. */
+export function renewedCredentials(saved: { claudeAiOauth: Record<string, unknown> }, reply: Record<string, unknown>, now = Date.now()) {
+  const oauth: Record<string, unknown> = { ...saved.claudeAiOauth, accessToken: reply.access_token };
+  if (typeof reply.refresh_token === 'string') oauth.refreshToken = reply.refresh_token;
+  if (typeof reply.expires_in === 'number') oauth.expiresAt = now + reply.expires_in * 1000;
+  if (typeof reply.scope === 'string') oauth.scopes = reply.scope.split(' ').filter(Boolean);
+  return { ...saved, claudeAiOauth: oauth };
+}
+
 /**
- * claude.ai logins last about 8 hours. Rather than handle the refresh token ourselves (which would leave
- * `claude` holding a used one), have the CLI renew it: `claude auth status` doesn't, but any request does,
- * so send a one-word prompt to the smallest model (a few tokens of your plan, about three times a day).
- * Skipped when Claude Code's settings route it through a work key or gateway, so that never pays.
+ * Renews the claude.ai login the way `claude` does, then saves the new tokens back where `claude` keeps them,
+ * so it carries on with them too. Talks only to Anthropic's login server: no model call, no work key or gateway.
  */
-function askClaudeToRefresh(env: NodeJS.ProcessEnv): Promise<void> {
-  if (Date.now() - lastRefresh < REFRESH_EVERY) return Promise.resolve();
+async function renewLogin(): Promise<boolean> {
+  const mac = process.platform === 'darwin';
+  const file = join(claudeConfigDir(), '.credentials.json');
+  const raw = mac ? (await security(['find-generic-password', '-s', SERVICE, '-w']))?.trim() : (() => { try { return readFileSync(file, 'utf8'); } catch { return null; } })();
+  const saved = raw ? readJson(() => raw) : null;
+  const oauth = saved?.claudeAiOauth;
+  if (!oauth?.refreshToken) return false;
+  const scopes: string[] = Array.isArray(oauth.scopes) && oauth.scopes.length ? oauth.scopes : ['user:profile', 'user:inference', 'user:sessions:claude_code'];
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grant_type: 'refresh_token', refresh_token: oauth.refreshToken, client_id: CLIENT_ID, scope: scopes.join(' ') }),
+  }).catch((error) => { console.error(`Couldn't reach the Claude login server: ${explainFetchError(error)}`); return null; });
+  if (!res) return false;
+  if (!res.ok) { console.error(`Couldn't renew the Claude login (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`); return false; }
+  const reply = await res.json() as Record<string, unknown>;
+  if (typeof reply.access_token !== 'string') return false;
+  const updated = JSON.stringify(renewedCredentials(saved, reply));
+  if (mac) {
+    const account = (await security(['find-generic-password', '-s', SERVICE]))?.match(/"acct"<blob>="([^"]*)"/)?.[1] ?? process.env.USER ?? '';
+    if ((await security(['add-generic-password', '-U', '-a', account, '-s', SERVICE, '-X', Buffer.from(updated).toString('hex')])) == null) {
+      console.error("Renewed the Claude login but couldn't save it to the keychain.");
+      return false;
+    }
+  } else writeFileSync(file, updated, { mode: 0o600 });
+  console.log('Renewed the Claude login.');
+  return true;
+}
+
+/**
+ * claude.ai logins last about 8 hours. Renew directly first; if that fails, have the CLI do it with a one-word
+ * prompt to the smallest model (`claude auth status` doesn't renew, but any request does).
+ * That fallback is skipped when Claude Code's settings route it through a work key or gateway, so that never pays.
+ */
+async function askClaudeToRefresh(env: NodeJS.ProcessEnv): Promise<void> {
+  if (Date.now() - lastRefresh < REFRESH_EVERY) return;
   lastRefresh = Date.now();
+  if (await renewLogin().catch(() => false)) return;
   if (usesWorkProvider(readJson(() => readFileSync(join(claudeConfigDir(), 'settings.json'), 'utf8')))) {
     console.error('Not renewing the Claude login: Claude Code settings use a work API key or gateway.');
     return Promise.resolve();

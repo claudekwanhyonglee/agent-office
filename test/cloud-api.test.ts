@@ -70,3 +70,13 @@ describe('usesWorkProvider', () => {
     expect(usesWorkProvider(null)).toBe(false);
   });
 });
+
+describe('renewedCredentials', () => {
+  it('swaps in the new tokens and keeps everything else', async () => {
+    const { renewedCredentials } = await import('../src/server/cloud.ts');
+    const saved = { claudeAiOauth: { accessToken: 'old', refreshToken: 'r1', expiresAt: 1, scopes: ['a'], subscriptionType: 'max' }, other: 1 };
+    const next = renewedCredentials(saved, { access_token: 'new', refresh_token: 'r2', expires_in: 60, scope: 'a b' }, 1000);
+    expect(next).toEqual({ claudeAiOauth: { accessToken: 'new', refreshToken: 'r2', expiresAt: 61_000, scopes: ['a', 'b'], subscriptionType: 'max' }, other: 1 });
+    expect(renewedCredentials(saved, { access_token: 'new' }).claudeAiOauth.refreshToken).toBe('r1');
+  });
+});
