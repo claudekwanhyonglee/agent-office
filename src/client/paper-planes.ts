@@ -5,8 +5,8 @@ import { paperPlane } from './character.ts';
 const FLIGHT_SECONDS = 1.4;
 /** How long a landed plane lies on the desk. */
 const LANDED_SECONDS = 12;
-/** Where a landed plane's middle lies: on the desk top (0.82 m), as it always did. */
-const LANDED_Y = 0.82 + 0.12;
+/** Where a landed plane's middle lies: its underside (2.85 cm below) on the desk top (0.79 m). */
+const LANDED_Y = 0.79 + 0.0285;
 
 /** Paper planes flying in an arc from a thrower's hand to a desk, where they lie for a while. */
 export class PaperPlanes {

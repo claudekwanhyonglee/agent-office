@@ -173,5 +173,8 @@ export function createOfficeScene(host: HTMLElement) {
     }
   });
 
+  // Dev only: lets a visual check frame a desk and throw a plane at it.
+  if (import.meta.env.DEV) Object.assign(window, { officeDebug: { camera: view.camera, planes, seats: () => office.seats } });
+
   return { show, onPick, onHover, select: (key: string | null) => { selected = key; } };
 }

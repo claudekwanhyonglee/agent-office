@@ -301,15 +301,15 @@ function addPlants(group: THREE.Group, layout: OfficeLayout) {
   });
 }
 
-/** A desk whose sitter is on its -z side, facing +z (the screen side). 0.7 m deep, so 1.5 m stays clear between rows. */
+/** A desk whose sitter is on its -z side, facing +z (the screen side), so their right is -x. 0.7 m deep, so 1.5 m stays clear between rows. */
 function buildDesk() {
   const desk = tag(new THREE.Group(), 'desk');
   desk.add(at(box(1.24, 0.08, 0.7, '#E9B872'), 0, 0.75, 0));
   for (const [lx, lz] of [[-0.55, -0.28], [0.55, -0.28], [-0.55, 0.28], [0.55, 0.28]]) {
     desk.add(at(box(0.07, 0.72, 0.07, '#8C6A4A', { outline: 0.02 }), lx, 0.36, lz));
   }
-  desk.add(at(box(0.5, 0.03, 0.16, '#F4EEE2', { outline: 0.03 }), 0, 0.805, -0.12));
-  desk.add(at(box(0.14, 0.03, 0.18, '#F4EEE2', { outline: 0.04 }), 0.4, 0.805, -0.1));
+  desk.add(part(at(box(0.5, 0.03, 0.16, '#F4EEE2', { outline: 0.03 }), 0, 0.805, -0.12), 'keyboard'));
+  desk.add(part(at(box(0.14, 0.03, 0.18, '#F4EEE2', { outline: 0.04 }), -0.4, 0.805, -0.1), 'mouse'));
   return desk;
 }
 
