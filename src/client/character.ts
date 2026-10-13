@@ -862,8 +862,9 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
   },
   watching: ({ pivot, head, hands: [hl, hr] }, tt) => {
     // Peering over someone's shoulder, hands on hips; upright, so it stays clear of their chair (#67).
+    // Eyes level with the monitor, under the seated agent's head (#78).
     pivot.rotation.x = 0.05;
-    head.rotation.x = 0.25;
+    head.rotation.x = 0.12;
     head.rotation.z = Math.sin(tt * 0.8) * 0.1 * motion;
     hl.position.set(-0.42, 0.62, 0.1);
     hr.position.set(0.42, 0.62, 0.1);

@@ -482,6 +482,12 @@ export function behindChair(layout: OfficeLayout, seat: SeatSpot): Point[] {
   return [{ x: behind.x + (side.x - behind.x) * k, z: behind.z + (side.z - behind.z) * k }];
 }
 
+/** An onlooker's place behind `seat`'s chair, watching its screen. */
+export function overTheShoulder(layout: OfficeLayout, seat: SeatSpot): HangoutPlace {
+  const [spot] = behindChair(layout, seat);
+  return { ...spot, spot: 'over-the-shoulder', pose: 'watching', yaw: yawTowards(spot, seat.desk), link: [spot] };
+}
+
 /** Door → hall → aisle → lane behind the row → into the chair. */
 export const arrivalPath = (layout: OfficeLayout, seat: SeatSpot) => route(layout, layout.doorLink, seat.link);
 

@@ -1,6 +1,6 @@
 import type { AgentRecord, OfficeState } from '../shared/agent.ts';
 import {
-  DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, behindChair, fetchRun, officeLayout, pathLength, route, withoutLoops, yawTowards,
+  DOG_SPEED, INITIAL_ROWS, WALK_SPEED, along, arrivalPath, fetchRun, officeLayout, overTheShoulder, pathLength, route, withoutLoops, yawTowards,
   type DogSpot, type HangoutPlace, type HangoutPose, type Point, type SeatSpot,
 } from './layout.ts';
 import { SHOT_COUNT, SHOT_SECONDS } from './pool.ts';
@@ -380,10 +380,9 @@ export class OfficeController {
     const onlooker = this.pick(this.helpers(key));
     if (watched || !onlooker || this.errandSent) return;
     // One onlooker per desk, off to one side (#67).
-    const [spot] = behindChair(this.layout, agent.seat);
     const [k, a] = onlooker;
     this.errandSent = true;
-    this.send(k, a, errandPlace('over-the-shoulder', 'watching', spot, [spot], yawTowards(spot, agent.seat.desk)), now, events);
+    this.send(k, a, overTheShoulder(this.layout, agent.seat), now, events);
     a.nextAt = null;
     a.reaction = { kind: 'watch', target: key, done: true };
   }
