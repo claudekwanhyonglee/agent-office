@@ -2,14 +2,14 @@ import * as THREE from 'three';
 import type { OfficeState } from '../shared/agent.ts';
 import { at, ball, cyl, mesh, tag } from './toon.ts';
 import type { Look, HatKind } from './look.ts';
-import { BREAK_ROOM, WALK_SPEED, rejoin, yawTowards, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
+import { BREAK_ROOM, CUE_REACH, WALK_SPEED, rejoin, yawTowards, type HangoutPlace, type HangoutPose, type Point, type SeatSpot } from './layout.ts';
 import { POSES, type BubbleKind, type Pose } from './poses.ts';
 import { bubbleTexture } from './bubbles.ts';
 import { CROSS_SECONDS, FREE_HAND, HIT, PLAYER_X, hitTimes, hitter, pongBallAt, rallySeconds, reactionAt, shuffleAt, tossHand, type Rally, type Side } from './pong.ts';
 import { RETURN_SECONDS, driftAt, type Afloat, type Drift } from './float.ts';
 import { ROD_HAND, ROD_LENGTH, rodPitch, type Cast } from './fishing.ts';
 import { HANDS, shotAt } from './hoops.ts';
-import { STRIKE_AT } from './pool.ts';
+import { BALL_R, STRIKE_AT } from './pool.ts';
 import { COLLECT_WALK, DART, PULL as DARTS_PULL, RELEASE_AT, RELEASE_HAND, ROUND, THROWS, THROW_EVERY, WALK as DARTS_WALK, dartsAt } from './darts.ts';
 import { RELEASE_AT as BALL_RELEASE_AT } from './fetch.ts';
 
@@ -31,12 +31,14 @@ const POP_SECONDS = 0.2;
 const CUE_Y = 0.9;
 const BRIDGE = 0.62;
 /** Pool (#76): the cue hand's distance from the strike (tip at the ball): at rest, and drawn back. */
-const CUE_HAND_STRIKE = 0.16;
 const CUE_REST = 0.05;
 const CUE_DRAWN = 0.3;
-const CUE_BRIDGE = new THREE.Vector3(0.04, CUE_Y, BRIDGE);
-const CUE_STRIKE_HAND = new THREE.Vector3(0.36, CUE_Y, CUE_HAND_STRIKE);
-const CUE_ALONG = CUE_BRIDGE.clone().sub(CUE_STRIKE_HAND).normalize();
+/** Pool (#124): the cue ball sits on the felt straight ahead; the cue runs from the right hand, off to the side clear of the head, through the bridge to the ball. */
+const CUE_BALL = new THREE.Vector3(0, 0.835 + BALL_R, CUE_REACH);
+const CUE_TIP = 1.07;
+const CUE_STRIKE_HAND = cueHandAt(0.36);
+const CUE_ALONG = CUE_BALL.clone().sub(CUE_STRIKE_HAND).normalize();
+const CUE_BRIDGE = CUE_STRIKE_HAND.clone().addScaledVector(CUE_ALONG, (BRIDGE - CUE_STRIKE_HAND.z) / CUE_ALONG.z);
 /** Pool (#117): a waiting player's hand on the standing cue, and how far up the cue it grips (the butt rests on the floor). */
 const CUE_STAND = { x: 0.6, y: 1.0, z: 0.12, grip: 0.6 };
 const UP = new THREE.Vector3(0, 1, 0);
@@ -1140,6 +1142,12 @@ const ACTIVITY_POSES: Partial<Record<HangoutPose, (b: Body, tt: number) => numbe
 const smooth = (u: number) => u * u * (3 - 2 * u);
 
 /** Pool (#76): how far the cue hand is behind the strike, `t` seconds into the turn: at rest, then drawn back slowly, pushed through to the ball at STRIKE_AT, and eased back. */
+/** Where the cue hand is at the strike, `x` to the side: just far enough back that the tip touches the cue ball. */
+function cueHandAt(x: number) {
+  const dy = CUE_Y - CUE_BALL.y;
+  return new THREE.Vector3(x, CUE_Y, CUE_BALL.z - Math.sqrt((CUE_TIP + BALL_R) ** 2 - x * x - dy * dy));
+}
+
 function cueBack(t: number | null) {
   const s = t == null ? Infinity : t - STRIKE_AT;
   if (s < -0.5 || s >= 0.6) return CUE_REST;
@@ -1155,8 +1163,8 @@ function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {
   rod.add(pole);
   const dart = dartModel();
   const ball = hoopsBall();
-  // Gripped near the butt: the tip is 1.07 m along from the hand.
-  const cue = () => tag(at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, 0.345, 0), 'cue');
+  // Gripped near the butt: the tip is CUE_TIP along from the hand.
+  const cue = () => tag(at(cyl(0.012, 0.022, 1.45, '#E9B872', { outline: 0.03 }), 0, CUE_TIP - 1.45 / 2, 0), 'cue');
   const bat = new THREE.Group();
   bat.add(Object.assign(at(cyl(0.14, 0.14, 0.03, '#C25B7A', { outline: 0.05 }), BLADE.x, BLADE.y, BLADE.z), { userData: { part: 'bat-blade' } }));
   bat.add(at(cyl(0.025, 0.025, 0.12, WOOD_DARK, { outline: 0 }), 0, 0.05, 0.02));
