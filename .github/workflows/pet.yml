@@ -32,6 +32,8 @@ jobs:
           cat office.log
           cat ~/.agent-office/pet/pet.log || true
           test -s "$AGENT_PET_SCREENSHOT"
+          # Also in the log, for reading without downloading the artifact.
+          echo "PET_PNG_BASE64 $(base64 -w0 "$AGENT_PET_SCREENSHOT")"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
