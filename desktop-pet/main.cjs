@@ -161,7 +161,13 @@ function screenshotAndQuit(file) {
     try {
       const image = await win.webContents.capturePage();
       writeFileSync(file, image.toPNG());
-      writeFileSync(file.replace(/\.png$/, '-small.png'), image.resize({ width: 120 }).toPNG()); // small enough to print into a CI log
+      // What a check can read without seeing the picture: how much was drawn, and any text on the page.
+      const bitmap = image.toBitmap();
+      let drawn = 0;
+      for (let i = 3; i < bitmap.length; i += 4) if (bitmap[i] > 0) drawn++;
+      const text = await win.webContents.executeJavaScript('document.body.innerText').catch(() => '');
+      const webgl = await win.webContents.executeJavaScript("!!document.createElement('canvas').getContext('webgl2')").catch(() => null);
+      console.log(`Pet screenshot: ${drawn} of ${bitmap.length / 4} pixels drawn; WebGL2: ${webgl}; text: ${JSON.stringify(text)}`);
     } finally { app.quit(); }
   }, Number(process.env.AGENT_PET_SCREENSHOT_DELAY) || 8000);
 }
