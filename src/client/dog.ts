@@ -12,6 +12,8 @@ const TURN_SPEED = 10;
 export class Dog {
   readonly root = tag(new THREE.Group(), 'dog');
   lying = false;
+  /** Trots on the spot (the desktop pet, while work runs) instead of standing still. */
+  trotting = false;
   private body = new THREE.Group();
   private tail: THREE.Object3D;
   private legs: THREE.Object3D[];
@@ -105,6 +107,10 @@ export class Dog {
       this.body.position.y = Math.abs(Math.sin(this.phase)) * 0.05;
       this.legs.forEach((leg, i) => { leg.rotation.x = Math.sin(this.phase + (i % 2 ? Math.PI : 0)) * 0.6; });
       if (!this.path.length) this.lying = this.lieOnArrival;
+    } else if (this.trotting && !this.lying) {
+      this.phase += dt * 11;
+      this.body.position.y = Math.abs(Math.sin(this.phase)) * 0.035;
+      this.legs.forEach((leg, i) => { leg.rotation.x = Math.sin(this.phase + (i % 2 ? Math.PI : 0)) * 0.45; });
     } else if (this.lying) {
       this.body.position.y = -0.17;
       this.legs.forEach((leg) => { leg.rotation.x = Math.PI / 2; });

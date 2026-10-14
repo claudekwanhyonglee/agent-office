@@ -221,7 +221,7 @@ describe('#100 AC3 everything can be reached from the entrance, only over steps'
       expect(problems(layout, [{ x: 0, z: -7 }, { x: 0, z: crewLounge.z0 + 1 }]).some((p) => p.includes('tier edge'))).toBe(true);
     });
 
-    it(`#100 AC3 (${tiers} tiers) every walk between any two of: the entrance, seats (and beside and behind them), activity spots, pool turns and dog spots`, { timeout: 120_000 }, () => {
+    it(`#100 AC3 (${tiers} tiers) every walk between any two of: the entrance, seats (and beside and behind them), activity spots, pool turns and dog spots`, { timeout: 120_000 }, async () => {
       const layout = plan(tiers);
       const ends = [
         { name: 'door', link: layout.doorLink },
@@ -242,6 +242,8 @@ describe('#100 AC3 everything can be reached from the entrance, only over steps'
           const bad = problems(layout, route(layout, from.link, to.link));
           if (bad.length) found.push(`${from.name} → ${to.name}: ${bad[0]}`);
         }
+        // This runs for a minute on a slow machine; yield so vitest's worker can still report back.
+        await new Promise((resolve) => setImmediate(resolve));
       }
       for (const seat of layout.seats) found.push(...problems(layout, departurePath(layout, seat)).map((p) => `leaving seat ${seat.index}: ${p}`));
       expect(found.slice(0, 10)).toEqual([]);

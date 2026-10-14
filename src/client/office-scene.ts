@@ -8,14 +8,15 @@ import { BinBall, BoardDarts, DeskMugs, FishingGear, PongBallMesh, PoolBalls, fl
 import { PondFish, updateWater } from './water.ts';
 import { Dog } from './dog.ts';
 import { FetchBall, RELEASE_AT } from './fetch.ts';
-import { lookFor } from './look.ts';
-import { updateBackWall, updateScreens } from './office.ts';
+import { lookFor, lookNumber } from './look.ts';
+import { swivelChairs, updateBackWall, updateScreens } from './office.ts';
 import { doorsOpen } from './control-room-3d.ts';
 import { CAST_SECONDS, landingFrom } from './fishing.ts';
 import { CLIMBING_IN } from './float.ts';
 import { SofaRemote } from './tv.ts';
 import { TOSS_SECONDS, hitter, rallySeconds, type Rally, type Side } from './pong.ts';
 import { bindLayoutPicker, savedLayout } from './layout-picker.ts';
+import { THEMES, bindThemePicker, savedTheme } from './themes.ts';
 import { fetchRun, floorAt, planeLanding, yawTowards, type Point } from './layout.ts';
 
 /** The agent a picked mesh belongs to, if any. */
@@ -28,6 +29,10 @@ export function agentKeyOf(object: THREE.Object3D | null | undefined): string | 
 /** The live office: the 3D view plus a character for every listed agent. */
 export function createOfficeScene(host: HTMLElement) {
   const view = createView(host);
+  const themeHost = document.getElementById('theme-picker');
+  // A new theme redresses the whole office and everyone in it, so reload rather than patch it in place.
+  const themeId = themeHost ? bindThemePicker(themeHost, () => location.reload()) : savedTheme();
+  const theme = themeId ? THEMES[themeId] : null;
   const picker = document.getElementById('layout-picker');
   let preset = picker ? bindLayoutPicker(picker, switchLayout) : savedLayout();
   let controller = new OfficeController({}, preset);
@@ -59,8 +64,9 @@ export function createOfficeScene(host: HTMLElement) {
   /** Everyone sitting on the sofa, including anyone about to walk out of the office from it. */
   const sofaSitters = () => [...characters.values(), ...leaving].filter((c) => c.onSofa());
   /** A new character, standing on the floor. */
-  const newCharacter = (key: string) => {
-    const character = new Character(lookFor(key));
+  const newCharacter = (key: string, coordinator = false) => {
+    const look = lookFor(key, coordinator);
+    const character = new Character(theme ? theme.costume(look, lookNumber(key)) : look, { trickOrTreat: !!theme?.trickOrTreat });
     character.ground = floor;
     return character;
   };
@@ -110,7 +116,7 @@ export function createOfficeScene(host: HTMLElement) {
         if (event.place) character.placeAt(event.seat, event.state, event.place);
         else character.sitAt(event.seat, event.state);
       } else if (event.type === 'arrive') {
-        const character = newCharacter(event.key);
+        const character = newCharacter(event.key, event.record.coordinator);
         character.root.userData.agentKey = event.key;
         view.scene.add(character.root);
         characters.set(event.key, character);
@@ -192,6 +198,7 @@ export function createOfficeScene(host: HTMLElement) {
   view.onFrame((t, dt) => {
     apply(controller.tick());
     characters.forEach((c) => c.update(t, dt));
+    swivelChairs(office.seats, characters.values());
     planes.update(dt);
     poolBalls.update(dt);
     pongBall.update(dt);

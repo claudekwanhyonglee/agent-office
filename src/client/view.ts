@@ -3,9 +3,11 @@ import { buildOffice } from './office.ts';
 import { createSky, createSunClock } from './sky.ts';
 import { bindBackgroundToggle } from './background-toggle.ts';
 import {
-  bindHomeKey, blockContextMenu, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
-  placeCamera, wheelRadius, zoomToward, type Orbit, type Pointer,
-} from './camera.ts';
+  bindHomeKey, blockContextMenu, closeUp, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
+  placeCamera, wheelRadius, zoomToward, type Orbit, type Pointer } from './camera.ts';
+import { bindViewToggle, readCloseUp } from './view-toggle.ts';
+import { THEMES, animateTheme, savedTheme } from './themes.ts';
+import { floorAt } from './layout.ts';
 
 /** Renderer, lights, orbit camera and the office. Agents are layered on by callers. */
 export function createView(host: HTMLElement) {
@@ -45,6 +47,9 @@ export function createView(host: HTMLElement) {
   }
 
   let office: ReturnType<typeof buildOffice> | undefined;
+  const close = { on: readCloseUp() };
+  const themeId = savedTheme();
+  const theme = themeId ? THEMES[themeId] : null;
   let rows = 0;
   let preset = 'classic';
 
@@ -55,6 +60,7 @@ export function createView(host: HTMLElement) {
     rows = count;
     preset = layoutPreset;
     office = buildOffice(count, preset);
+    if (theme) { const built = office; office.group.add(theme.decorate(built.layout.bounds, (x, z) => floorAt(built.layout, { x, z }))); }
     scene.add(office.group);
     // Frame the whole floor and stretch the sun's shadow box over it.
     const { left, right, back, front } = office.layout.bounds;
@@ -74,6 +80,7 @@ export function createView(host: HTMLElement) {
     sky.resize(w, h);
     camera.aspect = w / h;
     frameFloor(camera, orbit, rows, preset);
+    if (close.on) closeUp(camera, orbit, preset);
     devFocus();
   }
 
@@ -138,8 +145,13 @@ export function createView(host: HTMLElement) {
     placeCamera(camera, orbit);
   }, { passive: false });
 
-  const home = () => goHome(camera, orbit, rows, preset);
+  const home = () => {
+    goHome(camera, orbit, rows, preset);
+    if (close.on) closeUp(camera, orbit, preset);
+  };
   document.getElementById('home')?.addEventListener('click', home);
+  const zoomButton = document.getElementById('zoom');
+  if (zoomButton) bindViewToggle(zoomButton, close, home);
   bindHomeKey(window, home);
 
   const frameHandlers: ((t: number, dt: number) => void)[] = [];
@@ -147,6 +159,7 @@ export function createView(host: HTMLElement) {
   renderer.setAnimationLoop(() => {
     const dt = Math.min(timer.getDelta(), 0.05);
     frameHandlers.forEach((handle) => handle(timer.elapsedTime, dt));
+    if (theme && office) animateTheme(office.group, timer.elapsedTime);
     const { hour, today } = sunClock.at(new Date());
     const devHour = import.meta.env.DEV ? (window as { __skyHour?: number }).__skyHour : undefined;
     if (scene.background === sky.texture) sky.draw(devHour ?? hour, today, timer.elapsedTime);

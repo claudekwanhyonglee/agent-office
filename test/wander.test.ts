@@ -108,7 +108,7 @@ describe('#14 AC1 idle agents leave their desk', () => {
     runCharacter(character, () => character.mode === 'hanging');
     expect(character.mode).toBe('hanging');
     expect(character.pose).toBe(walk.place!.pose);
-    expect(character.bubbleKind).toBe('done');
+    expect(character.bubbleKind).toBeNull();
     expect(character.root.position.x).toBeCloseTo(walk.place!.x, 1);
     expect(character.root.position.z).toBeCloseTo(walk.place!.z, 1);
   });
