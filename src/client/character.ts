@@ -83,6 +83,8 @@ export class Character {
   /** Things held in the right hand for one pose: a fishing rod, dart, ball or paper plane. */
   private held = heldProps();
   private remote = remoteModel();
+  /** Halloween's trick-or-treat bucket (left hand), when the theme turns it on. */
+  private treats: THREE.Object3D | null = null;
   /** Pointing the remote at the TV (#113): seconds in, the click still to come, and the walk waiting for the hand to come down. */
   private remoteUse: { t: number; click: (() => void) | null; then: (() => void) | null } | null = null;
   readonly bubble: THREE.Sprite;
@@ -124,7 +126,7 @@ export class Character {
   /** Seconds since the agent started leaving; its bubble pops, then stays gone (#49). */
   private leftFor: number | null = null;
 
-  constructor(look: Look) {
+  constructor(look: Look, { trickOrTreat = false } = {}) {
     this.root.add(this.pivot);
     const body = mesh(new THREE.CapsuleGeometry(0.36, 0.3, 8, 20), look.shirt);
     body.position.y = 0.53;
@@ -178,6 +180,7 @@ export class Character {
     this.hands[0].add(this.snack);
     for (const prop of Object.values(this.held)) this.hands[1].add(prop);
     this.hands[0].add(this.remote);
+    if (trickOrTreat) this.hands[0].add((this.treats = treatBucket()));
 
     this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true }));
     this.bubble.center.set(0.5, 0);
@@ -417,6 +420,7 @@ export class Character {
     this.snack.visible = false;
     for (const prop of Object.values(this.held)) prop.visible = false;
     this.remote.visible = false;
+    if (this.treats) this.treats.visible = false;
     // Every agent keeps its state's bubble, wherever it is, until it pops on leaving.
     if (this.leftFor != null) this.leftFor += dt;
     if (this.shotTime != null) this.shotTime += dt;
@@ -497,6 +501,7 @@ export class Character {
       this.highFiving -= dt;
       hr.position.set(0.3, 1.8 + Math.sin(this.highFiving * 12) * 0.05 * motion, 0.25);
     }
+    if (this.treats) this.trickOrTreat(tt);
 
     this.bubbleKind = bubble;
     const texture = bubble && bubbleTexture(bubble);
@@ -507,6 +512,14 @@ export class Character {
       this.bubble.position.set(0.32, bubbleY, 0);
     }
     this.root.scale.setScalar(this.scale);
+  }
+
+  /** Halloween: the bucket comes along on walks and visits, and is held out at someone's desk for treats. */
+  private trickOrTreat(tt: number) {
+    const pose = this.mode === 'hanging' ? this.place?.pose : null;
+    if (this.mode !== 'walking' && pose !== 'watching' && pose !== 'chatting' && pose !== 'delivering') return;
+    this.treats!.visible = true;
+    if (pose === 'watching') this.hands[0].position.set(-0.22, 0.95 + Math.abs(Math.sin(tt * 2.5)) * 0.08 * motion, 0.5);
   }
 
   /** Poses at a hangout place; returns the bubble height. */
@@ -1161,6 +1174,18 @@ function cueBack(t: number | null) {
   if (s < -0.25) return CUE_REST + (CUE_DRAWN - CUE_REST) * smooth((s + 0.5) / 0.25);
   if (s < 0) return CUE_DRAWN * (1 - ((s + 0.25) / 0.25) ** 2);
   return CUE_REST * smooth(s / 0.6);
+}
+
+/** A jack-o'-lantern treat bucket with a handle, a few lollies poking out. */
+function treatBucket() {
+  const g = new THREE.Group();
+  g.add(at(cyl(0.13, 0.11, 0.18, '#F07A1A', { outline: 0.06 }), 0, -0.14, 0.04));
+  for (const x of [-0.04, 0.04]) g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.01), new THREE.MeshBasicMaterial({ color: '#2A2233' })), x, -0.11, 0.17));
+  const handle = mesh(new THREE.TorusGeometry(0.12, 0.012, 6, 16, Math.PI), '#2A2233', { outline: 0 });
+  handle.position.set(0, -0.06, 0.04);
+  g.add(handle);
+  ['#E0475A', '#9B5CFF', '#5BC0EB'].forEach((color, i) => g.add(at(ball(0.035, color, { outline: 0.1 }), -0.05 + i * 0.05, -0.04, 0.04)));
+  return g;
 }
 
 function heldProps(): Partial<Record<HangoutPose, THREE.Object3D>> {

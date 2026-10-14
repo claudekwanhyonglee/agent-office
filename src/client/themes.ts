@@ -11,6 +11,8 @@ export interface Theme {
   decorate: (bounds: { left: number; right: number; back: number; front: number }, floorAt: (x: number, z: number) => number) => THREE.Object3D;
   /** What an agent wears, from its usual look and a stable number per agent. */
   costume: (look: Look, n: number) => Look;
+  /** Agents carry a treat bucket on walks and hold it out when they visit a desk. */
+  trickOrTreat?: boolean;
 }
 
 const KEY = 'agent-office.theme';
@@ -67,6 +69,7 @@ const WITCH_HATS = ['#2A2233', '#6B3FA0', '#2A2233', '#3B5B2E'];
 export const THEMES: Record<string, Theme> = {
   halloween: {
     name: 'Halloween',
+    trickOrTreat: true,
     decorate({ back, front }, floorAt) {
       const g = new THREE.Group();
       g.name = 'theme:halloween';
