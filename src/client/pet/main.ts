@@ -3,6 +3,7 @@ import '@fontsource/nunito/800.css';
 import './pet.css';
 import { hasWebGL } from '../webgl.ts';
 import { sessionUrl } from '../../cloud/sessions.ts';
+import { serverHiddenSync } from '../projects.ts';
 import { createPetScene, type PetKind, type PetScene } from './scene.ts';
 import { feedChanges, petStatus, shortName, type PetStatus } from './mood.ts';
 import type { AgentRecord, FeedPayload } from '../../shared/agent.ts';
@@ -10,6 +11,8 @@ import type { AgentRecord, FeedPayload } from '../../shared/agent.ts';
 /** How long a one-off message ("… is done") stays up, and how long the bubble shows when work starts. */
 const NOTE_MS = 8000;
 const PEEK_MS = 5000;
+/** How often to pick up projects hidden or shown again in the office. */
+const HIDDEN_POLL_MS = 10_000;
 
 /** The Mac app's side (mac/AgentPet.swift): it moves the window and opens links; absent in a plain browser. */
 interface NativeBridge { postMessage(message: unknown): void }
@@ -74,7 +77,22 @@ export function startPet(root: HTMLElement, { kind, officeUrl, createScene = cre
     if (key !== lastHits) { lastHits = key; reportHitAreas(rounded); }
   }
 
+  /** Projects unticked in the office's Projects panel: the pet leaves them out too. */
+  let hidden = new Set<string>();
+  let lastPayload: FeedPayload | null = null;
+
+  function setHiddenProjects(projects: string[]) {
+    const next = new Set(projects);
+    if (next.size === hidden.size && [...next].every((p) => hidden.has(p))) return;
+    hidden = next;
+    // Re-read the last feed without announcing anything: only the filter changed.
+    records = null;
+    applyFeed(lastPayload);
+  }
+
   function applyFeed(payload: FeedPayload | null) {
+    lastPayload = payload;
+    if (Array.isArray(payload) && hidden.size) payload = payload.filter((r) => !hidden.has(r.project));
     const next = petStatus(payload);
     const list = Array.isArray(payload) ? payload : null;
     if (list) {
@@ -110,6 +128,7 @@ export function startPet(root: HTMLElement, { kind, officeUrl, createScene = cre
 
   return {
     applyFeed,
+    setHiddenProjects,
     click,
     hover,
     get status() { return status; },
@@ -141,5 +160,8 @@ if (!import.meta.env.VITEST) {
     events.onmessage = (e) => pet.applyFeed(JSON.parse(e.data));
     // EventSource retries on its own; until it's back, the pet dozes.
     events.onerror = () => pet.applyFeed(null);
+    const syncHidden = () => serverHiddenSync.load().then((list) => list && pet.setHiddenProjects(list));
+    syncHidden();
+    setInterval(syncHidden, HIDDEN_POLL_MS);
   }
 }
