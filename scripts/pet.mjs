@@ -65,7 +65,11 @@ function ensureElectron() {
     // npm is a .cmd script on Windows, which only runs through the shell; the arguments are fixed.
     run('npm', ['install', '--no-audit', '--no-fund', '--prefix', HOME, `electron@${ELECTRON_VERSION}`], { shell: windows });
   }
-  // path.txt is written once Electron's own download has finished.
+  // Electron fetches its binary on first use rather than at install; do it now, while there's a terminal to show it.
+  // path.txt is written once that download has finished.
+  if (!existsSync(join(pkg, 'path.txt'))) {
+    try { run(process.execPath, [join(pkg, 'install.js')]); } catch { /* reported below */ }
+  }
   const binary = (() => { try { return readFileSync(join(pkg, 'path.txt'), 'utf8').trim(); } catch { return null; } })();
   if (!binary) {
     rmSync(pkg, { recursive: true, force: true }); // so the next try fetches it again
