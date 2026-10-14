@@ -3,9 +3,9 @@ import { buildOffice } from './office.ts';
 import { createSky, createSunClock } from './sky.ts';
 import { bindBackgroundToggle } from './background-toggle.ts';
 import {
-  bindHomeKey, blockContextMenu, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
-  placeCamera, wheelRadius, zoomToward, type Orbit, type Pointer,
-} from './camera.ts';
+  bindHomeKey, blockContextMenu, closeUp, createDoubleTap, createGestures, focusOn, frameFloor, goHome, grabAt, initialOrbit, pansWith, pickSurface,
+  placeCamera, wheelRadius, zoomToward, type Orbit, type Pointer } from './camera.ts';
+import { bindViewToggle, readCloseUp } from './view-toggle.ts';
 
 /** Renderer, lights, orbit camera and the office. Agents are layered on by callers. */
 export function createView(host: HTMLElement) {
@@ -45,6 +45,7 @@ export function createView(host: HTMLElement) {
   }
 
   let office: ReturnType<typeof buildOffice> | undefined;
+  const close = { on: readCloseUp() };
   let rows = 0;
   let preset = 'classic';
 
@@ -74,6 +75,7 @@ export function createView(host: HTMLElement) {
     sky.resize(w, h);
     camera.aspect = w / h;
     frameFloor(camera, orbit, rows, preset);
+    if (close.on) closeUp(camera, orbit);
     devFocus();
   }
 
@@ -138,8 +140,13 @@ export function createView(host: HTMLElement) {
     placeCamera(camera, orbit);
   }, { passive: false });
 
-  const home = () => goHome(camera, orbit, rows, preset);
+  const home = () => {
+    goHome(camera, orbit, rows, preset);
+    if (close.on) closeUp(camera, orbit);
+  };
   document.getElementById('home')?.addEventListener('click', home);
+  const zoomButton = document.getElementById('zoom');
+  if (zoomButton) bindViewToggle(zoomButton, close, home);
   bindHomeKey(window, home);
 
   const frameHandlers: ((t: number, dt: number) => void)[] = [];

@@ -116,6 +116,17 @@ export function goHome(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: numb
   frameFloor(camera, orbit, rows, preset);
 }
 
+/** Close-up view: tilted further down and pulled in, so desks, screens and speech bubbles are readable. */
+export const CLOSE_UP = { lookDown: 36, zoom: 0.8 };
+
+/** Turns a framed starting view into the close-up one, centred on the room (x = 0) rather than the room plus deck. */
+export function closeUp(camera: THREE.PerspectiveCamera, orbit: Orbit) {
+  orbit.phi = THREE.MathUtils.degToRad(90 - CLOSE_UP.lookDown);
+  orbit.radius *= CLOSE_UP.zoom;
+  orbit.target.x = 0;
+  placeCamera(camera, orbit);
+}
+
 /** The Home key goes back to the starting view. */
 export function bindHomeKey(target: EventTarget, home: () => void) {
   target.addEventListener('keydown', (e) => {
