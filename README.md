@@ -47,7 +47,7 @@ Or set `CLOUD=1`. It lists your cloud sessions (including Projects threads) ever
 If the login expires, run `claude` once to refresh it, or set `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
 Click an agent to open its session on claude.ai.
 
-In cloud mode, clicking an agent shows its progress checklist plus links to its session, pull request and artifacts. You get a Mac notification when a session starts needing you (set `NOTIFY=0` to turn that off), and the plan usage panel shows the limit status your cloud sessions report.
+In cloud mode, clicking an agent shows its progress checklist plus links to its session, pull request and artifacts. You get a desktop notification (macOS, Windows or Linux with `notify-send`) when a session starts needing you (set `NOTIFY=0` to turn that off), and the plan usage panel shows the limit status your cloud sessions report.
 
 This uses the same unpublished endpoint `claude --teleport` uses, so a Claude Code update could break it.
 
@@ -123,6 +123,12 @@ npm start         # builds if needed, then serves
 npm run dev       # Vite dev server for the page (run npm start alongside for the API)
 ```
 
-### Keep it running on a Mac
+### Keep it running in the background
 
-`scripts/launch-agent.sh install` runs cloud mode in the background: it starts when you log in and restarts if it stops, so no terminal window is needed. After `git pull && npm run build`, run it again to restart. `scripts/launch-agent.sh uninstall` removes it. Logs go to `~/Library/Logs/agent-office.log`.
+`node scripts/background.mjs install` runs cloud mode in the background on macOS, Windows or Linux: it starts when you log in and restarts if it stops, so no terminal window is needed. After `git pull && npm run build`, run it again to restart. `node scripts/background.mjs uninstall` removes it.
+
+| | How | Log |
+|---|---|---|
+| macOS | launchd (`scripts/launch-agent.sh`, which you can also run directly) | `~/Library/Logs/agent-office.log` |
+| Windows | a hidden script in your Startup folder (no admin rights needed) | `%USERPROFILE%\.agent-office\agent-office.log` |
+| Linux | a systemd user service | `journalctl --user -u agent-office` |
