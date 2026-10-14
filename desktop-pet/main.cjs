@@ -158,7 +158,11 @@ function resize(key) {
 /** For checks: saves what the window shows once the page has had time to draw, then quits. */
 function screenshotAndQuit(file) {
   setTimeout(async () => {
-    try { writeFileSync(file, (await win.webContents.capturePage()).toPNG()); } finally { app.quit(); }
+    try {
+      const image = await win.webContents.capturePage();
+      writeFileSync(file, image.toPNG());
+      writeFileSync(file.replace(/\.png$/, '-small.png'), image.resize({ width: 120 }).toPNG()); // small enough to print into a CI log
+    } finally { app.quit(); }
   }, Number(process.env.AGENT_PET_SCREENSHOT_DELAY) || 8000);
 }
 
