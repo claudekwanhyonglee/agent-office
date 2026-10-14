@@ -99,6 +99,8 @@ export function toCloudRecord(session: CloudSession): AgentRecord {
 /** Live sessions, plus ended ones touched in the last day (like the local office). */
 export function buildCloudList(sessions: CloudSession[], now: number) {
   return sessions.map(toCloudRecord).filter((record, i) => {
+    // Archived means you're done with it; it leaves the office.
+    if (sessions[i].session_status === 'SESSION_STATUS_ARCHIVED') return false;
     const updated = Date.parse(sessions[i].updated_at ?? '');
     const age = Number.isFinite(updated) ? now - updated : Infinity;
     // Every project has a chat agent that's always around; show it while it's waiting on you, or for an hour after it was last active.
