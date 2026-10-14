@@ -152,6 +152,12 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; box-si
   position: absolute; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
   min-width: 44px; min-height: 44px; display: grid; place-items: center;
 }
+/* Wide or close-up starting view, left of the sky toggle. */
+.zoom {
+  position: absolute; right: 120px; top: calc(16px + env(safe-area-inset-top, 0px));
+  min-width: 44px; min-height: 44px; display: grid; place-items: center;
+}
+.zoom[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #2B2545; }
 /* The sky/plain toggle, just left of the camera button. */
 .background {
   position: absolute; right: 68px; top: calc(16px + env(safe-area-inset-top, 0px));

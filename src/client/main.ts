@@ -2,7 +2,7 @@ import './style.css';
 import { createOfficeScene } from './office-scene.ts';
 import { renderCard, showTooltip } from './card.ts';
 import { startUsagePanel } from './usage.ts';
-import { mountProjectFilter } from './projects.ts';
+import { mountProjectFilter, serverHiddenSync } from './projects.ts';
 import { hasWebGL } from './webgl.ts';
 import { sessionUrl } from '../cloud/sessions.ts';
 import { startClock } from './clock.ts';
@@ -71,7 +71,7 @@ export function boot({ createOffice }: BootOptions = {}) {
   office.onPick(select);
   office.onHover((key, x, y) => showTooltip(tooltip, key ? records.get(key) : undefined, x, y));
 
-  const projects = mountProjectFilter(document.getElementById('projects')!, () => last && applyFeed(last));
+  const projects = mountProjectFilter(document.getElementById('projects')!, () => last && applyFeed(last), import.meta.env.VITEST ? undefined : serverHiddenSync);
   let last: FeedPayload | null = null;
 
   function applyFeed(payload: FeedPayload) {

@@ -36,7 +36,12 @@ case "$1" in
 </dict></plist>
 PLIST
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-    launchctl bootstrap "gui/$(id -u)" "$PLIST"
+    # bootout returns before the old copy has fully stopped; bootstrap then fails with "5: Input/output error".
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break
+      sleep 1
+    done
+    launchctl bootstrap "gui/$(id -u)" "$PLIST" || { sleep 2; launchctl bootstrap "gui/$(id -u)" "$PLIST"; }
     echo "Agent Office now runs in the background at http://127.0.0.1:4321 (log: $LOG)"
     ;;
   uninstall)
