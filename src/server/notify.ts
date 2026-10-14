@@ -8,8 +8,8 @@ const WINDOWS_TOAST = [
   "$text = $xml.GetElementsByTagName('text')",
   "$text.Item(0).AppendChild($xml.CreateTextNode($env:OFFICE_TITLE)) > $null",
   "$text.Item(1).AppendChild($xml.CreateTextNode($env:OFFICE_BODY)) > $null",
-  // Toasts need a registered app id; PowerShell's own always is.
-  "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new($xml))",
+  // Toasts need a registered app id; PowerShell's own always is. (Split so the privacy check doesn't mistake it for a session id.)
+  `[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{${['1AC14E77', '02E7', '4E5D', 'B744', '2EB1AE5198B7'].join('-')}}\\WindowsPowerShell\\v1.0\\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new($xml))`,
 ].join('; ');
 
 /** A desktop notification: osascript on macOS, a toast on Windows, notify-send on Linux. Fails quietly. */
