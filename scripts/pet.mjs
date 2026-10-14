@@ -6,7 +6,7 @@
 // macOS builds the native app (scripts/pet.sh, needs Xcode's command line tools).
 // Windows and Linux run desktop-pet/ in Electron, fetched into ~/.agent-office/pet the first time (about 100 MB).
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,7 +49,9 @@ if (action === 'install') {
     writeFileSync(startup, `[Desktop Entry]\nType=Application\nName=Agent Pet\nExec="${electron}" "${APP}"\nX-GNOME-Autostart-enabled=true\n`);
   }
 }
-spawn(electron, [APP], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+// Its output goes to a log, for when it doesn't appear.
+const log = openSync(join(HOME, 'pet.log'), 'a');
+spawn(electron, [APP], { detached: true, stdio: ['ignore', log, log], windowsHide: true }).unref();
 console.log(action === 'install'
   ? 'Agent Pet is installed and on your desktop. It starts at login; right-click it to quit.'
   : 'Agent Pet is on your desktop. Drag it anywhere; right-click for options.');
