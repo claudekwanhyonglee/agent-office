@@ -272,7 +272,8 @@ async function askClaudeToRefresh(env: NodeJS.ProcessEnv): Promise<void> {
   for (const key of WORK_KEYS) delete childEnv[key];
   return new Promise((resolve) => {
     execFile(env.CLAUDE_BIN || 'claude', ['-p', 'Reply with just OK.', '--model', 'haiku'],
-      { env: childEnv, cwd: tmpdir(), timeout: 120_000 }, (error) => {
+      // On Windows an npm-installed claude is a .cmd script, which only runs through the shell; the arguments are fixed.
+      { env: childEnv, cwd: tmpdir(), timeout: 120_000, shell: process.platform === 'win32', windowsHide: true }, (error) => {
         console.log(error ? `Couldn't renew the Claude login: ${error.message.split('\n')[0]}` : 'Renewed the Claude login.');
         resolve();
       });
