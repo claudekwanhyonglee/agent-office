@@ -6,7 +6,7 @@
 // macOS builds the native app (scripts/pet.sh, needs Xcode's command line tools).
 // Windows and Linux run desktop-pet/ in Electron, fetched into ~/.agent-office/pet the first time (about 100 MB).
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, statSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,18 +40,22 @@ if (action === 'uninstall') {
 }
 
 const electron = ensureElectron();
+// Linux: Electron's sandbox helper needs root to set up (chown root + chmod 4755 on chrome-sandbox), which npm can't do.
+// Without it Electron refuses to start, so run without that layer; the pet only shows this computer's own office page.
+const sandboxHelper = join(dirname(electron), 'chrome-sandbox');
+const args = !windows && !setuidRoot(sandboxHelper) ? [APP, '--no-sandbox'] : [APP];
 if (action === 'install') {
   mkdirSync(dirname(startup), { recursive: true });
   if (windows) {
     // A .vbs in the Startup folder runs at login; no admin rights needed.
     writeFileSync(startup, `CreateObject("WScript.Shell").Run """${electron}"" ""${APP}""", 0, False\r\n`);
   } else {
-    writeFileSync(startup, `[Desktop Entry]\nType=Application\nName=Agent Pet\nExec="${electron}" "${APP}"\nX-GNOME-Autostart-enabled=true\n`);
+    writeFileSync(startup, `[Desktop Entry]\nType=Application\nName=Agent Pet\nExec=${[electron, ...args].map((a) => `"${a}"`).join(' ')}\nX-GNOME-Autostart-enabled=true\n`);
   }
 }
 // Its output goes to a log, for when it doesn't appear.
 const log = openSync(join(HOME, 'pet.log'), 'a');
-spawn(electron, [APP], { detached: true, stdio: ['ignore', log, log], windowsHide: true }).unref();
+spawn(electron, args, { detached: true, stdio: ['ignore', log, log], windowsHide: true }).unref();
 console.log(action === 'install'
   ? 'Agent Pet is installed and on your desktop. It starts at login; right-click it to quit.'
   : 'Agent Pet is on your desktop. Drag it anywhere; right-click for options.');
@@ -79,6 +83,10 @@ function ensureElectron() {
     process.exit(1);
   }
   return join(pkg, 'dist', binary);
+}
+
+function setuidRoot(file) {
+  try { const { uid, mode } = statSync(file); return uid === 0 && (mode & 0o4000) !== 0; } catch { return false; }
 }
 
 /** Stops a running pet, matched on the app's full path so nothing else is touched. */
