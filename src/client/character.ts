@@ -735,6 +735,13 @@ function hat(kind: HatKind, color: string) {
     for (const [x, y, z, r] of [[0, 0.66, 0, 0.2], [0.17, 0.62, 0.05, 0.16], [-0.17, 0.62, 0.05, 0.16], [0, 0.62, -0.16, 0.16]]) {
       g.add(at(ball(r, '#FFFFFF'), x, y, z));
     }
+  } else if (kind === 'witch') {
+    g.add(at(dome(0.395, 0.42, '#4A3A2E'), 0, 0.01, 0));
+    g.add(at(cyl(0.6, 0.6, 0.04, color, { outline: 0.05 }), 0, 0.3, 0));
+    const cone = at(mesh(new THREE.ConeGeometry(0.32, 0.75, 20), color, { outline: 0.05 }), 0, 0.68, 0);
+    cone.rotation.z = 0.18;
+    g.add(cone);
+    g.add(at(cyl(0.33, 0.33, 0.07, '#FF8A1F'), 0, 0.36, 0));
   } else if (kind === 'crown') {
     g.add(at(dome(0.395, 0.42, '#4A3A2E'), 0, 0.01, 0));
     g.add(at(cyl(0.32, 0.3, 0.16, color, { outline: 0.05 }), 0, 0.36, 0));

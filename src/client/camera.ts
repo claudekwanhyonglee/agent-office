@@ -120,7 +120,13 @@ export function goHome(camera: THREE.PerspectiveCamera, orbit: Orbit, rows: numb
 export const CLOSE_UP = { lookDown: 36, zoom: 0.8 };
 
 /** Turns a framed starting view into the close-up one, centred on the room (x = 0) rather than the room plus deck. */
-export function closeUp(camera: THREE.PerspectiveCamera, orbit: Orbit) {
+export function closeUp(camera: THREE.PerspectiveCamera, orbit: Orbit, preset = 'classic') {
+  // Classic's deck is in front of the room, not beside it, so it only needs pulling in a little.
+  if (preset !== 'control-room') {
+    orbit.radius *= 0.88;
+    placeCamera(camera, orbit);
+    return;
+  }
   orbit.phi = THREE.MathUtils.degToRad(90 - CLOSE_UP.lookDown);
   orbit.radius *= CLOSE_UP.zoom;
   orbit.target.x = 0;

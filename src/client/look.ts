@@ -1,6 +1,6 @@
 // An agent's look comes from its session id, so it's the same on every reload.
 
-export type HatKind = 'headphones' | 'cap' | 'beanie' | 'chef' | 'tuft' | 'bun' | 'crown';
+export type HatKind = 'headphones' | 'cap' | 'beanie' | 'chef' | 'tuft' | 'bun' | 'crown' | 'witch';
 
 export interface Look {
   shirt: string;
@@ -15,6 +15,9 @@ const HAT_COLORS = ['#3A3150', '#3E6799', '#6B5B95', '#3B2A20', '#2B1E16', '#F07
 const SKIN = ['#F6CFA8', '#E8B48A', '#C98E62', '#9C6644', '#FFE0C4'];
 
 /** FNV-1a: small, stable string hash. */
+/** A stable number per agent, for picks that should stay the same on every reload. */
+export const lookNumber = (sessionId: string) => hash(sessionId);
+
 function hash(text: string) {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
