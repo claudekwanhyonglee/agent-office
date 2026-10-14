@@ -13,7 +13,8 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run typecheck
-      - run: npx vitest run
+      # Fewer workers: a busy runner otherwise trips vitest's worker RPC timeout after every test has passed.
+      - run: npx vitest run --maxWorkers=2
       - name: Background install serves the office, uninstall stops it
         shell: pwsh
         run: |
